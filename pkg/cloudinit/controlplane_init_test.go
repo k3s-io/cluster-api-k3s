@@ -20,12 +20,11 @@ import (
 	"testing"
 
 	. "github.com/onsi/gomega"
+	"github.com/zawachte-msft/cluster-api-bootstrap-provider-k3s/pkg/secret"
 	infrav1 "sigs.k8s.io/cluster-api/bootstrap/kubeadm/api/v1alpha3"
-	"sigs.k8s.io/cluster-api/util/certs"
-	"sigs.k8s.io/cluster-api/util/secret"
 )
 
-func TestTemplateYAMLIndent(t *testing.T) {
+func TestControlPlaneInit(t *testing.T) {
 
 	g := NewWithT(t)
 
@@ -49,16 +48,7 @@ func TestTemplateYAMLIndent(t *testing.T) {
 		Certificates: secret.Certificates{},
 	}
 
-	for _, certificate := range cpinput.Certificates {
-		certificate.KeyPair = &certs.KeyPair{
-			Cert: []byte("some certificate"),
-			Key:  []byte("some key"),
-		}
-	}
-
 	out, err := NewInitControlPlane(cpinput)
 	g.Expect(err).NotTo(HaveOccurred())
-
 	t.Log(string(out))
-
 }

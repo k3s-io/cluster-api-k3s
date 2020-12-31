@@ -17,7 +17,7 @@ limitations under the License.
 package cloudinit
 
 import (
-	"sigs.k8s.io/cluster-api/util/secret"
+	"github.com/zawachte-msft/cluster-api-bootstrap-provider-k3s/pkg/secret"
 )
 
 const (

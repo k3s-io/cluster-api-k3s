@@ -22,11 +22,13 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	infrav1 "sigs.k8s.io/cluster-api/bootstrap/kubeadm/api/v1alpha3"
 
 	"time"
 
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
+	"github.com/zawachte-msft/cluster-api-bootstrap-provider-k3s/pkg/secret"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
@@ -36,10 +38,12 @@ import (
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/annotations"
 	"sigs.k8s.io/cluster-api/util/patch"
+
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	bootstrapv1alpha1 "github.com/zawachte-msft/cluster-api-bootstrap-provider-k3s/api/v1alpha1"
+	"github.com/zawachte-msft/cluster-api-bootstrap-provider-k3s/pkg/cloudinit"
 )
 
 // InitLocker is a lock that is used around kubeadm init
@@ -259,22 +263,33 @@ func (r *KThreesConfigReconciler) handleClusterNotInitialized(ctx context.Contex
 
 	scope.Info("Creating BootstrapData for the init control plane")
 
-	/**
-		certificates := secret.NewCertificatesForInitialControlPlane(scope.Config.Spec.ClusterConfiguration)
-		err = certificates.LookupOrGenerate(
-			ctx,
-			r.Client,
-			util.ObjectKey(scope.Cluster),
-			*metav1.NewControllerRef(scope.Config, bootstrapv1.GroupVersion.WithKind("KThreesConfig")),
-		)
-		if err != nil {
-			//	conditions.MarkFalse(scope.Config, bootstrapv1.CertificatesAvailableCondition, bootstrapv1.CertificatesGenerationFailedReason, clusterv1.ConditionSeverityWarning, err.Error())
-			return ctrl.Result{}, err
-		}
-		//conditions.MarkTrue(scope.Config, bootstrapv1.CertificatesAvailableCondition)
-	**/
+	certificates := secret.NewCertificatesForInitialControlPlane()
+	err := certificates.LookupOrGenerate(
+		ctx,
+		r.Client,
+		util.ObjectKey(scope.Cluster),
+		*metav1.NewControllerRef(scope.Config, bootstrapv1alpha1.GroupVersion.WithKind("KThreesConfig")),
+	)
+	if err != nil {
+		//	conditions.MarkFalse(scope.Config, bootstrapv1.CertificatesAvailableCondition, bootstrapv1.CertificatesGenerationFailedReason, clusterv1.ConditionSeverityWarning, err.Error())
+		return ctrl.Result{}, err
+	}
+	//conditions.MarkTrue(scope.Config, bootstrapv1.CertificatesAvailableCondition)
 
-	cloudInitData := []byte{}
+	cpinput := &cloudinit.ControlPlaneInput{
+		BaseUserData: cloudinit.BaseUserData{
+			PreK3sCommands:  nil,
+			PostK3sCommands: nil,
+			AdditionalFiles: []infrav1.File{},
+		},
+		Certificates: certificates,
+	}
+
+	cloudInitData, err := cloudinit.NewInitControlPlane(cpinput)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
 	if err := r.storeBootstrapData(ctx, scope, cloudInitData); err != nil {
 		scope.Error(err, "Failed to store bootstrap data")
 		return ctrl.Result{}, err
