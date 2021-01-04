@@ -17,6 +17,8 @@ limitations under the License.
 package cloudinit
 
 import (
+	"fmt"
+
 	"github.com/zawachte-msft/cluster-api-bootstrap-provider-k3s/pkg/secret"
 )
 
@@ -25,7 +27,7 @@ const (
 {{template "files" .WriteFiles}}
 runcmd:
 {{- template "commands" .PreK3sCommands }}
-  - 'curl -sfL https://get.k3s.io | sh -s - --disable-cloud-controller'
+  - 'curl -sfL https://get.k3s.io | sh -s - --disable-cloud-controller --kube-apiserver-arg anonymous-auth=true --tls-san "%s"'
 {{- template "commands" .PostK3sCommands }}
 `
 )
@@ -34,14 +36,17 @@ runcmd:
 type ControlPlaneInput struct {
 	BaseUserData
 	secret.Certificates
+	ControlPlaneEndpoint string
 }
 
 // NewInitControlPlane returns the user data string to be used on a controlplane instance.
 func NewInitControlPlane(input *ControlPlaneInput) ([]byte, error) {
 	input.Header = cloudConfigHeader
 	input.WriteFiles = input.Certificates.AsFiles()
+
+	withEndpoint := fmt.Sprintf(controlPlaneCloudInit, input.ControlPlaneEndpoint)
 	input.WriteFiles = append(input.WriteFiles, input.AdditionalFiles...)
-	userData, err := generate("InitControlplane", controlPlaneCloudInit, input)
+	userData, err := generate("InitControlplane", withEndpoint, input)
 	if err != nil {
 		return nil, err
 	}

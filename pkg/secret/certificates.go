@@ -24,7 +24,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/hex"
-	"fmt"
 	"math/big"
 	"path/filepath"
 	"strings"
@@ -71,6 +70,11 @@ func NewCertificatesForInitialControlPlane() Certificates {
 			CertFile: filepath.Join(certificatesDir, "server-ca.crt"),
 			KeyFile:  filepath.Join(certificatesDir, "server-ca.key"),
 		},
+		&Certificate{
+			Purpose:  ClientClusterCA,
+			CertFile: filepath.Join(certificatesDir, "client-ca.crt"),
+			KeyFile:  filepath.Join(certificatesDir, "client-ca.key"),
+		},
 	}
 
 	return certificates
@@ -85,11 +89,6 @@ func (c Certificates) GetByPurpose(purpose Purpose) *Certificate {
 		}
 	}
 	return nil
-}
-
-// Name returns the name of the secret for a cluster.
-func Name(cluster string, suffix Purpose) string {
-	return fmt.Sprintf("%s-%s", cluster, suffix)
 }
 
 // Lookup looks up each certificate from secrets and populates the certificate with the secret data.
@@ -282,6 +281,8 @@ func (c *Certificate) Generate() error {
 // AsFiles converts a slice of certificates into bootstrap files.
 func (c Certificates) AsFiles() []bootstrapv1.File {
 	clusterCA := c.GetByPurpose(ClusterCA)
+	clientClusterCA := c.GetByPurpose(ClientClusterCA)
+
 	etcdCA := c.GetByPurpose(EtcdCA)
 	frontProxyCA := c.GetByPurpose(FrontProxyCA)
 	serviceAccountKey := c.GetByPurpose(ServiceAccount)
@@ -289,6 +290,9 @@ func (c Certificates) AsFiles() []bootstrapv1.File {
 	certFiles := make([]bootstrapv1.File, 0)
 	if clusterCA != nil {
 		certFiles = append(certFiles, clusterCA.AsFiles()...)
+	}
+	if clientClusterCA != nil {
+		certFiles = append(certFiles, clientClusterCA.AsFiles()...)
 	}
 	if etcdCA != nil {
 		certFiles = append(certFiles, etcdCA.AsFiles()...)

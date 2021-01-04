@@ -69,6 +69,9 @@ write_files:{{ range . }}
 {{- end -}}
 {{- end -}}
 `
+
+	PatchCommand = `kubectl --kubeconfig=/etc/rancher/k3s/k3s.yaml patch node joe-test-control-plane-0 -p $'spec:\n providerID: azure:////subscriptions/bbda620e-ad6d-4440-8ba0-ba1297702503/resourceGroups/joe-test/providers/Microsoft.Compute/virtualMachines/joe-test-control-plane-0'`
+	SleepCommand = "sleep 30"
 )
 
 // BaseUserData is shared across all the various types of files written to disk.

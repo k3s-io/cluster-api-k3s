@@ -35,6 +35,9 @@ const (
 	// ClusterCA is the secret name suffix for APIServer CA.
 	ClusterCA = Purpose("ca")
 
+	// ClientClusterCA is the secret name suffix for APIServer CA.
+	ClientClusterCA = Purpose("cca")
+
 	// EtcdCA is the secret name suffix for the Etcd CA
 	EtcdCA Purpose = "etcd"
 

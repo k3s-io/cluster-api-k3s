@@ -5,7 +5,7 @@ metadata:
   name: kthreesconfig-editor-role
 rules:
 - apiGroups:
-  - bootstrap.k8s.io
+  - bootstrap.cluster.x-k8s.io
   resources:
   - kthreesconfigs
   verbs:
@@ -17,7 +17,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - bootstrap.k8s.io
+  - bootstrap.cluster.x-k8s.io
   resources:
   - kthreesconfigs/status
   verbs:

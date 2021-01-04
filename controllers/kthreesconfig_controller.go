@@ -28,10 +28,10 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
+	"github.com/zawachte-msft/cluster-api-bootstrap-provider-k3s/pkg/kubeconfig"
 	"github.com/zawachte-msft/cluster-api-bootstrap-provider-k3s/pkg/secret"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
-	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/utils/pointer"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
 	bsutil "sigs.k8s.io/cluster-api/bootstrap/util"
@@ -42,7 +42,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	bootstrapv1alpha1 "github.com/zawachte-msft/cluster-api-bootstrap-provider-k3s/api/v1alpha1"
+	bootstrapv1alpha3 "github.com/zawachte-msft/cluster-api-bootstrap-provider-k3s/api/v1alpha3"
 	"github.com/zawachte-msft/cluster-api-bootstrap-provider-k3s/pkg/cloudinit"
 )
 
@@ -62,13 +62,13 @@ type KThreesConfigReconciler struct {
 
 type Scope struct {
 	logr.Logger
-	Config      *bootstrapv1alpha1.KThreesConfig
+	Config      *bootstrapv1alpha3.KThreesConfig
 	ConfigOwner *bsutil.ConfigOwner
 	Cluster     *clusterv1.Cluster
 }
 
-// +kubebuilder:rbac:groups=bootstrap.k8s.io,resources=kthreesconfigs,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=bootstrap.k8s.io,resources=kthreesconfigs/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=bootstrap.cluster.x-k8s.io,resources=kthreesconfigs,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=bootstrap.cluster.x-k8s.io,resources=kthreesconfigs/status,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters;clusters/status;machines;machines/status,verbs=get;list;watch
 // +kubebuilder:rbac:groups=exp.cluster.x-k8s.io,resources=machinepools;machinepools/status,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=secrets;events;configmaps,verbs=get;list;watch;create;update;patch;delete
@@ -78,9 +78,10 @@ func (r *KThreesConfigReconciler) Reconcile(req ctrl.Request) (_ ctrl.Result, re
 	log := r.Log.WithValues("kthreesconfig", req.NamespacedName)
 
 	// Lookup the kubeadm config
-	config := &bootstrapv1alpha1.KThreesConfig{}
+	config := &bootstrapv1alpha3.KThreesConfig{}
 	if err := r.Client.Get(ctx, req.NamespacedName, config); err != nil {
 		if apierrors.IsNotFound(err) {
+
 			return ctrl.Result{}, nil
 		}
 		log.Error(err, "Failed to get config")
@@ -100,6 +101,7 @@ func (r *KThreesConfigReconciler) Reconcile(req ctrl.Request) (_ ctrl.Result, re
 	if configOwner == nil {
 		return ctrl.Result{}, nil
 	}
+
 	log = log.WithValues("kind", configOwner.GetKind(), "version", configOwner.GetResourceVersion(), "name", configOwner.GetName())
 
 	// Lookup the cluster the config owner is associated with
@@ -192,6 +194,7 @@ func (r *KThreesConfigReconciler) Reconcile(req ctrl.Request) (_ ctrl.Result, re
 			}
 		}
 		**/
+
 		// In any other case just return as the config is already generated and need not be generated again.
 		return ctrl.Result{}, nil
 	}
@@ -237,6 +240,7 @@ func (r *KThreesConfigReconciler) handleClusterNotInitialized(ctx context.Contex
 
 	// if it's NOT a control plane machine, requeue
 	if !scope.ConfigOwner.IsControlPlaneMachine() {
+
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
@@ -248,6 +252,7 @@ func (r *KThreesConfigReconciler) handleClusterNotInitialized(ctx context.Contex
 	// acquire the init lock so that only the first machine configured
 	// as control plane get processed here
 	// if not the first, requeue
+	/**
 	if !r.KThreesInitLock.Lock(ctx, scope.Cluster, machine) {
 		scope.Info("A control plane is already being initialized, requeing until control plane is ready")
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
@@ -260,6 +265,7 @@ func (r *KThreesConfigReconciler) handleClusterNotInitialized(ctx context.Contex
 			}
 		}
 	}()
+	**/
 
 	scope.Info("Creating BootstrapData for the init control plane")
 
@@ -268,7 +274,7 @@ func (r *KThreesConfigReconciler) handleClusterNotInitialized(ctx context.Contex
 		ctx,
 		r.Client,
 		util.ObjectKey(scope.Cluster),
-		*metav1.NewControllerRef(scope.Config, bootstrapv1alpha1.GroupVersion.WithKind("KThreesConfig")),
+		*metav1.NewControllerRef(scope.Config, bootstrapv1alpha3.GroupVersion.WithKind("KThreesConfig")),
 	)
 	if err != nil {
 		//	conditions.MarkFalse(scope.Config, bootstrapv1.CertificatesAvailableCondition, bootstrapv1.CertificatesGenerationFailedReason, clusterv1.ConditionSeverityWarning, err.Error())
@@ -279,10 +285,11 @@ func (r *KThreesConfigReconciler) handleClusterNotInitialized(ctx context.Contex
 	cpinput := &cloudinit.ControlPlaneInput{
 		BaseUserData: cloudinit.BaseUserData{
 			PreK3sCommands:  nil,
-			PostK3sCommands: nil,
+			PostK3sCommands: []string{cloudinit.SleepCommand, cloudinit.PatchCommand},
 			AdditionalFiles: []infrav1.File{},
 		},
-		Certificates: certificates,
+		ControlPlaneEndpoint: scope.Cluster.Spec.ControlPlaneEndpoint.Host,
+		Certificates:         certificates,
 	}
 
 	cloudInitData, err := cloudinit.NewInitControlPlane(cpinput)
@@ -295,12 +302,17 @@ func (r *KThreesConfigReconciler) handleClusterNotInitialized(ctx context.Contex
 		return ctrl.Result{}, err
 	}
 
-	return ctrl.Result{}, nil
+	return r.reconcileKubeconfig(ctx, scope)
 }
 
 func (r *KThreesConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
+
+	//	if r.KubeadmInitLock == nil {
+	//		r.KubeadmInitLock = locking.NewControlPlaneInitMutex(ctrl.Log.WithName("init-locker"), mgr.GetClient())
+	//	}
+
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&bootstrapv1alpha1.KThreesConfig{}).
+		For(&bootstrapv1alpha3.KThreesConfig{}).
 		Complete(r)
 }
 
@@ -316,7 +328,7 @@ func (r *KThreesConfigReconciler) storeBootstrapData(ctx context.Context, scope 
 			},
 			OwnerReferences: []metav1.OwnerReference{
 				{
-					APIVersion: bootstrapv1alpha1.GroupVersion.String(),
+					APIVersion: bootstrapv1alpha3.GroupVersion.String(),
 					Kind:       "KThreesConfig",
 					Name:       scope.Config.Name,
 					UID:        scope.Config.UID,
@@ -341,8 +353,29 @@ func (r *KThreesConfigReconciler) storeBootstrapData(ctx context.Context, scope 
 			return errors.Wrapf(err, "failed to update bootstrap data secret for KubeadmConfig %s/%s", scope.Config.Namespace, scope.Config.Name)
 		}
 	}
+
 	scope.Config.Status.DataSecretName = pointer.StringPtr(secret.Name)
 	scope.Config.Status.Ready = true
 	//	conditions.MarkTrue(scope.Config, bootstrapv1.DataSecretAvailableCondition)
 	return nil
+}
+
+func (r *KThreesConfigReconciler) reconcileKubeconfig(ctx context.Context, scope *Scope) (ctrl.Result, error) {
+	logger := r.Log.WithValues("cluster", scope.Cluster.Name, "namespace", scope.Cluster.Namespace)
+
+	_, err := secret.Get(ctx, r.Client, util.ObjectKey(scope.Cluster), secret.Kubeconfig)
+	switch {
+	case apierrors.IsNotFound(errors.Cause(err)):
+		if err := kubeconfig.CreateSecret(ctx, r.Client, scope.Cluster); err != nil {
+			if err == kubeconfig.ErrDependentCertificateNotFound {
+				logger.Info("could not find secret for cluster, requeuing", "secret", secret.ClusterCA)
+				return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+			}
+			return ctrl.Result{}, err
+		}
+	case err != nil:
+		return ctrl.Result{}, errors.Wrapf(err, "failed to retrieve Kubeconfig Secret for Cluster %q in namespace %q", scope.Cluster.Name, scope.Cluster.Namespace)
+	}
+
+	return ctrl.Result{}, nil
 }

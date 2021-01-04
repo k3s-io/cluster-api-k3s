@@ -44,8 +44,8 @@ func TestControlPlaneInit(t *testing.T) {
 				},
 			},
 		},
-
-		Certificates: secret.Certificates{},
+		ControlPlaneEndpoint: "zach.local",
+		Certificates:         secret.Certificates{},
 	}
 
 	out, err := NewInitControlPlane(cpinput)

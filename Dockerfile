@@ -1,5 +1,5 @@
-FROM gcr.io/distroless/static:latest
+FROM gcr.io/distroless/static:nonroot
 WORKDIR /
 COPY bin/manager ./
-USER nobody
+USER nonroot:nonroot
 ENTRYPOINT ["/manager"]

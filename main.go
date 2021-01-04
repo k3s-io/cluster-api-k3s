@@ -26,8 +26,10 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	bootstrapv1alpha1 "github.com/zawachte-msft/cluster-api-bootstrap-provider-k3s/api/v1alpha1"
+	bootstrapv1alpha3 "github.com/zawachte-msft/cluster-api-bootstrap-provider-k3s/api/v1alpha3"
 	"github.com/zawachte-msft/cluster-api-bootstrap-provider-k3s/controllers"
+	clusterv1alpha3 "sigs.k8s.io/cluster-api/api/v1alpha3"
+	expv1alpha3 "sigs.k8s.io/cluster-api/exp/api/v1alpha3"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -38,8 +40,9 @@ var (
 
 func init() {
 	_ = clientgoscheme.AddToScheme(scheme)
-
-	_ = bootstrapv1alpha1.AddToScheme(scheme)
+	_ = clusterv1alpha3.AddToScheme(scheme)
+	_ = expv1alpha3.AddToScheme(scheme)
+	_ = bootstrapv1alpha3.AddToScheme(scheme)
 	// +kubebuilder:scaffold:scheme
 }
 
