@@ -48,3 +48,5 @@ cat samples/azure/k3s-template.yaml | envsubst > samples/azure/k3s-cluster.yaml
 kubectl create configmap azure-ccm-addon --from-file=samples/azure/azure-ccm.yaml
 kubectl create configmap azure-cn-addon --from-file=samples/azure/azure-cn.yaml
 kubectl apply -f samples/azure/k3s-cluster.yaml
+
+echo "wait for the the first control plane to be in provisioning state run kubectl apply -f samples/azure/resource-set.yaml"

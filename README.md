@@ -1,8 +1,8 @@
 # Cluster API bootstrap provider k3s
 
-Cluster API bootstrap provider k3s (CABP3) is a component of [Cluster API](https://github.com/kubernetes-sigs/cluster-api/blob/master/README.md) that is responsible for generating a cloud-init script to turn a Machine into a Kubernetes Node; this implementation brings up [k3s](https://k3s.io/) clusters instead of full kubernetes.
+Cluster API bootstrap provider k3s (CABP3) is a component of [Cluster API](https://github.com/kubernetes-sigs/cluster-api/blob/master/README.md) that is responsible for generating a cloud-init script to turn a Machine into a Kubernetes Node; this implementation brings up [k3s](https://k3s.io/) clusters instead of full kubernetes clusters.
 
-CABP3 is the bootstrap component of Cluster API for k3s and brings the following CRDS:
+CABP3 is the bootstrap component of Cluster API for k3s and brings in the following CRDS and controllers:
 - k3s bootstrap provider (KThrees, KThreesTemplate)
 
 Once CABP3 is more stable, we will be working on a control plane component of Cluster API for k3s and bring the following CRD:
@@ -10,7 +10,7 @@ Once CABP3 is more stable, we will be working on a control plane component of Cl
 
 ## Testing it out.
 
-Warning: project and documentation is in an early stage, there is an assumption that an user of this provider is already familiar with ClusterAPI.  
+**Warning**: Project and documentation are in an early stage, there is an assumption that an user of this provider is already familiar with ClusterAPI.  
 
 ### Prerequisites
 
@@ -23,6 +23,10 @@ Three main pieces are
 3. Azure Service Principals. For more information go to [CAPZ Getting Started](https://github.com/kubernetes-sigs/cluster-api-provider-azure/blob/master/docs/getting-started.md)
 
 CABP3 has been tested only on with an Azure and AzureStackHCI environment. To try out the Azure flow, fork the repo and look at `samples/azure/azure-setup.sh`.
+
+### Known Issues
+
+Leak kubeconfig after cluster deletion. This is because the bootstrap provider is generating the kubeconfig until we have a control plane provider. 
 
 ## Roadmap
 

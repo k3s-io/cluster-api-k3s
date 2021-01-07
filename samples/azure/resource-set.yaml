@@ -1,0 +1,28 @@
+---
+apiVersion: addons.cluster.x-k8s.io/v1alpha3
+kind: ClusterResourceSet
+metadata:
+  name: crs-azure-cn
+  namespace: default
+spec:
+  strategy: "ApplyOnce"
+  clusterSelector:
+    matchLabels:
+      ccm: azure
+  resources:
+    - name: azure-cn-addon
+      kind: ConfigMap
+---
+apiVersion: addons.cluster.x-k8s.io/v1alpha3
+kind: ClusterResourceSet
+metadata:
+  name: crs-azure-ccm
+  namespace: default
+spec:
+  strategy: "ApplyOnce"
+  clusterSelector:
+    matchLabels:
+      ccm: azure
+  resources:
+    - name: azure-ccm-addon
+      kind: ConfigMap
