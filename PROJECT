@@ -4,4 +4,7 @@ resources:
 - group: bootstrap
   kind: KThreesConfig
   version: v1alpha3
+- group: bootstrap
+  kind: KThreesConfigTemplate
+  version: v1alpha3
 version: "2"

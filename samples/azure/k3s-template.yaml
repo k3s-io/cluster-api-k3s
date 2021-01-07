@@ -1,0 +1,180 @@
+apiVersion: cluster.x-k8s.io/v1alpha3
+kind: Cluster
+metadata:
+  name: ${CLUSTER_NAME}
+  namespace: default
+  labels:
+    ccm: azure
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks:
+      - 192.168.0.0/16
+  infrastructureRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+    kind: AzureCluster
+    name: ${CLUSTER_NAME}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+kind: AzureCluster
+metadata:
+  name: ${CLUSTER_NAME}
+  namespace: default
+spec:
+  location: eastus
+  networkSpec:
+    vnet:
+      name: ${CLUSTER_NAME}-vnet
+  resourceGroup: ${CLUSTER_NAME}
+  subscriptionID: ${AZURE_SUBSCRIPTION_ID}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+kind: AzureMachine
+metadata:
+  name: ${CLUSTER_NAME}-control-plane-0
+  namespace: default
+spec:
+  location: eastus
+  osDisk:
+    diskSizeGB: 128
+    managedDisk:
+      storageAccountType: Premium_LRS
+    osType: Linux
+  sshPublicKey: ""
+  vmSize: Standard_D2s_v3
+  image:
+    marketplace:
+      publisher: Canonical
+      sku: 18.04-LTS
+      offer: UbuntuServer
+      version: latest
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
+kind: KThreesConfig
+metadata:
+  name: ${CLUSTER_NAME}-control-plane-0
+  namespace: default
+spec:
+  files:
+  - contentFrom:
+      secret:
+        key: control-plane-azure.json
+        name: ${CLUSTER_NAME}-control-plane-0-azure-json
+    owner: root:root
+    path: /etc/kubernetes/azure.json
+    permissions: "0644"
+---
+apiVersion: cluster.x-k8s.io/v1alpha3
+kind: Machine
+metadata:
+  labels:
+    cluster.x-k8s.io/cluster-name: ${CLUSTER_NAME}
+    cluster.x-k8s.io/control-plane: ""
+  name: ${CLUSTER_NAME}-control-plane-0
+  namespace: default
+spec:
+  version: v1.20.0+k3s2
+  bootstrap:
+    configRef:
+      apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
+      kind: KThreesConfig
+      name: ${CLUSTER_NAME}-control-plane-0
+  clusterName: ${CLUSTER_NAME}
+  infrastructureRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+    kind: AzureMachine
+    name: ${CLUSTER_NAME}-control-plane-0
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+kind: AzureMachineTemplate
+metadata:
+  name: ${CLUSTER_NAME}-md-0
+  namespace: default
+spec:
+  template:
+    spec:
+      location: eastus
+      osDisk:
+        diskSizeGB: 128
+        managedDisk:
+          storageAccountType: Premium_LRS
+        osType: Linux
+      sshPublicKey: ""
+      vmSize: Standard_D2s_v3
+      image:
+        marketplace:
+          publisher: Canonical
+          sku: 18.04-LTS
+          offer: UbuntuServer
+          version: latest
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
+kind: KThreesConfigTemplate
+metadata:
+  name: ${CLUSTER_NAME}-md-0
+  namespace: default
+spec:
+  template:
+    spec:
+      files:
+      - contentFrom:
+          secret:
+            key: worker-node-azure.json
+            name: ${CLUSTER_NAME}-md-0-azure-json
+        owner: root:root
+        path: /etc/kubernetes/azure.json
+        permissions: "0644"
+---
+apiVersion: cluster.x-k8s.io/v1alpha3
+kind: MachineDeployment
+metadata:
+  labels:
+    cluster.x-k8s.io/cluster-name: ${CLUSTER_NAME}
+  name: ${CLUSTER_NAME}-md-0
+  namespace: default
+spec:
+  clusterName: ${CLUSTER_NAME}
+  replicas: 2
+  selector:
+    matchLabels: null
+  template:
+    spec:
+      version: v1.20.0+k3s2
+      bootstrap:
+        configRef:
+          apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
+          kind: KThreesConfigTemplate
+          name: ${CLUSTER_NAME}-md-0
+      clusterName: ${CLUSTER_NAME}
+      infrastructureRef:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+        kind: AzureMachineTemplate
+        name: ${CLUSTER_NAME}-md-0
+---
+apiVersion: addons.cluster.x-k8s.io/v1alpha3
+kind: ClusterResourceSet
+metadata:
+  name: crs-azure-cn
+  namespace: default
+spec:
+  strategy: "ApplyOnce"
+  clusterSelector:
+    matchLabels:
+      ccm: azure
+  resources:
+    - name: azure-cn-addon
+      kind: ConfigMap
+---
+apiVersion: addons.cluster.x-k8s.io/v1alpha3
+kind: ClusterResourceSet
+metadata:
+  name: crs-azure-ccm
+  namespace: default
+spec:
+  strategy: "ApplyOnce"
+  clusterSelector:
+    matchLabels:
+      ccm: azure
+  resources:
+    - name: azure-ccm-addon
+      kind: ConfigMap

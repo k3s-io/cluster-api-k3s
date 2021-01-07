@@ -16,34 +16,28 @@ limitations under the License.
 
 package cloudinit
 
-import (
-	"github.com/zawachte-msft/cluster-api-bootstrap-provider-k3s/pkg/secret"
-)
-
 const (
-	controlPlaneCloudInit = `{{.Header}}
+	workerCloudInit = `{{.Header}}
 {{template "files" .WriteFiles}}
 runcmd:
 {{- template "commands" .PreK3sCommands }}
-  - 'curl -sfL https://get.k3s.io | sh -s - server'
+  - 'curl -sfL https://get.k3s.io | sh -s - agent'
 {{- template "commands" .PostK3sCommands }}
 `
 )
 
 // ControlPlaneInput defines the context to generate a controlplane instance user data.
-type ControlPlaneInput struct {
+type WorkerInput struct {
 	BaseUserData
-	secret.Certificates
 }
 
 // NewInitControlPlane returns the user data string to be used on a controlplane instance.
-func NewInitControlPlane(input *ControlPlaneInput) ([]byte, error) {
+func NewWorker(input *WorkerInput) ([]byte, error) {
 	input.Header = cloudConfigHeader
-	input.WriteFiles = input.Certificates.AsFiles()
 	input.WriteFiles = append(input.WriteFiles, input.AdditionalFiles...)
 	input.WriteFiles = append(input.WriteFiles, input.ConfigFile)
 
-	userData, err := generate("InitControlplane", controlPlaneCloudInit, input)
+	userData, err := generate("Worker", workerCloudInit, input)
 	if err != nil {
 		return nil, err
 	}

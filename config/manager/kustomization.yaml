@@ -5,4 +5,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: ghcr.io/zawachte-msft/cluster-api-bootstrap-provider-k3s/controller
-  newTag: latest5
+  newTag: v0.1.0

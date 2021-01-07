@@ -30,12 +30,12 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	bootstrapv1 "github.com/zawachte-msft/cluster-api-bootstrap-provider-k3s/api/v1alpha3"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/cert"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
-	bootstrapv1 "sigs.k8s.io/cluster-api/bootstrap/kubeadm/api/v1alpha3"
 	"sigs.k8s.io/cluster-api/util/certs"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -284,8 +284,6 @@ func (c Certificates) AsFiles() []bootstrapv1.File {
 	clientClusterCA := c.GetByPurpose(ClientClusterCA)
 
 	etcdCA := c.GetByPurpose(EtcdCA)
-	frontProxyCA := c.GetByPurpose(FrontProxyCA)
-	serviceAccountKey := c.GetByPurpose(ServiceAccount)
 
 	certFiles := make([]bootstrapv1.File, 0)
 	if clusterCA != nil {
@@ -296,12 +294,6 @@ func (c Certificates) AsFiles() []bootstrapv1.File {
 	}
 	if etcdCA != nil {
 		certFiles = append(certFiles, etcdCA.AsFiles()...)
-	}
-	if frontProxyCA != nil {
-		certFiles = append(certFiles, frontProxyCA.AsFiles()...)
-	}
-	if serviceAccountKey != nil {
-		certFiles = append(certFiles, serviceAccountKey.AsFiles()...)
 	}
 
 	// these will only exist if external etcd was defined and supplied by the user
