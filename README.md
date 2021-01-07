@@ -26,8 +26,6 @@ CABP3 has been tested only on with an Azure and AzureStackHCI environment. To tr
 
 ### Known Issues
 
-Leak kubeconfig after cluster deletion. This is because the bootstrap provider is generating the kubeconfig until we have a control plane provider. 
-
 ## Roadmap
 
 * Control Plane Provider
