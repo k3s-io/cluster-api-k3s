@@ -22,7 +22,7 @@ import (
 	"text/template"
 
 	"github.com/pkg/errors"
-	bootstrapv1 "sigs.k8s.io/cluster-api/bootstrap/kubeadm/api/v1alpha3"
+	bootstrapv1 "github.com/zawachte-msft/cluster-api-bootstrap-provider-k3s/api/v1alpha3"
 )
 
 var (
@@ -69,9 +69,6 @@ write_files:{{ range . }}
 {{- end -}}
 {{- end -}}
 `
-
-	PatchCommand = `kubectl --kubeconfig=/etc/rancher/k3s/k3s.yaml patch node joe-test-control-plane-0 -p $'spec:\n providerID: azure:////subscriptions/bbda620e-ad6d-4440-8ba0-ba1297702503/resourceGroups/joe-test/providers/Microsoft.Compute/virtualMachines/joe-test-control-plane-0'`
-	SleepCommand = "sleep 30"
 )
 
 // BaseUserData is shared across all the various types of files written to disk.
@@ -81,7 +78,7 @@ type BaseUserData struct {
 	PostK3sCommands []string
 	AdditionalFiles []bootstrapv1.File
 	WriteFiles      []bootstrapv1.File
-	ControlPlane    bool
+	ConfigFile      bootstrapv1.File
 }
 
 func (input *BaseUserData) prepare() error {
@@ -121,22 +118,3 @@ func generate(kind string, tpl string, data interface{}) ([]byte, error) {
 
 	return out.Bytes(), nil
 }
-
-/**
-func generateBootstrapScript(input interface{}) (*bootstrapv1.File, error) {
-	scriptBytes, err := bootstrapKubeadmInternalCloudinitKubeadmBootstrapScriptShBytes()
-	if err != nil {
-		return nil, errors.Wrap(err, "couldn't read bootstrap script")
-	}
-	joinScript, err := generate("JoinScript", string(scriptBytes), input)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to bootstrap script for machine joins")
-	}
-	return &bootstrapv1.File{
-		Path:        retriableJoinScriptName,
-		Owner:       retriableJoinScriptOwner,
-		Permissions: retriableJoinScriptPermissions,
-		Content:     string(joinScript),
-	}, nil
-}
-**/

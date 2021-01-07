@@ -20,8 +20,8 @@ import (
 	"testing"
 
 	. "github.com/onsi/gomega"
+	infrav1 "github.com/zawachte-msft/cluster-api-bootstrap-provider-k3s/api/v1alpha3"
 	"github.com/zawachte-msft/cluster-api-bootstrap-provider-k3s/pkg/secret"
-	infrav1 "sigs.k8s.io/cluster-api/bootstrap/kubeadm/api/v1alpha3"
 )
 
 func TestControlPlaneInit(t *testing.T) {
@@ -44,8 +44,7 @@ func TestControlPlaneInit(t *testing.T) {
 				},
 			},
 		},
-		ControlPlaneEndpoint: "zach.local",
-		Certificates:         secret.Certificates{},
+		Certificates: secret.Certificates{},
 	}
 
 	out, err := NewInitControlPlane(cpinput)

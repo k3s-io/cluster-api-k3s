@@ -15,4 +15,5 @@ require (
 	sigs.k8s.io/cluster-api v0.3.12
 	sigs.k8s.io/controller-runtime v0.5.14
 	sigs.k8s.io/structured-merge-diff v1.0.1-0.20191108220359-b1b620dd3f06 // indirect
+	sigs.k8s.io/yaml v1.2.0
 )

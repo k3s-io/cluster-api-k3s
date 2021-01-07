@@ -1,0 +1,223 @@
+
+---
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.3.0
+  creationTimestamp: null
+  name: kthreesconfigtemplates.bootstrap.cluster.x-k8s.io
+spec:
+  group: bootstrap.cluster.x-k8s.io
+  names:
+    kind: KThreesConfigTemplate
+    listKind: KThreesConfigTemplateList
+    plural: kthreesconfigtemplates
+    singular: kthreesconfigtemplate
+  scope: Namespaced
+  validation:
+    openAPIV3Schema:
+      description: KThreesConfigTemplate is the Schema for the kthreesconfigtemplates
+        API
+      properties:
+        apiVersion:
+          description: 'APIVersion defines the versioned schema of this representation
+            of an object. Servers should convert recognized schemas to the latest
+            internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+          type: string
+        kind:
+          description: 'Kind is a string value representing the REST resource this
+            object represents. Servers may infer this from the endpoint the client
+            submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+          type: string
+        metadata:
+          type: object
+        spec:
+          description: KThreesConfigTemplateSpec defines the desired state of KThreesConfigTemplate
+          properties:
+            template:
+              description: KThreesConfigTemplateResource defines the Template structure
+              properties:
+                spec:
+                  description: KThreesConfigSpec defines the desired state of KThreesConfig
+                  properties:
+                    agentConfig:
+                      description: AgentConfig specifies configuration for the agent
+                        nodes
+                      properties:
+                        kubeProxyArgs:
+                          description: KubeProxyArgs Customized flag for kube-proxy
+                            process
+                          items:
+                            type: string
+                          type: array
+                        kubeletArgs:
+                          description: KubeletArgs Customized flag for kubelet process
+                          items:
+                            type: string
+                          type: array
+                        nodeLabels:
+                          description: NodeLabels  Registering and starting kubelet
+                            with set of labels
+                          items:
+                            type: string
+                          type: array
+                        nodeTaints:
+                          description: NodeTaints Registering kubelet with set of
+                            taints
+                          items:
+                            type: string
+                          type: array
+                        privateRegistry:
+                          description: 'TODO: take in a object or secret and write
+                            to file. this is not useful PrivateRegistry  registry
+                            configuration file (default: "/etc/rancher/k3s/registries.yaml")'
+                          type: string
+                      type: object
+                    files:
+                      description: Files specifies extra files to be passed to user_data
+                        upon creation.
+                      items:
+                        description: File defines the input for generating write_files
+                          in cloud-init.
+                        properties:
+                          content:
+                            description: Content is the actual content of the file.
+                            type: string
+                          contentFrom:
+                            description: ContentFrom is a referenced source of content
+                              to populate the file.
+                            properties:
+                              secret:
+                                description: Secret represents a secret that should
+                                  populate this file.
+                                properties:
+                                  key:
+                                    description: Key is the key in the secret's data
+                                      map for this value.
+                                    type: string
+                                  name:
+                                    description: Name of the secret in the KThreesBootstrapConfig's
+                                      namespace to use.
+                                    type: string
+                                required:
+                                - key
+                                - name
+                                type: object
+                            required:
+                            - secret
+                            type: object
+                          encoding:
+                            description: Encoding specifies the encoding of the file
+                              contents.
+                            enum:
+                            - base64
+                            - gzip
+                            - gzip+base64
+                            type: string
+                          owner:
+                            description: Owner specifies the ownership of the file,
+                              e.g. "root:root".
+                            type: string
+                          path:
+                            description: Path specifies the full path on disk where
+                              to store the file.
+                            type: string
+                          permissions:
+                            description: Permissions specifies the permissions to
+                              assign to the file, e.g. "0640".
+                            type: string
+                        required:
+                        - path
+                        type: object
+                      type: array
+                    postK3sCommands:
+                      description: PostK3sCommands specifies extra commands to run
+                        after k3s setup runs
+                      items:
+                        type: string
+                      type: array
+                    preK3sCommands:
+                      description: PreK3sCommands specifies extra commands to run
+                        before k3s setup runs
+                      items:
+                        type: string
+                      type: array
+                    serverConfig:
+                      description: ServerConfig specifies configuration for the agent
+                        nodes
+                      properties:
+                        advertiseAddress:
+                          description: 'AdvertiseAddress IP address that apiserver
+                            uses to advertise to members of the cluster (default:
+                            node-external-ip/node-ip)'
+                          type: string
+                        advertisePort:
+                          description: 'AdvertisePort Port that apiserver uses to
+                            advertise to members of the cluster (default: listen-port)
+                            (default: 0)'
+                          type: string
+                        bindAddress:
+                          description: 'BindAddress k3s bind address (default: 0.0.0.0)'
+                          type: string
+                        clusterCidr:
+                          description: 'ClusterCidr  Network CIDR to use for pod IPs
+                            (default: "10.42.0.0/16")'
+                          type: string
+                        clusterDNS:
+                          description: 'ClusterDNS  Cluster IP for coredns service.
+                            Should be in your service-cidr range (default: 10.43.0.10)'
+                          type: string
+                        clusterDomain:
+                          description: 'ClusterDomain Cluster Domain (default: "cluster.local")'
+                          type: string
+                        disableComponents:
+                          description: DisableComponents  specifies extra commands
+                            to run before k3s setup runs
+                          items:
+                            type: string
+                          type: array
+                        httpsListenPort:
+                          description: 'HttpsListenPort HTTPS listen port (default:
+                            6443)'
+                          type: string
+                        kubeAPIServerArg:
+                          description: KubeAPIServerArgs is a customized flag for
+                            kube-apiserver process
+                          items:
+                            type: string
+                          type: array
+                        kubeControllerManagerArgs:
+                          description: KubeControllerManagerArgs is a customized flag
+                            for kube-controller-manager process
+                          items:
+                            type: string
+                          type: array
+                        serviceCidr:
+                          description: 'ServiceCidr Network CIDR to use for services
+                            IPs (default: "10.43.0.0/16")'
+                          type: string
+                        tlsSan:
+                          description: TLSSan Add additional hostname or IP as a Subject
+                            Alternative Name in the TLS cert
+                          items:
+                            type: string
+                          type: array
+                      type: object
+                  type: object
+              type: object
+          required:
+          - template
+          type: object
+      type: object
+  version: v1alpha3
+  versions:
+  - name: v1alpha3
+    served: true
+    storage: true
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []
