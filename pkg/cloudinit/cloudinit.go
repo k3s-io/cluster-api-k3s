@@ -79,6 +79,7 @@ type BaseUserData struct {
 	AdditionalFiles []bootstrapv1.File
 	WriteFiles      []bootstrapv1.File
 	ConfigFile      bootstrapv1.File
+	K3sVersion      string
 }
 
 func (input *BaseUserData) prepare() error {

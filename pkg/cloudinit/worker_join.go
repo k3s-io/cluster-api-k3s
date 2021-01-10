@@ -16,12 +16,14 @@ limitations under the License.
 
 package cloudinit
 
+import "fmt"
+
 const (
 	workerCloudInit = `{{.Header}}
 {{template "files" .WriteFiles}}
 runcmd:
 {{- template "commands" .PreK3sCommands }}
-  - 'curl -sfL https://get.k3s.io | sh -s - agent'
+  - 'curl -sfL https://get.k3s.io |  INSTALL_K3S_VERSION=%s sh -s - agent'
 {{- template "commands" .PostK3sCommands }}
 `
 )
@@ -37,7 +39,8 @@ func NewWorker(input *WorkerInput) ([]byte, error) {
 	input.WriteFiles = append(input.WriteFiles, input.AdditionalFiles...)
 	input.WriteFiles = append(input.WriteFiles, input.ConfigFile)
 
-	userData, err := generate("Worker", workerCloudInit, input)
+	workerCloudInitWithVersion := fmt.Sprintf(workerCloudInit, input.K3sVersion)
+	userData, err := generate("Worker", workerCloudInitWithVersion, input)
 	if err != nil {
 		return nil, err
 	}

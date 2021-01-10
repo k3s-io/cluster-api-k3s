@@ -16,12 +16,14 @@ limitations under the License.
 
 package cloudinit
 
+import "fmt"
+
 const (
 	controlPlaneCloudJoin = `{{.Header}}
 {{template "files" .WriteFiles}}
 runcmd:
 {{- template "commands" .PreK3sCommands }}
-  - 'curl -sfL https://get.k3s.io | sh -s - server'
+  - 'curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=%s sh -s - server'
 {{- template "commands" .PostK3sCommands }}
 `
 )
@@ -32,7 +34,8 @@ func NewJoinControlPlane(input *ControlPlaneInput) ([]byte, error) {
 	input.WriteFiles = append(input.WriteFiles, input.AdditionalFiles...)
 	input.WriteFiles = append(input.WriteFiles, input.ConfigFile)
 
-	userData, err := generate("JoinControlplane", controlPlaneCloudJoin, input)
+	controlPlaneCloudJoinWithVersion := fmt.Sprintf(controlPlaneCloudJoin, input.K3sVersion)
+	userData, err := generate("JoinControlplane", controlPlaneCloudJoinWithVersion, input)
 	if err != nil {
 		return nil, err
 	}
