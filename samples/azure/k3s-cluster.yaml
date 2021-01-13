@@ -1,7 +1,7 @@
 apiVersion: cluster.x-k8s.io/v1alpha3
 kind: Cluster
 metadata:
-  name: ${CLUSTER_NAME}
+  name: zach-test
   namespace: default
   labels:
     ccm: azure
@@ -13,41 +13,41 @@ spec:
   controlPlaneRef:
     apiVersion: controlplane.cluster.x-k8s.io/v1alpha3
     kind: KThreesControlPlane
-    name: ${CLUSTER_NAME}-control-plane
+    name: zach-test-control-plane
   infrastructureRef:
     apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
     kind: AzureCluster
-    name: ${CLUSTER_NAME}
+    name: zach-test
 ---
 apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
 kind: AzureCluster
 metadata:
-  name: ${CLUSTER_NAME}
+  name: zach-test
   namespace: default
 spec:
   location: eastus
   networkSpec:
     vnet:
-      name: ${CLUSTER_NAME}-vnet
-  resourceGroup: ${CLUSTER_NAME}
-  subscriptionID: ${AZURE_SUBSCRIPTION_ID}
+      name: zach-test-vnet
+  resourceGroup: zach-test
+  subscriptionID: bbda620e-ad6d-4440-8ba0-ba1297702503
 ---
 apiVersion: controlplane.cluster.x-k8s.io/v1alpha3
 kind: KThreesControlPlane
 metadata:
-  name: ${CLUSTER_NAME}-control-plane
+  name: zach-test-control-plane
   namespace: default
 spec:
   infrastructureTemplate:
     apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
     kind: AzureMachineTemplate
-    name: ${CLUSTER_NAME}-control-plane
+    name: zach-test-control-plane
   kthreesConfigSpec:
     files:
     - contentFrom:
         secret:
           key: control-plane-azure.json
-          name: ${CLUSTER_NAME}-control-plane-azure-json
+          name: zach-test-control-plane-azure-json
       owner: root:root
       path: /etc/kubernetes/azure.json
       permissions: "0644"
@@ -57,7 +57,7 @@ spec:
 apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
 kind: AzureMachineTemplate
 metadata:
-  name: ${CLUSTER_NAME}-control-plane
+  name: zach-test-control-plane
   namespace: default
 spec:
   template:
@@ -80,7 +80,7 @@ spec:
 apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
 kind: AzureMachineTemplate
 metadata:
-  name: ${CLUSTER_NAME}-md-0
+  name: zach-test-md-0
   namespace: default
 spec:
   template:
@@ -103,7 +103,7 @@ spec:
 apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
 kind: KThreesConfigTemplate
 metadata:
-  name: ${CLUSTER_NAME}-md-0
+  name: zach-test-md-0
   namespace: default
 spec:
   template:
@@ -112,7 +112,7 @@ spec:
       - contentFrom:
           secret:
             key: worker-node-azure.json
-            name: ${CLUSTER_NAME}-md-0-azure-json
+            name: zach-test-md-0-azure-json
         owner: root:root
         path: /etc/kubernetes/azure.json
         permissions: "0644"
@@ -121,11 +121,11 @@ apiVersion: cluster.x-k8s.io/v1alpha3
 kind: MachineDeployment
 metadata:
   labels:
-    cluster.x-k8s.io/cluster-name: ${CLUSTER_NAME}
-  name: ${CLUSTER_NAME}-md-0
+    cluster.x-k8s.io/cluster-name: zach-test
+  name: zach-test-md-0
   namespace: default
 spec:
-  clusterName: ${CLUSTER_NAME}
+  clusterName: zach-test
   replicas: 2
   selector:
     matchLabels: null
@@ -136,9 +136,9 @@ spec:
         configRef:
           apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
           kind: KThreesConfigTemplate
-          name: ${CLUSTER_NAME}-md-0
-      clusterName: ${CLUSTER_NAME}
+          name: zach-test-md-0
+      clusterName: zach-test
       infrastructureRef:
         apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
         kind: AzureMachineTemplate
-        name: ${CLUSTER_NAME}-md-0
+        name: zach-test-md-0

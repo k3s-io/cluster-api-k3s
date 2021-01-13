@@ -35,11 +35,10 @@ export AZURE_CLIENT_ID_B64="$(echo -n "$AZURE_CLIENT_ID" | base64 | tr -d '\n')"
 export AZURE_CLIENT_SECRET_B64="$(echo -n "$AZURE_CLIENT_SECRET" | base64 | tr -d '\n')"
 
 export EXP_CLUSTER_RESOURCE_SET=true
-clusterctl init --infrastructure azure
-kubectl apply -f samples/bootstrap-provider.yaml
+clusterctl init --infrastructure azure --bootstrap k3s --control-plane k3s
 
 kubectl wait --for=condition=Available --timeout=5m -n capi-system deployment/capi-controller-manager
-kubectl wait --for=condition=Available --timeout=5m -n capi-kubeadm-control-plane-system deployment/capi-kubeadm-control-plane-controller-manager
+kubectl wait --for=condition=Available --timeout=5m -n capi-k3s-control-plane-system deployment/capi-k3s-control-plane-controller-manager
 kubectl wait --for=condition=Available --timeout=5m -n capz-system deployment/capz-controller-manager
 kubectl wait --for=condition=Available --timeout=5m -n capi-k3s-bootstrap-system deployment/capi-k3s-bootstrap-controller-manager
 

@@ -46,7 +46,7 @@ manifests: controller-gen
 release: manifests
 	mkdir -p out
 	cd config/manager && kustomize edit set image controller=${IMG}
-	kustomize build config/default > out/bootstrap-provider.yaml
+	kustomize build config/default > out/bootstrap-components.yaml
 
 # Run go fmt against code
 fmt:
