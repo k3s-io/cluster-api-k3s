@@ -212,8 +212,15 @@ func (r *KThreesConfigReconciler) Reconcile(req ctrl.Request) (_ ctrl.Result, re
 
 }
 
-// TODO
 func (r *KThreesConfigReconciler) joinControlplane(ctx context.Context, scope *Scope) (_ ctrl.Result, reterr error) {
+
+	machine := &clusterv1.Machine{}
+	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(scope.ConfigOwner.Object, machine); err != nil {
+		return ctrl.Result{}, errors.Wrapf(err, "cannot convert %s to Machine", scope.ConfigOwner.GetKind())
+	}
+
+	// injects into config.Version values from top level object
+	r.reconcileTopLevelObjectSettings(scope.Cluster, machine, scope.Config)
 
 	serverUrl := fmt.Sprintf("https://%s", scope.Cluster.Spec.ControlPlaneEndpoint.String())
 
@@ -249,6 +256,7 @@ func (r *KThreesConfigReconciler) joinControlplane(ctx context.Context, scope *S
 			PostK3sCommands: scope.Config.Spec.PostK3sCommands,
 			AdditionalFiles: files,
 			ConfigFile:      workerConfigFile,
+			K3sVersion:      scope.Config.Spec.Version,
 		},
 	}
 
@@ -265,6 +273,14 @@ func (r *KThreesConfigReconciler) joinControlplane(ctx context.Context, scope *S
 }
 
 func (r *KThreesConfigReconciler) joinWorker(ctx context.Context, scope *Scope) (_ ctrl.Result, reterr error) {
+
+	machine := &clusterv1.Machine{}
+	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(scope.ConfigOwner.Object, machine); err != nil {
+		return ctrl.Result{}, errors.Wrapf(err, "cannot convert %s to Machine", scope.ConfigOwner.GetKind())
+	}
+
+	// injects into config.Version values from top level object
+	r.reconcileTopLevelObjectSettings(scope.Cluster, machine, scope.Config)
 
 	serverUrl := fmt.Sprintf("https://%s", scope.Cluster.Spec.ControlPlaneEndpoint.String())
 
@@ -391,6 +407,9 @@ func (r *KThreesConfigReconciler) handleClusterNotInitialized(ctx context.Contex
 	}()
 
 	scope.Info("Creating BootstrapData for the init control plane")
+
+	// injects into config.ClusterConfiguration values from top level object
+	r.reconcileTopLevelObjectSettings(scope.Cluster, machine, scope.Config)
 
 	certificates := secret.NewCertificatesForInitialControlPlane()
 	err := certificates.LookupOrGenerate(
@@ -593,4 +612,14 @@ func (r *KThreesConfigReconciler) reconcileKubeconfig(ctx context.Context, scope
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *KThreesConfigReconciler) reconcileTopLevelObjectSettings(cluster *clusterv1.Cluster, machine *clusterv1.Machine, config *bootstrapv1.KThreesConfig) {
+	log := r.Log.WithValues("kthreesconfig", fmt.Sprintf("%s/%s", config.Namespace, config.Name))
+
+	// If there are no Version settings defined in Config, use Version from machine, if defined
+	if config.Spec.Version == "" && machine.Spec.Version != nil {
+		config.Spec.Version = *machine.Spec.Version
+		log.Info("Altering Config", "Version", config.Spec.Version)
+	}
 }

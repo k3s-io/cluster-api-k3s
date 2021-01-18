@@ -45,6 +45,10 @@ type KThreesConfigSpec struct {
 	// ServerConfig specifies configuration for the agent nodes
 	// +optional
 	ServerConfig KThreesServerConfig `json:"serverConfig,omitempty"`
+
+	// Version specifies the k3s version
+	// +optional
+	Version string `json:"version,omitempty"`
 }
 
 type KThreesServerConfig struct {
