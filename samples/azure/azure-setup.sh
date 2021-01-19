@@ -35,6 +35,12 @@ export AZURE_CLIENT_ID_B64="$(echo -n "$AZURE_CLIENT_ID" | base64 | tr -d '\n')"
 export AZURE_CLIENT_SECRET_B64="$(echo -n "$AZURE_CLIENT_SECRET" | base64 | tr -d '\n')"
 
 export EXP_CLUSTER_RESOURCE_SET=true
+
+
+export PWD="$(pwd)"
+mkdir -p ~/.cluster-api
+cat samples/clusterctl.yaml | envsubst > ~/.cluster-api/clusterctl.yaml
+
 clusterctl init --infrastructure azure --bootstrap k3s --control-plane k3s
 
 kubectl wait --for=condition=Available --timeout=5m -n capi-system deployment/capi-controller-manager
@@ -47,5 +53,4 @@ cat samples/azure/k3s-template.yaml | envsubst > samples/azure/k3s-cluster.yaml
 kubectl create configmap azure-ccm-addon --from-file=samples/azure/azure-ccm.yaml
 kubectl create configmap azure-cn-addon --from-file=samples/azure/azure-cn.yaml
 kubectl apply -f samples/azure/k3s-cluster.yaml
-
-echo "wait for the the first control plane to be in provisioning state run kubectl apply -f samples/azure/resource-set.yaml"
+kubectl apply -f samples/azure/resource-set.yaml

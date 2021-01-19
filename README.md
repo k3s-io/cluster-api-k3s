@@ -1,5 +1,6 @@
 # Cluster API bootstrap provider k3s
 
+
 Cluster API bootstrap provider k3s (CABP3) is a component of [Cluster API](https://github.com/kubernetes-sigs/cluster-api/blob/master/README.md) that is responsible for generating a cloud-init script to turn a Machine into a Kubernetes Node; this implementation brings up [k3s](https://k3s.io/) clusters instead of full kubernetes clusters.
 
 CABP3 is the bootstrap component of Cluster API for k3s and brings in the following CRDS and controllers:
@@ -7,6 +8,8 @@ CABP3 is the bootstrap component of Cluster API for k3s and brings in the follow
 
 Once CABP3 is more stable, we will be working on a control plane component of Cluster API for k3s and bring the following CRD:
 - k3s controlplane provider (KThreesControlPlane)
+
+Also check out [Cluster API Control Plane Provider](https://github.com/zawachte-msft/cluster-api-controlplane-provider-k3s)
 
 ## Testing it out.
 

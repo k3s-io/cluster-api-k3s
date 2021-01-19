@@ -204,6 +204,9 @@ spec:
                             type: string
                           type: array
                       type: object
+                    version:
+                      description: Version specifies the k3s version
+                      type: string
                   type: object
               type: object
           required:
