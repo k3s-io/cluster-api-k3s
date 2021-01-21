@@ -5,12 +5,17 @@ Cluster API bootstrap provider k3s (CABP3) is a component of [Cluster API](https
 CABP3 is the bootstrap component of Cluster API for k3s and brings in the following CRDS and controllers:
 - k3s bootstrap provider (KThrees, KThreesTemplate)
 
-Once CABP3 is more stable, we will be working on a control plane component of Cluster API for k3s and bring the following CRD:
+We also started working on a control plane component of Cluster API for k3s which brings the following CRD:
 - k3s controlplane provider (KThreesControlPlane)
+
+Check it out [Cluster API Control Plane Provider](https://github.com/zawachte-msft/cluster-api-controlplane-provider-k3s)
+
+Soon we will be moving this all to a single repoo for the ClusterAPI k3s experience.
 
 ## Testing it out.
 
 **Warning**: Project and documentation are in an early stage, there is an assumption that an user of this provider is already familiar with ClusterAPI.  
+
 
 ### Prerequisites
 
@@ -24,11 +29,17 @@ Three main pieces are
 
 CABP3 has been tested only on with an Azure and AzureStackHCI environment. To try out the Azure flow, fork the repo and look at `samples/azure/azure-setup.sh`.
 
+CACP3 is alive! Sample now includes the K3s Control Plane Provider. If you run the sample script you will get a cluster with a control plane and two workers.
+
+Then run the following to scale the control plane...
+```sh
+kubectl scale kthreescontrolplane ${CLUSTER_NAME}-control-plane --replicas 3
+```
+
 ### Known Issues
 
 ## Roadmap
 
-* Control Plane Provider
 * Support for External Databases
 * Fix Token Logic
 * Setup CAPA and CAPV samples

@@ -1,6 +1,6 @@
 
 # Image URL to use all building/pushing image targets
-IMG ?= ghcr.io/zawachte-msft/cluster-api-bootstrap-provider-k3s/controller:v0.1.0
+IMG ?= ghcr.io/zawachte-msft/cluster-api-bootstrap-provider-k3s/controller:v0.1.1
 
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
 CRD_OPTIONS ?= "crd:trivialVersions=true"
@@ -46,7 +46,7 @@ manifests: controller-gen
 release: manifests
 	mkdir -p out
 	cd config/manager && kustomize edit set image controller=${IMG}
-	kustomize build config/default > out/bootstrap-provider.yaml
+	kustomize build config/default > out/bootstrap-components.yaml
 
 # Run go fmt against code
 fmt:

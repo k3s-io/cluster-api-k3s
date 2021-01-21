@@ -17,6 +17,8 @@ limitations under the License.
 package cloudinit
 
 import (
+	"fmt"
+
 	"github.com/zawachte-msft/cluster-api-bootstrap-provider-k3s/pkg/secret"
 )
 
@@ -25,7 +27,7 @@ const (
 {{template "files" .WriteFiles}}
 runcmd:
 {{- template "commands" .PreK3sCommands }}
-  - 'curl -sfL https://get.k3s.io | sh -s - server'
+  - 'curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=%s sh -s - server'
 {{- template "commands" .PostK3sCommands }}
 `
 )
@@ -43,7 +45,8 @@ func NewInitControlPlane(input *ControlPlaneInput) ([]byte, error) {
 	input.WriteFiles = append(input.WriteFiles, input.AdditionalFiles...)
 	input.WriteFiles = append(input.WriteFiles, input.ConfigFile)
 
-	userData, err := generate("InitControlplane", controlPlaneCloudInit, input)
+	controlPlaneCloudJoinWithVersion := fmt.Sprintf(controlPlaneCloudInit, input.K3sVersion)
+	userData, err := generate("InitControlplane", controlPlaneCloudJoinWithVersion, input)
 	if err != nil {
 		return nil, err
 	}

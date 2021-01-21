@@ -10,6 +10,10 @@ spec:
     pods:
       cidrBlocks:
       - 192.168.0.0/16
+  controlPlaneRef:
+    apiVersion: controlplane.cluster.x-k8s.io/v1alpha3
+    kind: KThreesControlPlane
+    name: ${CLUSTER_NAME}-control-plane
   infrastructureRef:
     apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
     kind: AzureCluster
@@ -28,62 +32,50 @@ spec:
   resourceGroup: ${CLUSTER_NAME}
   subscriptionID: ${AZURE_SUBSCRIPTION_ID}
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
-kind: AzureMachine
+apiVersion: controlplane.cluster.x-k8s.io/v1alpha3
+kind: KThreesControlPlane
 metadata:
-  name: ${CLUSTER_NAME}-control-plane-0
+  name: ${CLUSTER_NAME}-control-plane
   namespace: default
 spec:
-  location: eastus
-  osDisk:
-    diskSizeGB: 128
-    managedDisk:
-      storageAccountType: Premium_LRS
-    osType: Linux
-  sshPublicKey: ""
-  vmSize: Standard_D2s_v3
-  image:
-    marketplace:
-      publisher: Canonical
-      sku: 18.04-LTS
-      offer: UbuntuServer
-      version: latest
----
-apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
-kind: KThreesConfig
-metadata:
-  name: ${CLUSTER_NAME}-control-plane-0
-  namespace: default
-spec:
-  files:
-  - contentFrom:
-      secret:
-        key: control-plane-azure.json
-        name: ${CLUSTER_NAME}-control-plane-0-azure-json
-    owner: root:root
-    path: /etc/kubernetes/azure.json
-    permissions: "0644"
----
-apiVersion: cluster.x-k8s.io/v1alpha3
-kind: Machine
-metadata:
-  labels:
-    cluster.x-k8s.io/cluster-name: ${CLUSTER_NAME}
-    cluster.x-k8s.io/control-plane: ""
-  name: ${CLUSTER_NAME}-control-plane-0
-  namespace: default
-spec:
-  version: v1.20.0+k3s2
-  bootstrap:
-    configRef:
-      apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
-      kind: KThreesConfig
-      name: ${CLUSTER_NAME}-control-plane-0
-  clusterName: ${CLUSTER_NAME}
-  infrastructureRef:
+  infrastructureTemplate:
     apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
-    kind: AzureMachine
-    name: ${CLUSTER_NAME}-control-plane-0
+    kind: AzureMachineTemplate
+    name: ${CLUSTER_NAME}-control-plane
+  kthreesConfigSpec:
+    files:
+    - contentFrom:
+        secret:
+          key: control-plane-azure.json
+          name: ${CLUSTER_NAME}-control-plane-azure-json
+      owner: root:root
+      path: /etc/kubernetes/azure.json
+      permissions: "0644"
+  replicas: 1
+  version: v1.20.0+k3s2
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+kind: AzureMachineTemplate
+metadata:
+  name: ${CLUSTER_NAME}-control-plane
+  namespace: default
+spec:
+  template:
+    spec:
+      location: eastus
+      osDisk:
+        diskSizeGB: 128
+        managedDisk:
+          storageAccountType: Premium_LRS
+        osType: Linux
+      sshPublicKey: ""
+      vmSize: Standard_D2s_v3
+      image:
+        marketplace:
+          publisher: Canonical
+          sku: 18.04-LTS
+          offer: UbuntuServer
+          version: latest
 ---
 apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
 kind: AzureMachineTemplate
