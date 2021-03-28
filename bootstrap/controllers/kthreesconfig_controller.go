@@ -31,11 +31,11 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
-	"github.com/zawachte-msft/cluster-api-bootstrap-provider-k3s/pkg/k3s"
-	"github.com/zawachte-msft/cluster-api-bootstrap-provider-k3s/pkg/kubeconfig"
-	"github.com/zawachte-msft/cluster-api-bootstrap-provider-k3s/pkg/locking"
-	"github.com/zawachte-msft/cluster-api-bootstrap-provider-k3s/pkg/secret"
-	"github.com/zawachte-msft/cluster-api-bootstrap-provider-k3s/pkg/token"
+	"github.com/zawachte-msft/cluster-api-k3s/pkg/k3s"
+	"github.com/zawachte-msft/cluster-api-k3s/pkg/kubeconfig"
+	"github.com/zawachte-msft/cluster-api-k3s/pkg/locking"
+	"github.com/zawachte-msft/cluster-api-k3s/pkg/secret"
+	"github.com/zawachte-msft/cluster-api-k3s/pkg/token"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -50,8 +50,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	bootstrapv1 "github.com/zawachte-msft/cluster-api-bootstrap-provider-k3s/api/v1alpha3"
-	"github.com/zawachte-msft/cluster-api-bootstrap-provider-k3s/pkg/cloudinit"
+	bootstrapv1 "github.com/zawachte-msft/cluster-api-k3s/bootstrap/api/v1alpha3"
+	"github.com/zawachte-msft/cluster-api-k3s/pkg/cloudinit"
 )
 
 // InitLocker is a lock that is used around k3s init
@@ -316,6 +316,7 @@ func (r *KThreesConfigReconciler) joinWorker(ctx context.Context, scope *Scope) 
 			PostK3sCommands: scope.Config.Spec.PostK3sCommands,
 			AdditionalFiles: files,
 			ConfigFile:      workerConfigFile,
+			K3sVersion:      scope.Config.Spec.Version,
 		},
 	}
 
@@ -462,6 +463,7 @@ func (r *KThreesConfigReconciler) handleClusterNotInitialized(ctx context.Contex
 			PostK3sCommands: scope.Config.Spec.PostK3sCommands,
 			AdditionalFiles: files,
 			ConfigFile:      initConfigFile,
+			K3sVersion:      scope.Config.Spec.Version,
 		},
 		Certificates: certificates,
 	}

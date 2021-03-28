@@ -16,7 +16,7 @@ import (
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/certs"
 
-	"github.com/zawachte-msft/cluster-api-bootstrap-provider-k3s/pkg/secret"
+	"github.com/zawachte-msft/cluster-api-k3s/pkg/secret"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )

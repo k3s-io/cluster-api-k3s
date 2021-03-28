@@ -1,7 +1,7 @@
 package k3s
 
 import (
-	bootstrapv1 "github.com/zawachte-msft/cluster-api-bootstrap-provider-k3s/api/v1alpha3"
+	bootstrapv1 "github.com/zawachte-msft/cluster-api-k3s/bootstrap/api/v1alpha3"
 )
 
 const DefaultK3sConfigLocation = "/etc/rancher/k3s/config.yaml"

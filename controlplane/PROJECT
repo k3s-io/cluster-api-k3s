@@ -1,0 +1,7 @@
+domain: cluster.x-k8s.io
+repo: github.com/zawachte-msft/cluster-api-k3s/controlplane
+resources:
+- group: controlplane
+  kind: KThreesControlPlane
+  version: v1alpha3
+version: "2"

@@ -22,7 +22,7 @@ import (
 	"text/template"
 
 	"github.com/pkg/errors"
-	bootstrapv1 "github.com/zawachte-msft/cluster-api-bootstrap-provider-k3s/api/v1alpha3"
+	bootstrapv1 "github.com/zawachte-msft/cluster-api-k3s/bootstrap/api/v1alpha3"
 )
 
 var (

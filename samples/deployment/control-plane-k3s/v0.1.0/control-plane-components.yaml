@@ -22,7 +22,7 @@ spec:
     name: Initialized
     type: boolean
   - JSONPath: .status.ready
-    description: KubeadmControlPlane API Server is ready to receive requests
+    description: KThreesControlPlane API Server is ready to receive requests
     name: API Server Available
     type: boolean
   - JSONPath: .spec.version
@@ -99,7 +99,7 @@ spec:
                   type: string
               type: object
             kthreesConfigSpec:
-              description: KubeadmConfigSpec is a KubeadmConfigSpec to use for initializing and joining machines to the control plane.
+              description: KThreesConfigSpec is a KThreesConfigSpec to use for initializing and joining machines to the control plane.
               properties:
                 agentConfig:
                   description: AgentConfig specifies configuration for the agent nodes
@@ -233,6 +233,9 @@ spec:
                         type: string
                       type: array
                   type: object
+                version:
+                  description: Version specifies the k3s version
+                  type: string
               type: object
             nodeDrainTimeout:
               description: 'NodeDrainTimeout is the total amount of time that the controller will spend on draining a controlplane node The default value is 0, meaning that the node can be drained without any time limitations. NOTE: NodeDrainTimeout is different from `kubectl drain --timeout`'
@@ -257,7 +260,7 @@ spec:
           description: KThreesControlPlaneStatus defines the observed state of KThreesControlPlane
           properties:
             conditions:
-              description: Conditions defines current service state of the KubeadmControlPlane.
+              description: Conditions defines current service state of the KThreesControlPlane.
               items:
                 description: Condition defines an observation of a Cluster API resource operational state.
                 properties:
@@ -299,7 +302,7 @@ spec:
               format: int64
               type: integer
             ready:
-              description: Ready denotes that the KubeadmControlPlane API Server is ready to receive requests.
+              description: Ready denotes that the KThreesControlPlane API Server is ready to receive requests.
               type: boolean
             readyReplicas:
               description: Total number of fully running and ready control plane machines.
@@ -547,7 +550,7 @@ spec:
         - --enable-leader-election
         command:
         - /manager
-        image: ghcr.io/zawachte-msft/cluster-api-controlplane-provider-k3s/controller:v0.1.0
+        image: ghcr.io/zawachte-msft/cluster-api-k3s/controlplane-controller:v0.1.1
         name: manager
         resources:
           limits:
