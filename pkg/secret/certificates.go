@@ -30,7 +30,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	bootstrapv1 "github.com/zawachte-msft/cluster-api-bootstrap-provider-k3s/api/v1alpha3"
+	bootstrapv1 "github.com/zawachte-msft/cluster-api-k3s/bootstrap/api/v1alpha3"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

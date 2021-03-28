@@ -27,8 +27,10 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	bootstrapv1alpha3 "github.com/zawachte-msft/cluster-api-bootstrap-provider-k3s/api/v1alpha3"
-	"github.com/zawachte-msft/cluster-api-bootstrap-provider-k3s/controllers"
+	controlplanev1alpha3 "github.com/zawachte-msft/cluster-api-k3s/controlplane/api/v1alpha3"
+	"github.com/zawachte-msft/cluster-api-k3s/controlplane/controllers"
+
+	bootstrapv1alpha3 "github.com/zawachte-msft/cluster-api-k3s/bootstrap/api/v1alpha3"
 	clusterv1alpha3 "sigs.k8s.io/cluster-api/api/v1alpha3"
 	expv1alpha3 "sigs.k8s.io/cluster-api/exp/api/v1alpha3"
 	// +kubebuilder:scaffold:imports
@@ -44,6 +46,8 @@ func init() {
 	_ = clusterv1alpha3.AddToScheme(scheme)
 	_ = expv1alpha3.AddToScheme(scheme)
 	_ = bootstrapv1alpha3.AddToScheme(scheme)
+
+	_ = controlplanev1alpha3.AddToScheme(scheme)
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -51,6 +55,7 @@ func main() {
 	var metricsAddr string
 	var enableLeaderElection bool
 	var syncPeriod time.Duration
+
 	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,
 		"Enable leader election for controller manager. "+
@@ -58,7 +63,6 @@ func main() {
 
 	flag.DurationVar(&syncPeriod, "sync-period", 10*time.Minute,
 		"The minimum interval at which watched resources are reconciled (e.g. 15m)")
-
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
@@ -68,7 +72,7 @@ func main() {
 		MetricsBindAddress: metricsAddr,
 		Port:               9443,
 		LeaderElection:     enableLeaderElection,
-		LeaderElectionID:   "6b2b21b1.k8s.io",
+		LeaderElectionID:   "148fa072.controlplane.cluster.x-k8s.io",
 		SyncPeriod:         &syncPeriod,
 	})
 	if err != nil {
@@ -76,12 +80,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controllers.KThreesConfigReconciler{
+	if err = (&controllers.KThreesControlPlaneReconciler{
 		Client: mgr.GetClient(),
-		Log:    ctrl.Log.WithName("controllers").WithName("KThreesConfig"),
+		Log:    ctrl.Log.WithName("controllers").WithName("KThreesControlPlane"),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "KThreesConfig")
+		setupLog.Error(err, "unable to create controller", "controller", "KThreesControlPlane")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder

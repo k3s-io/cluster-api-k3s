@@ -1,5 +1,5 @@
 domain: cluster.x-k8s.io
-repo: github.com/zawachte-msft/cluster-api-bootstrap-provider-k3s
+repo: github.com/zawachte-msft/cluster-api-k3s/bootstrap
 resources:
 - group: bootstrap
   kind: KThreesConfig
