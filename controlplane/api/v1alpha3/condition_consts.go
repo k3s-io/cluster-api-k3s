@@ -82,18 +82,8 @@ const (
 	// ControlPlaneComponentsInspectionFailedReason documents a failure in inspecting the control plane component status.
 	ControlPlaneComponentsInspectionFailedReason = "ControlPlaneComponentsInspectionFailed"
 
-	// MachineAPIServerPodHealthyCondition reports a machine's kube-apiserver's operational status.
-	MachineAPIServerPodHealthyCondition clusterv1.ConditionType = "APIServerPodHealthy"
-
-	// MachineControllerManagerPodHealthyCondition reports a machine's kube-controller-manager's health status.
-	MachineControllerManagerPodHealthyCondition clusterv1.ConditionType = "ControllerManagerPodHealthy"
-
-	// MachineSchedulerPodHealthyCondition reports a machine's kube-scheduler's operational status.
-	MachineSchedulerPodHealthyCondition clusterv1.ConditionType = "SchedulerPodHealthy"
-
-	// MachineEtcdPodHealthyCondition reports a machine's etcd pod's operational status.
-	// NOTE: This conditions exists only if a stacked etcd cluster is used.
-	MachineEtcdPodHealthyCondition clusterv1.ConditionType = "EtcdPodHealthy"
+	// MachineAgentHealthyCondition reports a machine's k3s agent's operational status.
+	MachineAgentHealthyCondition clusterv1.ConditionType = "AgentHealthy"
 
 	// PodProvisioningReason (Severity=Info) documents a pod waiting to be provisioned i.e., Pod is in "Pending" phase.
 	PodProvisioningReason = "PodProvisioning"

@@ -330,10 +330,7 @@ func (c *ControlPlane) PatchMachines(ctx context.Context) error {
 		machine := c.Machines[i]
 		if helper, ok := c.machinesPatchHelpers[machine.Name]; ok {
 			if err := helper.Patch(ctx, machine, patch.WithOwnedConditions{Conditions: []clusterv1.ConditionType{
-				controlplanev1.MachineAPIServerPodHealthyCondition,
-				controlplanev1.MachineControllerManagerPodHealthyCondition,
-				controlplanev1.MachineSchedulerPodHealthyCondition,
-				controlplanev1.MachineEtcdPodHealthyCondition,
+				controlplanev1.MachineAgentHealthyCondition,
 				controlplanev1.MachineEtcdMemberHealthyCondition,
 			}}); err != nil {
 				errList = append(errList, errors.Wrapf(err, "failed to patch machine %s", machine.Name))

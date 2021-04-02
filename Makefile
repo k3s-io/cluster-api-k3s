@@ -1,9 +1,9 @@
 
 # Image URL to use all building/pushing image targets
-BOOTSTRAP_IMG ?= ghcr.io/zawachte-msft/cluster-api-k3s/bootstrap-controller:v0.1.1
+BOOTSTRAP_IMG ?= ghcr.io/zawachte-msft/cluster-api-k3s/bootstrap-controller:v0.1.2
 
 # Image URL to use all building/pushing image targets
-CONTROLPLANE_IMG ?= ghcr.io/zawachte-msft/cluster-api-k3s/controlplane-controller:v0.1.1
+CONTROLPLANE_IMG ?= ghcr.io/zawachte-msft/cluster-api-k3s/controlplane-controller:v0.1.2
 
 
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)

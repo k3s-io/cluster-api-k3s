@@ -550,7 +550,7 @@ spec:
         - --enable-leader-election
         command:
         - /manager
-        image: ghcr.io/zawachte-msft/cluster-api-k3s/controlplane-controller:v0.1.1
+        image: ghcr.io/zawachte-msft/cluster-api-k3s/controlplane-controller:v0.1.2
         name: manager
         resources:
           limits:
