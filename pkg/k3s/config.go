@@ -66,11 +66,10 @@ func GenerateInitControlPlaneConfig(controlPlaneEndpoint string, token string, s
 
 func GenerateJoinControlPlaneConfig(serverUrl string, token string, controlplaneendpoint string, serverConfig bootstrapv1.KThreesServerConfig, agentConfig bootstrapv1.KThreesAgentConfig) K3sServerConfig {
 
-
 	k3sServerConfig := K3sServerConfig{
 		DisableCloudController:    true,
 		KubeAPIServerArgs:         append(serverConfig.KubeAPIServerArgs, "anonymous-auth=true"),
-		TLSSan:                    append(serverConfig.TLSSan, controlPlaneEndpoint),
+		TLSSan:                    append(serverConfig.TLSSan, controlplaneendpoint),
 		KubeControllerManagerArgs: append(serverConfig.KubeControllerManagerArgs, "cloud-provider=external"),
 		BindAddress:               serverConfig.BindAddress,
 		HttpsListenPort:           serverConfig.HttpsListenPort,

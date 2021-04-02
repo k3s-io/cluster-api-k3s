@@ -199,10 +199,11 @@ func (w *Workload) UpdateAgentConditions(ctx context.Context, controlPlane *Cont
 		}
 
 		for _, condition := range targetnode.Status.Conditions {
-			if condition.Type == 
+			if condition.Type == corev1.NodeReady && condition.Status == corev1.ConditionTrue {
+				conditions.MarkTrue(machine, controlplanev1.MachineAgentHealthyCondition)
+			}
 		}
 
-		conditions.MarkTrue(machine, controlplanev1.MachineAgentHealthyCondition)
 	}
 
 	// If there are provisioned machines without corresponding nodes, report this as a failing conditions with SeverityError.
