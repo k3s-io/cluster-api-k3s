@@ -210,6 +210,7 @@ func MatchesKCPConfiguration(infraConfigs map[string]*unstructured.Unstructured,
 // MatchesTemplateClonedFrom returns a filter to find all machines that match a given KCP infra template.
 func MatchesTemplateClonedFrom(infraConfigs map[string]*unstructured.Unstructured, kcp *controlplanev1.KThreesControlPlane) Func {
 	return func(machine *clusterv1.Machine) bool {
+
 		if machine == nil {
 			return false
 		}

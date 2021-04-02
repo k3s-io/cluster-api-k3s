@@ -636,7 +636,7 @@ func (r *KThreesControlPlaneReconciler) reconcileControlPlaneConditions(ctx cont
 	}
 
 	// Update conditions status
-	workloadCluster.UpdateStaticPodConditions(ctx, controlPlane)
+	workloadCluster.UpdateAgentConditions(ctx, controlPlane)
 	workloadCluster.UpdateEtcdConditions(ctx, controlPlane)
 
 	// Patch machines with the updated conditions.

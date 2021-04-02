@@ -230,8 +230,10 @@ func (r *KThreesConfigReconciler) joinControlplane(ctx context.Context, scope *S
 		return ctrl.Result{}, err
 	}
 
-	configStruct := k3s.GenerateJoinControlPlaneConfig(serverUrl, tokn, scope.Config.Spec.ServerConfig, scope.Config.Spec.AgentConfig)
-
+	configStruct := k3s.GenerateJoinControlPlaneConfig(serverUrl, tokn,
+		scope.Cluster.Spec.ControlPlaneEndpoint.Host,
+		scope.Config.Spec.ServerConfig,
+		scope.Config.Spec.AgentConfig)
 	b, err := kubeyaml.Marshal(configStruct)
 	if err != nil {
 		return ctrl.Result{}, err
