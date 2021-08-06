@@ -16,6 +16,8 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
+ARCH?=arm64
+
 all-bootstrap: manager-bootstrap
 
 # Run tests
@@ -24,7 +26,7 @@ test-bootstrap: generate-bootstrap fmt vet manifests-bootstrap
 
 # Build manager binary
 manager-bootstrap: generate-bootstrap fmt vet
-	CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static"' -o bin/manager bootstrap/main.go
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(ARCH) go build -a -ldflags '-extldflags "-static"' -o bin/$(ARCH)/manager bootstrap/main.go
 
 # Run against the configured Kubernetes cluster in ~/.kube/config
 run-bootstrap: generate-bootstrap fmt vet manifests-bootstrap
@@ -66,7 +68,7 @@ generate-bootstrap: controller-gen
 
 # Build the docker image
 docker-build-bootstrap: manager-bootstrap
-	docker build . -t ${BOOTSTRAP_IMG}
+	docker build . -t ${BOOTSTRAP_IMG} --build-arg $(ARCH)
 
 # Push the docker image
 docker-push-bootstrap:
@@ -97,7 +99,7 @@ test-controlplane: generate-controlplane fmt vet manifests-controlplane
 
 # Build manager binary
 manager-controlplane: generate-controlplane fmt vet
-	CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static"' -o bin/manager controlplane/main.go
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(ARCH) go build -a -ldflags '-extldflags "-static"' -o bin/$(ARCH)/manager controlplane/main.go
 
 # Run against the configured Kubernetes cluster in ~/.kube/config
 run-controlplane: generate-controlplane fmt vet manifests-controlplane
@@ -130,7 +132,7 @@ generate-controlplane: controller-gen
 
 # Build the docker image
 docker-build-controlplane: manager-controlplane
-	docker build . -t ${CONTROLPLANE_IMG}
+	docker build . -t ${CONTROLPLANE_IMG} --build-arg $(ARCH)
 
 # Push the docker image
 docker-push-controlplane:
