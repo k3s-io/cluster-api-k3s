@@ -16,7 +16,7 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
-ARCH?=arm64
+ARCH?=amd64
 
 all-bootstrap: manager-bootstrap
 
