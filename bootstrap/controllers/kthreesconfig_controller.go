@@ -31,16 +31,16 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
-	"github.com/zawachte-msft/cluster-api-k3s/pkg/k3s"
-	"github.com/zawachte-msft/cluster-api-k3s/pkg/kubeconfig"
-	"github.com/zawachte-msft/cluster-api-k3s/pkg/locking"
-	"github.com/zawachte-msft/cluster-api-k3s/pkg/secret"
-	"github.com/zawachte-msft/cluster-api-k3s/pkg/token"
+	"github.com/zawachte/cluster-api-k3s/pkg/k3s"
+	"github.com/zawachte/cluster-api-k3s/pkg/kubeconfig"
+	"github.com/zawachte/cluster-api-k3s/pkg/locking"
+	"github.com/zawachte/cluster-api-k3s/pkg/secret"
+	"github.com/zawachte/cluster-api-k3s/pkg/token"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/pointer"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	bsutil "sigs.k8s.io/cluster-api/bootstrap/util"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/annotations"
@@ -50,8 +50,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	bootstrapv1 "github.com/zawachte-msft/cluster-api-k3s/bootstrap/api/v1alpha3"
-	"github.com/zawachte-msft/cluster-api-k3s/pkg/cloudinit"
+	bootstrapv1 "github.com/zawachte/cluster-api-k3s/bootstrap/api/v1beta1"
+	"github.com/zawachte/cluster-api-k3s/pkg/cloudinit"
 )
 
 // InitLocker is a lock that is used around k3s init
@@ -81,8 +81,7 @@ type Scope struct {
 // +kubebuilder:rbac:groups=exp.cluster.x-k8s.io,resources=machinepools;machinepools/status,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=secrets;events;configmaps,verbs=get;list;watch;create;update;patch;delete
 
-func (r *KThreesConfigReconciler) Reconcile(req ctrl.Request) (_ ctrl.Result, rerr error) {
-	ctx := context.Background()
+func (r *KThreesConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, rerr error) {
 	log := r.Log.WithValues("kthreesconfig", req.NamespacedName)
 
 	// Lookup the k3s config
@@ -192,7 +191,8 @@ func (r *KThreesConfigReconciler) Reconcile(req ctrl.Request) (_ ctrl.Result, re
 		return ctrl.Result{}, nil
 	}
 
-	if !cluster.Status.ControlPlaneInitialized {
+	// Note: can't use IsFalse here because we need to handle the absence of the condition as well as false.
+	if !conditions.IsTrue(cluster, clusterv1.ControlPlaneInitializedCondition) {
 		return r.handleClusterNotInitialized(ctx, scope)
 	}
 

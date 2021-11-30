@@ -14,9 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1alpha3
+package v1beta1
 
-import clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
+import clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 
 // Conditions and condition Reasons for the KThreesConfig object
 
@@ -40,8 +40,8 @@ const (
 	//
 	// NOTE: Having the control plane machine available is a pre-condition for joining additional control planes
 	// or workers nodes.
-	// DEPRECATED: This has been deprecated in v1alpha3 and will be removed in a future version.
-	// Switch to WaitingForControlPlaneAvailableReason constant from the `sigs.k8s.io/cluster-api/api/v1alpha3`
+	// DEPRECATED: This has been deprecated in v1beta1 and will be removed in a future version.
+	// Switch to WaitingForControlPlaneAvailableReason constant from the `sigs.k8s.io/cluster-api/api/v1beta1`
 	// package.
 	WaitingForControlPlaneAvailableReason = clusterv1.WaitingForControlPlaneAvailableReason
 

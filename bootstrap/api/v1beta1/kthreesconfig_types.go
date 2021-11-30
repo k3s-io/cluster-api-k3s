@@ -14,11 +14,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1alpha3
+package v1beta1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -122,6 +122,10 @@ type KThreesAgentConfig struct {
 	// KubeProxyArgs Customized flag for kube-proxy process
 	// +optional
 	KubeProxyArgs []string `json:"kubeProxyArgs,omitempty"`
+
+	// NodeName Name of the Node
+	// +optional
+	NodeName string `json:"nodeName,omitempty"`
 }
 
 // KThreesConfigStatus defines the observed state of KThreesConfig

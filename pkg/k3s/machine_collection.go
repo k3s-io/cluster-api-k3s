@@ -30,9 +30,9 @@ package k3s
 import (
 	"sort"
 
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 
-	"github.com/zawachte-msft/cluster-api-k3s/pkg/machinefilters"
+	"github.com/zawachte/cluster-api-k3s/pkg/machinefilters"
 
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/conditions"

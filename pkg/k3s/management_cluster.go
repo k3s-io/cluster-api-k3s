@@ -5,12 +5,11 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/controllers/remote"
 
-	"github.com/zawachte-msft/cluster-api-k3s/pkg/machinefilters"
+	"github.com/zawachte/cluster-api-k3s/pkg/machinefilters"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
@@ -39,12 +38,12 @@ func (e *RemoteClusterConnectionError) Error() string { return e.Name + ": " + e
 func (e *RemoteClusterConnectionError) Unwrap() error { return e.Err }
 
 // Get implements ctrlclient.Reader
-func (m *Management) Get(ctx context.Context, key ctrlclient.ObjectKey, obj runtime.Object) error {
+func (m *Management) Get(ctx context.Context, key ctrlclient.ObjectKey, obj client.Object) error {
 	return m.Client.Get(ctx, key, obj)
 }
 
 // List implements ctrlclient.Reader
-func (m *Management) List(ctx context.Context, list runtime.Object, opts ...ctrlclient.ListOption) error {
+func (m *Management) List(ctx context.Context, list client.ObjectList, opts ...ctrlclient.ListOption) error {
 	return m.Client.List(ctx, list, opts...)
 }
 
@@ -63,10 +62,15 @@ func (m *Management) GetMachinesForCluster(ctx context.Context, cluster client.O
 	return machines.Filter(filters...), nil
 }
 
+const (
+	// KThreesControlPlaneControllerName defines the controller used when creating clients.
+	KThreesControlPlaneControllerName = "kthrees-controlplane-controller"
+)
+
 // GetWorkloadCluster builds a cluster object.
 // The cluster comes with an etcd client generator to connect to any etcd pod living on a managed machine.
 func (m *Management) GetWorkloadCluster(ctx context.Context, clusterKey client.ObjectKey) (WorkloadCluster, error) {
-	restConfig, err := remote.RESTConfig(ctx, m.Client, clusterKey)
+	restConfig, err := remote.RESTConfig(ctx, KThreesControlPlaneControllerName, m.Client, clusterKey)
 	if err != nil {
 		return nil, err
 	}
