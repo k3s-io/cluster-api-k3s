@@ -26,7 +26,7 @@ Three main pieces are
 2. clusterctl. Please check out [ClusterAPI Quickstart](https://cluster-api.sigs.k8s.io/user/quick-start.html) for instructions.
 3. Infrastructure Specific Prerequisites:
 
-    * For more Azure information go to [CAPZ Getting Started](https://github.com/kubernetes-sigs/cluster-api-provider-azure/blob/main/docs/getting-started.md)
+    * For more Azure information go to [CAPZ Getting Started](https://capz.sigs.k8s.io/topics/getting-started.html)
     * For more AWS information go to [CAPA Getting Started](https://cluster-api-aws.sigs.k8s.io/)
 
 Cluster API k3s has been tested on AWS, Azure, and AzureStackHCI environments. 
