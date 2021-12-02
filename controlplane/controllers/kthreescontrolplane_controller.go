@@ -33,13 +33,12 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
-	"github.com/zawachte-msft/cluster-api-k3s/pkg/kubeconfig"
-	"github.com/zawachte-msft/cluster-api-k3s/pkg/secret"
+	"github.com/zawachte/cluster-api-k3s/pkg/kubeconfig"
+	"github.com/zawachte/cluster-api-k3s/pkg/secret"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/controllers/external"
-	capierrors "sigs.k8s.io/cluster-api/errors"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/annotations"
 	"sigs.k8s.io/cluster-api/util/predicates"
@@ -55,9 +54,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	controlplanev1 "github.com/zawachte-msft/cluster-api-k3s/controlplane/api/v1alpha3"
-	k3s "github.com/zawachte-msft/cluster-api-k3s/pkg/k3s"
-	"github.com/zawachte-msft/cluster-api-k3s/pkg/machinefilters"
+	controlplanev1 "github.com/zawachte/cluster-api-k3s/controlplane/api/v1beta1"
+	k3s "github.com/zawachte/cluster-api-k3s/pkg/k3s"
+	"github.com/zawachte/cluster-api-k3s/pkg/machinefilters"
 )
 
 // KThreesControlPlaneReconciler reconciles a KThreesControlPlane object
@@ -72,9 +71,8 @@ type KThreesControlPlaneReconciler struct {
 	managementClusterUncached k3s.ManagementCluster
 }
 
-func (r *KThreesControlPlaneReconciler) Reconcile(req ctrl.Request) (res ctrl.Result, reterr error) {
+func (r *KThreesControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res ctrl.Result, reterr error) {
 	logger := r.Log.WithValues("namespace", req.Namespace, "kthreesControlPlane", req.Name)
-	ctx := context.Background()
 
 	// Fetch the KThreesControlPlane instance.
 	kcp := &controlplanev1.KThreesControlPlane{}
@@ -93,7 +91,7 @@ func (r *KThreesControlPlaneReconciler) Reconcile(req ctrl.Request) (res ctrl.Re
 	}
 	if cluster == nil {
 		logger.Info("Cluster Controller has not yet set OwnerRef")
-		return ctrl.Result{}, nil
+		return ctrl.Result{Requeue: true}, nil
 	}
 	logger = logger.WithValues("cluster", cluster.Name)
 
@@ -134,12 +132,6 @@ func (r *KThreesControlPlaneReconciler) Reconcile(req ctrl.Request) (res ctrl.Re
 	}
 
 	defer func() {
-		if requeueErr, ok := errors.Cause(reterr).(capierrors.HasRequeueAfterError); ok {
-			if res.RequeueAfter == 0 {
-				res.RequeueAfter = requeueErr.GetRequeueAfter()
-				reterr = nil
-			}
-		}
 
 		// Always attempt to update status.
 		if err := r.updateStatus(ctx, kcp, cluster); err != nil {
@@ -284,9 +276,7 @@ func (r *KThreesControlPlaneReconciler) SetupWithManager(mgr ctrl.Manager) error
 
 	err = c.Watch(
 		&source.Kind{Type: &clusterv1.Cluster{}},
-		&handler.EnqueueRequestsFromMapFunc{
-			ToRequests: handler.ToRequestsFunc(r.ClusterToKThreesControlPlane),
-		},
+		handler.EnqueueRequestsFromMapFunc(r.ClusterToKThreesControlPlane),
 		predicates.ClusterUnpausedAndInfrastructureReady(r.Log),
 	)
 	if err != nil {
@@ -309,10 +299,10 @@ func (r *KThreesControlPlaneReconciler) SetupWithManager(mgr ctrl.Manager) error
 
 // ClusterToKThreesControlPlane is a handler.ToRequestsFunc to be used to enqueue requests for reconciliation
 // for KThreesControlPlane based on updates to a Cluster.
-func (r *KThreesControlPlaneReconciler) ClusterToKThreesControlPlane(o handler.MapObject) []ctrl.Request {
-	c, ok := o.Object.(*clusterv1.Cluster)
+func (r *KThreesControlPlaneReconciler) ClusterToKThreesControlPlane(o client.Object) []ctrl.Request {
+	c, ok := o.(*clusterv1.Cluster)
 	if !ok {
-		r.Log.Error(nil, fmt.Sprintf("Expected a Cluster but got a %T", o.Object))
+		r.Log.Error(nil, fmt.Sprintf("Expected a Cluster but got a %T", o))
 		return nil
 	}
 
@@ -425,9 +415,9 @@ func (r *KThreesControlPlaneReconciler) reconcile(ctx context.Context, cluster *
 	}
 
 	// Generate Cluster Kubeconfig if needed
-	if err := r.reconcileKubeconfig(ctx, util.ObjectKey(cluster), cluster.Spec.ControlPlaneEndpoint, kcp); err != nil {
+	if result, err := r.reconcileKubeconfig(ctx, util.ObjectKey(cluster), cluster.Spec.ControlPlaneEndpoint, kcp); err != nil {
 		logger.Error(err, "failed to reconcile Kubeconfig")
-		return ctrl.Result{}, err
+		return result, err
 	}
 
 	controlPlaneMachines, err := r.managementClusterUncached.GetMachinesForCluster(ctx, util.ObjectKey(cluster), machinefilters.ControlPlaneMachines(cluster.Name))
@@ -546,7 +536,7 @@ func (r *KThreesControlPlaneReconciler) reconcile(ctx context.Context, cluster *
 }
 
 func (r *KThreesControlPlaneReconciler) reconcileExternalReference(ctx context.Context, cluster *clusterv1.Cluster, ref corev1.ObjectReference) error {
-	if !strings.HasSuffix(ref.Kind, external.TemplateSuffix) {
+	if !strings.HasSuffix(ref.Kind, clusterv1.TemplateSuffix) {
 		return nil
 	}
 
@@ -572,9 +562,9 @@ func (r *KThreesControlPlaneReconciler) reconcileExternalReference(ctx context.C
 	return patchHelper.Patch(ctx, obj)
 }
 
-func (r *KThreesControlPlaneReconciler) reconcileKubeconfig(ctx context.Context, clusterName client.ObjectKey, endpoint clusterv1.APIEndpoint, kcp *controlplanev1.KThreesControlPlane) error {
+func (r *KThreesControlPlaneReconciler) reconcileKubeconfig(ctx context.Context, clusterName client.ObjectKey, endpoint clusterv1.APIEndpoint, kcp *controlplanev1.KThreesControlPlane) (ctrl.Result, error) {
 	if endpoint.IsZero() {
-		return nil
+		return ctrl.Result{}, nil
 	}
 
 	controllerOwnerRef := *metav1.NewControllerRef(kcp, controlplanev1.GroupVersion.WithKind("KThreesControlPlane"))
@@ -589,18 +579,18 @@ func (r *KThreesControlPlaneReconciler) reconcileKubeconfig(ctx context.Context,
 			controllerOwnerRef,
 		)
 		if errors.Is(createErr, kubeconfig.ErrDependentCertificateNotFound) {
-			return errors.Wrapf(&capierrors.RequeueAfterError{RequeueAfter: dependentCertRequeueAfter},
-				"could not find secret %q, requeuing", secret.ClusterCA)
+			return ctrl.Result{RequeueAfter: dependentCertRequeueAfter}, nil
 		}
 		// always return if we have just created in order to skip rotation checks
-		return createErr
+		return ctrl.Result{}, createErr
+
 	case err != nil:
-		return errors.Wrap(err, "failed to retrieve kubeconfig Secret")
+		return ctrl.Result{}, errors.Wrap(err, "failed to retrieve kubeconfig Secret")
 	}
 
 	// only do rotation on owned secrets
 	if !util.IsControlledBy(configSecret, kcp) {
-		return nil
+		return ctrl.Result{}, nil
 	}
 
 	/**
@@ -618,7 +608,7 @@ func (r *KThreesControlPlaneReconciler) reconcileKubeconfig(ctx context.Context,
 	}
 	**/
 
-	return nil
+	return ctrl.Result{}, nil
 }
 
 // reconcileControlPlaneConditions is responsible of reconciling conditions reporting the status of static pods and

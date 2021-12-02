@@ -1,9 +1,9 @@
 
 # Image URL to use all building/pushing image targets
-BOOTSTRAP_IMG ?= ghcr.io/zawachte-msft/cluster-api-k3s/bootstrap-controller:v0.1.2
+BOOTSTRAP_IMG ?= ghcr.io/zawachte/cluster-api-k3s/bootstrap-controller:v0.1.3
 
 # Image URL to use all building/pushing image targets
-CONTROLPLANE_IMG ?= ghcr.io/zawachte-msft/cluster-api-k3s/controlplane-controller:v0.1.2
+CONTROLPLANE_IMG ?= ghcr.io/zawachte/cluster-api-k3s/controlplane-controller:v0.1.3
 
 
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
@@ -15,6 +15,22 @@ GOBIN=$(shell go env GOPATH)/bin
 else
 GOBIN=$(shell go env GOBIN)
 endif
+
+CONTROLLER_GEN = $(shell pwd)/bin/controller-gen
+.PHONY: controller-gen
+controller-gen: ## Download controller-gen locally if necessary.
+	$(call go-get-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen@v0.7.0)
+
+KUSTOMIZE = $(shell pwd)/bin/kustomize
+.PHONY: kustomize
+kustomize: ## Download kustomize locally if necessary.
+	$(call go-get-tool,$(KUSTOMIZE),sigs.k8s.io/kustomize/kustomize/v3@v3.8.7)
+
+ENVTEST = $(shell pwd)/bin/setup-envtest
+.PHONY: envtest
+envtest: ## Download envtest-setup locally if necessary.
+	$(call go-get-tool,$(ENVTEST),sigs.k8s.io/controller-runtime/tools/setup-envtest@latest)
+
 
 all-bootstrap: manager-bootstrap
 
@@ -32,25 +48,25 @@ run-bootstrap: generate-bootstrap fmt vet manifests-bootstrap
 
 # Install CRDs into a cluster
 install-bootstrap: manifests-bootstrap
-	kustomize build bootstrap/config/crd | kubectl apply -f -
+	$(KUSTOMIZE) build bootstrap/config/crd | kubectl apply -f -
 
 # Uninstall CRDs from a cluster
 uninstall-bootstrap: manifests-bootstrap
-	kustomize build bootstrap/config/crd | kubectl delete -f -
+	$(KUSTOMIZE) build bootstrap/config/crd | kubectl delete -f -
 
 # Deploy controller in the configured Kubernetes cluster in ~/.kube/config
 deploy-bootstrap: manifests-bootstrap
-	cd bootstrap/config/manager && kustomize edit set image controller=${BOOTSTRAP_IMG}
-	kustomize build bootstrap/config/default | kubectl apply -f -
+	cd bootstrap/config/manager && $(KUSTOMIZE) edit set image controller=${BOOTSTRAP_IMG}
+	$(KUSTOMIZE) build bootstrap/config/default | kubectl apply -f -
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests-bootstrap: controller-gen
-	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=bootstrap/config/crd/bases
+	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=bootstrap/config/crd/bases output:rbac:dir=bootstrap/config/rbac
 
 release-bootstrap: manifests-bootstrap
 	mkdir -p out
-	cd bootstrap/config/manager && kustomize edit set image controller=${BOOTSTRAP_IMG}
-	kustomize build bootstrap/config/default > out/bootstrap-components.yaml
+	cd bootstrap/config/manager && $(KUSTOMIZE) edit set image controller=${BOOTSTRAP_IMG}
+	$(KUSTOMIZE) build bootstrap/config/default > out/bootstrap-components.yaml
 
 # Run go fmt against code
 fmt:
@@ -72,22 +88,6 @@ docker-build-bootstrap: manager-bootstrap
 docker-push-bootstrap:
 	docker push ${BOOTSTRAP_IMG}
 
-# find or download controller-gen
-# download controller-gen if necessary
-controller-gen:
-ifeq (, $(shell which controller-gen))
-	@{ \
-	set -e ;\
-	CONTROLLER_GEN_TMP_DIR=$$(mktemp -d) ;\
-	cd $$CONTROLLER_GEN_TMP_DIR ;\
-	go mod init tmp ;\
-	go get sigs.k8s.io/controller-tools/cmd/controller-gen@v0.3.0 ;\
-	rm -rf $$CONTROLLER_GEN_TMP_DIR ;\
-	}
-CONTROLLER_GEN=$(GOBIN)/controller-gen
-else
-CONTROLLER_GEN=$(shell which controller-gen)
-endif
 
 all-controlplane: manager-controlplane
 
@@ -105,25 +105,25 @@ run-controlplane: generate-controlplane fmt vet manifests-controlplane
 
 # Install CRDs into a cluster
 install-controlplane: manifests-controlplane
-	kustomize build controlplane/config/crd | kubectl apply -f -
+	$(KUSTOMIZE) build controlplane/config/crd | kubectl apply -f -
 
 # Uninstall CRDs from a cluster
 uninstall-controlplane: manifests-controlplane
-	kustomize build controlplane/config/crd | kubectl delete -f -
+	$(KUSTOMIZE) build controlplane/config/crd | kubectl delete -f -
 
 # Deploy controller in the configured Kubernetes cluster in ~/.kube/config
 deploy-controlplane: manifests-controlplane
-	cd controlplane/config/manager && kustomize edit set image controller=${CONTROLPLANE_IMG}
-	kustomize build controlplane/config/default | kubectl apply -f -
+	cd controlplane/config/manager && $(KUSTOMIZE) edit set image controller=${CONTROLPLANE_IMG}
+	$(KUSTOMIZE) build controlplane/config/default | kubectl apply -f -
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests-controlplane: controller-gen
-	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=controlplane/config/crd/bases
+	$(CONTROLLER_GEN) rbac:roleName=manager-role webhook crd paths="./..." output:crd:artifacts:config=controlplane/config/crd/bases output:rbac:dir=bootstrap/config/rbac
 
 release-controlplane: manifests-controlplane
 	mkdir -p out
-	cd controlplane/config/manager && kustomize edit set image controller=${CONTROLPLANE_IMG}
-	kustomize build controlplane/config/default > out/control-plane-components.yaml
+	cd controlplane/config/manager && $(KUSTOMIZE) edit set image controller=${CONTROLPLANE_IMG}
+	$(KUSTOMIZE) build controlplane/config/default > out/control-plane-components.yaml
 
 generate-controlplane: controller-gen
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
@@ -135,3 +135,17 @@ docker-build-controlplane: manager-controlplane
 # Push the docker image
 docker-push-controlplane:
 	docker push ${CONTROLPLANE_IMG}
+
+# go-get-tool will 'go get' any package $2 and install it to $1.
+PROJECT_DIR := $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))
+define go-get-tool
+@[ -f $(1) ] || { \
+set -e ;\
+TMP_DIR=$$(mktemp -d) ;\
+cd $$TMP_DIR ;\
+go mod init tmp ;\
+echo "Downloading $(2)" ;\
+GOBIN=$(PROJECT_DIR)/bin go get $(2) ;\
+rm -rf $$TMP_DIR ;\
+}
+endef

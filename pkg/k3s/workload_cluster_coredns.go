@@ -22,15 +22,15 @@ import (
 
 	"github.com/coredns/corefile-migration/migration"
 	"github.com/pkg/errors"
-	controlplanev1 "github.com/zawachte-msft/cluster-api-k3s/controlplane/api/v1alpha3"
+	controlplanev1 "github.com/zawachte/cluster-api-k3s/controlplane/api/v1beta1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	kubeadmv1 "sigs.k8s.io/cluster-api/bootstrap/kubeadm/types/v1beta1"
 
-	"sigs.k8s.io/cluster-api/util"
-	containerutil "sigs.k8s.io/cluster-api/util/container"
+	//kubeadmv1 "sigs.k8s.io/cluster-api/bootstrap/kubeadm/types/v1beta1"
+
 	"sigs.k8s.io/cluster-api/util/patch"
+	"sigs.k8s.io/cluster-api/util/version"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -128,6 +128,7 @@ func (w *Workload) getConfigMap(ctx context.Context, configMap ctrlclient.Object
 	return original.DeepCopy(), nil
 }
 
+/**
 // getCoreDNSInfo returns all necessary coredns based information.
 func (w *Workload) getCoreDNSInfo(ctx context.Context, clusterConfig *kubeadmv1.ClusterConfiguration) (*coreDNSInfo, error) {
 	// Get the coredns configmap and corefile.
@@ -202,6 +203,7 @@ func (w *Workload) getCoreDNSInfo(ctx context.Context, clusterConfig *kubeadmv1.
 	}, nil
 }
 
+
 // UpdateCoreDNSDeployment will patch the deployment image to the
 // imageRepo:imageTag in the KCP dns. It will also ensure the volume of the
 // deployment uses the Corefile key of the coredns configmap.
@@ -221,6 +223,7 @@ func (w *Workload) updateCoreDNSDeployment(ctx context.Context, info *coreDNSInf
 func (w *Workload) updateCoreDNSImageInfoInKubeadmConfigMap(ctx context.Context, dns *kubeadmv1.DNS) error {
 	return nil
 }
+**/
 
 // updateCoreDNSCorefile migrates the coredns corefile if there is an increase
 // in version number. It also creates a corefile backup and patches the
@@ -296,7 +299,7 @@ func patchCoreDNSDeploymentImage(deployment *appsv1.Deployment, image string) {
 }
 
 func extractImageVersion(tag string) (string, error) {
-	ver, err := util.ParseMajorMinorPatch(tag)
+	ver, err := version.ParseMajorMinorPatch(tag)
 	if err != nil {
 		return "", err
 	}
@@ -307,11 +310,11 @@ func extractImageVersion(tag string) (string, error) {
 // Some of the checks come from
 // https://github.com/coredns/corefile-migration/blob/v1.0.6/migration/migrate.go#L414
 func validateCoreDNSImageTag(fromTag, toTag string) error {
-	from, err := util.ParseMajorMinorPatch(fromTag)
+	from, err := version.ParseMajorMinorPatch(fromTag)
 	if err != nil {
 		return errors.Wrapf(err, "failed to parse CoreDNS current version %q", fromTag)
 	}
-	to, err := util.ParseMajorMinorPatch(toTag)
+	to, err := version.ParseMajorMinorPatch(toTag)
 	if err != nil {
 		return errors.Wrapf(err, "failed to parse CoreDNS target version %q", toTag)
 	}

@@ -1,0 +1,114 @@
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  labels:
+    ccm: external
+    cni: testclusteraws6-crs-0
+    csi: external
+  name: testclusteraws6
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks:
+      - 192.168.0.0/16
+  controlPlaneRef:
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    kind: KThreesControlPlane
+    name: testclusteraws6-control-plane
+  infrastructureRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+    kind: AWSCluster
+    name: testclusteraws6
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: AWSCluster
+metadata:
+  name: testclusteraws6
+spec:
+#  bastion:
+#    enabled: true
+  network:
+    vpc:
+      availabilityZoneUsageLimit: 1
+  region: us-east-1
+  sshKeyName: default
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+kind: KThreesControlPlane
+metadata:
+  name: testclusteraws6-control-plane
+  namespace: default
+spec:
+  infrastructureTemplate:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+    kind: AWSMachineTemplate
+    name: testclusteraws6-control-plane
+  kthreesConfigSpec:
+    agentConfig:
+      nodeName: "{{ ds.meta_data.local_hostname }}"
+  replicas: 1
+  version: v1.21.5+k3s2
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: AWSMachineTemplate
+metadata:
+  name: testclusteraws6-control-plane
+spec:
+  template:
+    spec:
+      ami:
+        id: ami-083654bd07b5da81d
+      cloudInit:
+        insecureSkipSecretsManager: true
+      iamInstanceProfile: control-plane.cluster-api-provider-aws.sigs.k8s.io
+      instanceType: t3.large
+      sshKeyName: default
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: MachineDeployment
+metadata:
+  name: testclusteraws6-md-0
+spec:
+  clusterName: testclusteraws6
+  replicas: 
+  selector:
+    matchLabels: null
+  template:
+    spec:
+      bootstrap:
+        configRef:
+          apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+          kind: KThreesConfigTemplate
+          name: testclusteraws6-md-0
+      clusterName: testclusteraws6
+      infrastructureRef:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        kind: AWSMachineTemplate
+        name: testclusteraws6-md-0
+      version: v1.21.5+k3s2
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: AWSMachineTemplate
+metadata:
+  name: testclusteraws6-md-0
+spec:
+  template:
+    spec:
+      ami:
+        id: ami-083654bd07b5da81d
+      cloudInit:
+        insecureSkipSecretsManager: true
+      iamInstanceProfile: nodes.cluster-api-provider-aws.sigs.k8s.io
+      instanceType: t3.large
+      sshKeyName: default
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+kind: KThreesConfigTemplate
+metadata:
+  name: testclusteraws6-md-0
+  namespace: default
+spec:
+  template:
+    spec:
+      agentConfig:
+        nodeName: "{{ ds.meta_data.local_hostname }}"

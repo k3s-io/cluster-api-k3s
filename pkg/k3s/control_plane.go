@@ -21,18 +21,18 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
-	"github.com/zawachte-msft/cluster-api-k3s/pkg/machinefilters"
+	"github.com/zawachte/cluster-api-k3s/pkg/machinefilters"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apiserver/pkg/storage/names"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 
-	bootstrapv1 "github.com/zawachte-msft/cluster-api-k3s/bootstrap/api/v1alpha3"
+	bootstrapv1 "github.com/zawachte/cluster-api-k3s/bootstrap/api/v1beta1"
 
-	controlplanev1 "github.com/zawachte-msft/cluster-api-k3s/controlplane/api/v1alpha3"
+	controlplanev1 "github.com/zawachte/cluster-api-k3s/controlplane/api/v1beta1"
 	"sigs.k8s.io/cluster-api/controllers/external"
 
 	"sigs.k8s.io/cluster-api/util/patch"

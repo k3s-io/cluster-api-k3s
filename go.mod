@@ -1,22 +1,22 @@
-module github.com/zawachte-msft/cluster-api-k3s
+module github.com/zawachte/cluster-api-k3s
 
 go 1.13
 
 require (
-	github.com/coredns/corefile-migration v1.0.11
-	github.com/go-logr/logr v0.1.0
-	github.com/onsi/ginkgo v1.12.1
-	github.com/onsi/gomega v1.10.1
+	github.com/coredns/corefile-migration v1.0.13
+	github.com/go-logr/logr v0.4.0
+	github.com/onsi/ginkgo v1.16.4
+	github.com/onsi/gomega v1.16.0
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/common v0.9.1
-	k8s.io/api v0.17.9
-	k8s.io/apimachinery v0.17.9
-	k8s.io/apiserver v0.17.9
-	k8s.io/client-go v0.17.9
+	k8s.io/api v0.22.2
+	k8s.io/apimachinery v0.22.2
+	k8s.io/apiserver v0.22.2
+	k8s.io/client-go v0.22.2
 	k8s.io/klog v1.0.0
-	k8s.io/utils v0.0.0-20200619165400-6e3d28b6ed19
-	sigs.k8s.io/cluster-api v0.3.12
-	sigs.k8s.io/controller-runtime v0.5.14
-	sigs.k8s.io/structured-merge-diff v1.0.1-0.20191108220359-b1b620dd3f06 // indirect
-	sigs.k8s.io/yaml v1.2.0
+	k8s.io/utils v0.0.0-20210930125809-cb0fa318a74b
+	sigs.k8s.io/cluster-api v1.0.0
+	sigs.k8s.io/controller-runtime v0.10.2
+	sigs.k8s.io/yaml v1.3.0
 )
+
+replace sigs.k8s.io/cluster-api => sigs.k8s.io/cluster-api v1.0.0

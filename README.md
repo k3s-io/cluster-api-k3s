@@ -10,10 +10,11 @@ Cluster API ControlPlane provider k3s (CACP3) is a component of [Cluster API](ht
 CACP3 is the controlplane component of Cluster API for k3s and brings in the following CRDS and controllers:
 - k3s controlplane provider (KThreesControlPlane)
 
+Together these two components make up Cluster API k3s...
+
 ## Testing it out.
 
 **Warning**: Project and documentation are in an early stage, there is an assumption that an user of this provider is already familiar with ClusterAPI.  
-
 
 ### Prerequisites
 
@@ -23,16 +24,16 @@ Three main pieces are
 
 1. Bootstrap cluster. In the `samples/azure/azure-setup.sh` script, I use [k3d](https://k3d.io/), but feel free to use [kind](https://kind.sigs.k8s.io/) as well.
 2. clusterctl. Please check out [ClusterAPI Quickstart](https://cluster-api.sigs.k8s.io/user/quick-start.html) for instructions.
-3. Azure Service Principals. For more information go to [CAPZ Getting Started](https://github.com/kubernetes-sigs/cluster-api-provider-azure/blob/master/docs/getting-started.md)
+3. Infra Specific Prereqs:
 
-CABP3 has been tested only on with an Azure and AzureStackHCI environment. To try out the Azure flow, fork the repo and look at `samples/azure/azure-setup.sh`.
+    * For more Azure information go to [CAPZ Getting Started](https://github.com/kubernetes-sigs/cluster-api-provider-azure/blob/master/docs/getting-started.md)
+    * For more AWS information go to [CAPA Getting Started](https://cluster-api-aws.sigs.k8s.io/)
 
-CACP3 is alive! Sample now includes the K3s Control Plane Provider. If you run the sample script you will get a cluster with a control plane and two workers.
+Cluster API k3s has been tested on AWS, Azure, and AzureStackHCI environments. 
 
-Then run the following to scale the control plane...
-```sh
-kubectl scale kthreescontrolplane ${CLUSTER_NAME}-control-plane --replicas 3
-```
+To try out the Azure flow, fork the repo and look at `samples/azure/azure-setup.sh`.
+
+To try out the AWS flow, fork the repo and look at `samples/aws/aws-setup.sh`.
 
 ### Known Issues
 
@@ -40,6 +41,7 @@ kubectl scale kthreescontrolplane ${CLUSTER_NAME}-control-plane --replicas 3
 
 * Support for External Databases
 * Fix Token Logic
-* Setup CAPA and CAPV samples
+* Setup CAPV samples
+* Clean up Control Plane Provider Code
 * Post an issue!
 

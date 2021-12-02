@@ -14,9 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1alpha3
+package v1beta1
 
-import clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
+import clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 
 // Conditions and condition Reasons for the KThreesControlPlane object
 

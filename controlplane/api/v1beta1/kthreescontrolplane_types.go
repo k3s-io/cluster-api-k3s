@@ -14,15 +14,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1alpha3
+package v1beta1
 
 import (
-	"github.com/zawachte-msft/cluster-api-k3s/pkg/errors"
+	"github.com/zawachte/cluster-api-k3s/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 
-	cabp3v1 "github.com/zawachte-msft/cluster-api-k3s/bootstrap/api/v1alpha3"
+	cabp3v1 "github.com/zawachte/cluster-api-k3s/bootstrap/api/v1beta1"
 )
 
 const (
