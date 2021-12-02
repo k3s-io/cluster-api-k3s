@@ -24,7 +24,7 @@ Three main pieces are
 
 1. Bootstrap cluster. In the `samples/azure/azure-setup.sh` script, I use [k3d](https://k3d.io/), but feel free to use [kind](https://kind.sigs.k8s.io/) as well.
 2. clusterctl. Please check out [ClusterAPI Quickstart](https://cluster-api.sigs.k8s.io/user/quick-start.html) for instructions.
-3. Infra Specific Prereqs:
+3. Infrastructure Specific Prerequisites:
 
     * For more Azure information go to [CAPZ Getting Started](https://github.com/kubernetes-sigs/cluster-api-provider-azure/blob/master/docs/getting-started.md)
     * For more AWS information go to [CAPA Getting Started](https://cluster-api-aws.sigs.k8s.io/)
