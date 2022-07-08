@@ -53,7 +53,8 @@ type KThreesControlPlaneSpec struct {
 
 	// KThreesConfigSpec is a KThreesConfigSpec
 	// to use for initializing and joining machines to the control plane.
-	KThreesConfigSpec cabp3v1.KThreesConfigSpec `json:"kthreesConfigSpec"`
+	// +optional
+	KThreesConfigSpec cabp3v1.KThreesConfigSpec `json:"kthreesConfigSpec,omitempty"`
 
 	// UpgradeAfter is a field to indicate an upgrade should be performed
 	// after the specified time even if no changes have been made to the
