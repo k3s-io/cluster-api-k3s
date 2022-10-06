@@ -27,8 +27,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	//kubeadmv1 "sigs.k8s.io/cluster-api/bootstrap/kubeadm/types/v1beta1"
-
 	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/cluster-api/util/version"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
@@ -65,7 +63,7 @@ type coreDNSInfo struct {
 	ToImage   string
 }
 
-// UpdateCoreDNS updates the kubeadm configmap, coredns corefile and coredns
+// UpdateCoreDNS updates the coredns corefile and coredns
 // deployment.
 func (w *Workload) UpdateCoreDNS(ctx context.Context, kcp *controlplanev1.KThreesControlPlane) error {
 	// Return early if we've been asked to skip CoreDNS upgrades entirely.

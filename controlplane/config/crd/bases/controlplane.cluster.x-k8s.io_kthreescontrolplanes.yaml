@@ -1,10 +1,9 @@
-
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.7.0
+    controller-gen.kubebuilder.io/version: v0.8.0
   creationTimestamp: null
   name: kthreescontrolplanes.controlplane.cluster.x-k8s.io
 spec:
@@ -17,8 +16,8 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - description: This denotes whether or not the control plane has the uploaded
-        kubeadm-config configmap
+    - description: This denotes whether or not the control plane has completed the
+        k3s server initialization
       jsonPath: .status.initialized
       name: Initialized
       type: boolean
@@ -302,7 +301,6 @@ spec:
                 type: string
             required:
             - infrastructureTemplate
-            - kthreesConfigSpec
             - version
             type: object
           status:
@@ -363,8 +361,8 @@ spec:
                   for programmatic interpretation.
                 type: string
               initialized:
-                description: Initialized denotes whether or not the control plane
-                  has the uploaded kubeadm-config configmap.
+                description: Initialized denotes whether or not the k3s server is
+                  up.
                 type: boolean
               observedGeneration:
                 description: ObservedGeneration is the latest generation observed
