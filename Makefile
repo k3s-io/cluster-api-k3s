@@ -1,9 +1,29 @@
+GO_VERSION ?= 1.19.0
+GO_CONTAINER_IMAGE ?= docker.io/library/golang:$(GO_VERSION)
+
+ARCH ?= $(shell go env GOARCH)
+
+# Use GOPROXY environment variable if set
+GOPROXY := $(shell go env GOPROXY)
+ifeq ($(GOPROXY),)
+GOPROXY := https://proxy.golang.org
+endif
+export GOPROXY
+
+# Active module mode, as we use go modules to manage dependencies
+export GO111MODULE=on
+
+GO_INSTALL := ./hack/go_install.sh
+
+BIN_DIR := bin
+TOOLS_BIN_DIR := $(abspath $(BIN_DIR))
+
 
 # Image URL to use all building/pushing image targets
-BOOTSTRAP_IMG ?= ghcr.io/zawachte/cluster-api-k3s/bootstrap-controller:v0.1.3
+BOOTSTRAP_IMG ?= ghcr.io/zawachte/cluster-api-k3s/bootstrap-controller:v0.1.4
 
 # Image URL to use all building/pushing image targets
-CONTROLPLANE_IMG ?= ghcr.io/zawachte/cluster-api-k3s/controlplane-controller:v0.1.3
+CONTROLPLANE_IMG ?= ghcr.io/zawachte/cluster-api-k3s/controlplane-controller:v0.1.4
 
 
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
@@ -16,10 +36,14 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
-CONTROLLER_GEN = $(shell pwd)/bin/controller-gen
+CONTROLLER_GEN_BIN = controller-gen
+CONTROLLER_GEN_PKG = "sigs.k8s.io/controller-tools/cmd/controller-gen"
+CONTROLLER_GEN_VER = "v0.8.0"
+CONTROLLER_GEN := $(abspath $(TOOLS_BIN_DIR)/$(CONTROLLER_GEN_BIN)-$(CONTROLLER_GEN_VER))
+
 .PHONY: controller-gen
 controller-gen: ## Download controller-gen locally if necessary.
-	$(call go-get-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen@v0.7.0)
+	GOBIN=$(TOOLS_BIN_DIR) $(GO_INSTALL) $(CONTROLLER_GEN_PKG) $(CONTROLLER_GEN_BIN) $(CONTROLLER_GEN_VER)
 
 KUSTOMIZE = $(shell pwd)/bin/kustomize
 .PHONY: kustomize
@@ -82,7 +106,7 @@ generate-bootstrap: controller-gen
 
 # Build the docker image
 docker-build-bootstrap: manager-bootstrap
-	docker build . -t ${BOOTSTRAP_IMG}
+	DOCKER_BUILDKIT=1 docker build --build-arg builder_image=$(GO_CONTAINER_IMAGE) --build-arg goproxy=$(GOPROXY) --build-arg ARCH=$(ARCH) --build-arg package=./bootstrap/main.go --build-arg ldflags="$(LDFLAGS)" . -t ${BOOTSTRAP_IMG}
 
 # Push the docker image
 docker-push-bootstrap:
@@ -130,22 +154,8 @@ generate-controlplane: controller-gen
 
 # Build the docker image
 docker-build-controlplane: manager-controlplane
-	docker build . -t ${CONTROLPLANE_IMG}
+	DOCKER_BUILDKIT=1 docker build --build-arg builder_image=$(GO_CONTAINER_IMAGE) --build-arg goproxy=$(GOPROXY) --build-arg ARCH=$(ARCH) --build-arg package=./controlplane/main.go --build-arg ldflags="$(LDFLAGS)" . -t ${CONTROLPLANE_IMG}
 
 # Push the docker image
 docker-push-controlplane:
 	docker push ${CONTROLPLANE_IMG}
-
-# go-get-tool will 'go get' any package $2 and install it to $1.
-PROJECT_DIR := $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))
-define go-get-tool
-@[ -f $(1) ] || { \
-set -e ;\
-TMP_DIR=$$(mktemp -d) ;\
-cd $$TMP_DIR ;\
-go mod init tmp ;\
-echo "Downloading $(2)" ;\
-GOBIN=$(PROJECT_DIR)/bin go get $(2) ;\
-rm -rf $$TMP_DIR ;\
-}
-endef

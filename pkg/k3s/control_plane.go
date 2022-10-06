@@ -180,7 +180,7 @@ func (c *ControlPlane) JoinControlPlaneConfig() *bootstrapv1.KThreesConfigSpec {
 	return bootstrapSpec
 }
 
-// GenerateKThreesConfig generates a new kubeadm config for creating new control plane nodes.
+// GenerateKThreesConfig generates a new KThreesConfig config for creating new control plane nodes.
 func (c *ControlPlane) GenerateKThreesConfig(spec *bootstrapv1.KThreesConfigSpec) *bootstrapv1.KThreesConfig {
 	// Create an owner reference without a controller reference because the owning controller is the machine controller
 	owner := metav1.OwnerReference{
@@ -284,7 +284,7 @@ func getInfraResources(ctx context.Context, cl client.Client, machines Filterabl
 	return result, nil
 }
 
-// getKThreesConfigs fetches the kubeadm config for each machine in the collection and returns a map of machine.Name -> KThreesConfig.
+// getKThreesConfigs fetches the k3s config for each machine in the collection and returns a map of machine.Name -> KThreesConfig.
 func getKThreesConfigs(ctx context.Context, cl client.Client, machines FilterableMachineCollection) (map[string]*bootstrapv1.KThreesConfig, error) {
 	result := map[string]*bootstrapv1.KThreesConfig{}
 	for _, m := range machines {
