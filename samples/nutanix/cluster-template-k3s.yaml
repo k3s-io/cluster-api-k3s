@@ -1,0 +1,232 @@
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  labels:
+    ccm: nutanix
+  name: ${CLUSTER_NAME}
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks:
+        - 192.168.0.0/16
+  controlPlaneRef:
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    kind: KThreesControlPlane
+    name: ${CLUSTER_NAME}-control-plane
+  infrastructureRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+    kind: NutanixCluster
+    name: ${CLUSTER_NAME}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: NutanixCluster
+metadata:
+  name: ${CLUSTER_NAME}
+spec:
+  controlPlaneEndpoint:
+    host: ${CONTROL_PLANE_ENDPOINT_IP}
+    port: ${CONTROL_PLANE_ENDPOINT_PORT=6443}
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+kind: KThreesControlPlane
+metadata:
+  name: ${CLUSTER_NAME}-control-plane
+  namespace: default
+spec:
+  infrastructureTemplate:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+    kind: NutanixMachineTemplate
+    name: ${CLUSTER_NAME}-control-plane
+  kthreesConfigSpec:
+    files:
+      - content: |
+          apiVersion: v1
+          kind: ServiceAccount
+          metadata:
+            name: kube-vip
+            namespace: kube-system
+          ---
+          apiVersion: rbac.authorization.k8s.io/v1
+          kind: ClusterRole
+          metadata:
+            annotations:
+              rbac.authorization.kubernetes.io/autoupdate: "true"
+            name: system:kube-vip-role
+          rules:
+            - apiGroups: [""]
+              resources: ["services", "services/status", "nodes", "endpoints"]
+              verbs: ["list","get","watch", "update"]
+            - apiGroups: ["coordination.k8s.io"]
+              resources: ["leases"]
+              verbs: ["list", "get", "watch", "update", "create"]
+          ---
+          kind: ClusterRoleBinding
+          apiVersion: rbac.authorization.k8s.io/v1
+          metadata:
+            name: system:kube-vip-binding
+          roleRef:
+            apiGroup: rbac.authorization.k8s.io
+            kind: ClusterRole
+            name: system:kube-vip-role
+          subjects:
+          - kind: ServiceAccount
+            name: kube-vip
+            namespace: kube-system
+          ---
+          apiVersion: apps/v1
+          kind: DaemonSet
+          metadata:
+            labels:
+              app.kubernetes.io/name: kube-vip-ds
+              app.kubernetes.io/version: v0.5.7
+            name: kube-vip-ds
+            namespace: kube-system
+          spec:
+            selector:
+              matchLabels:
+                app.kubernetes.io/name: kube-vip-ds
+            template:
+              metadata:
+                creationTimestamp: null
+                labels:
+                  app.kubernetes.io/name: kube-vip-ds
+                  app.kubernetes.io/version: v0.5.7
+              spec:
+                affinity:
+                  nodeAffinity:
+                    requiredDuringSchedulingIgnoredDuringExecution:
+                      nodeSelectorTerms:
+                      - matchExpressions:
+                        - key: node-role.kubernetes.io/master
+                          operator: Exists
+                      - matchExpressions:
+                        - key: node-role.kubernetes.io/control-plane
+                          operator: Exists
+                containers:
+                - args:
+                  - manager
+                  env:
+                  - name: vip_arp
+                    value: "true"
+                  - name: port
+                    value: "${CONTROL_PLANE_ENDPOINT_PORT=6443}"
+                  - name: vip_cidr
+                    value: "32"
+                  - name: cp_enable
+                    value: "true"
+                  - name: cp_namespace
+                    value: kube-system
+                  - name: vip_ddns
+                    value: "false"
+                  - name: vip_leaderelection
+                    value: "true"
+                  - name: vip_leaseduration
+                    value: "5"
+                  - name: vip_renewdeadline
+                    value: "3"
+                  - name: vip_retryperiod
+                    value: "1"
+                  - name: address
+                    value: "${CONTROL_PLANE_ENDPOINT_IP}"
+                  - name: prometheus_server
+                    value: :2112
+                  image: ghcr.io/kube-vip/kube-vip:v0.5.7
+                  imagePullPolicy: Always
+                  name: kube-vip
+                  resources: {}
+                  securityContext:
+                    capabilities:
+                      add:
+                      - NET_ADMIN
+                      - NET_RAW
+                hostNetwork: true
+                serviceAccountName: kube-vip
+                tolerations:
+                - effect: NoSchedule
+                  operator: Exists
+                - effect: NoExecute
+                  operator: Exists
+            updateStrategy: {}
+        owner: root:root
+        path: /var/lib/rancher/k3s/server/manifests/kube-vip.yaml
+  replicas: ${CONTROL_PLANE_MACHINE_COUNT=1}
+  version: v1.24.8+k3s1
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: NutanixMachineTemplate
+metadata:
+  name: ${CLUSTER_NAME}-control-plane
+spec:
+  template:
+    spec:
+      bootType: legacy
+      cluster:
+        name: ${NUTANIX_PRISM_ELEMENT_CLUSTER_NAME}
+        type: name
+      image:
+        name: ${NUTANIX_MACHINE_TEMPLATE_IMAGE_NAME}
+        type: name
+      memorySize: ${NUTANIX_MACHINE_MEMORY_SIZE=4Gi}
+      providerID: nutanix://${CLUSTER_NAME}-m0
+      subnet:
+        - name: ${NUTANIX_SUBNET_NAME}
+          type: name
+      systemDiskSize: ${NUTANIX_SYSTEMDISK_SIZE=40Gi}
+      vcpuSockets: ${NUTANIX_MACHINE_VCPU_SOCKET=2}
+      vcpusPerSocket: ${NUTANIX_MACHINE_VCPU_PER_SOCKET=1}
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: MachineDeployment
+metadata:
+  name: ${CLUSTER_NAME}-md-0
+spec:
+  clusterName: ${CLUSTER_NAME}
+  replicas: ${WORKER_MACHINE_COUNT}
+  selector:
+    matchLabels: {}
+  template:
+    spec:
+      bootstrap:
+        configRef:
+          apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+          kind: KThreesConfigTemplate
+          name: ${CLUSTER_NAME}-md-0
+      clusterName: ${CLUSTER_NAME}
+      infrastructureRef:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        kind: NutanixMachineTemplate
+        name: ${CLUSTER_NAME}-mt-0
+      version: v1.24.8+k3s1
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: NutanixMachineTemplate
+metadata:
+  name: ${CLUSTER_NAME}-mt-0
+spec:
+  template:
+    spec:
+      bootType: legacy
+      cluster:
+        name: cloud-prod
+        type: name
+      image:
+        name: ${NUTANIX_MACHINE_TEMPLATE_IMAGE_NAME}
+        type: name
+      memorySize: ${NUTANIX_MACHINE_MEMORY_SIZE=4Gi}
+      providerID: nutanix://${CLUSTER_NAME}-m1
+      subnet:
+        - name: ${NUTANIX_SUBNET_NAME}
+          type: name
+      systemDiskSize: ${NUTANIX_SYSTEMDISK_SIZE=40Gi}
+      vcpuSockets: ${NUTANIX_MACHINE_VCPU_SOCKET=2}
+      vcpusPerSocket: ${NUTANIX_MACHINE_VCPU_PER_SOCKET=1}
+
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+kind: KThreesConfigTemplate
+metadata:
+  name: ${CLUSTER_NAME}-md-0
+  namespace: default
+spec:
+  template:
+    spec:
