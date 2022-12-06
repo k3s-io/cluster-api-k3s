@@ -28,12 +28,15 @@ Three main pieces are
 
     * For more Azure information go to [CAPZ Getting Started](https://capz.sigs.k8s.io/topics/getting-started.html)
     * For more AWS information go to [CAPA Getting Started](https://cluster-api-aws.sigs.k8s.io/)
+    * For more Nutanix information go to [CAPX Getting Started](https://opendocs.nutanix.com/capx/latest/getting_started/)
 
-Cluster API k3s has been tested on AWS, Azure, and AzureStackHCI environments. 
+Cluster API k3s has been tested on AWS, Azure, AzureStackHCI and Nutanix environments. 
 
 To try out the Azure flow, fork the repo and look at `samples/azure/azure-setup.sh`.
 
 To try out the AWS flow, fork the repo and look at `samples/aws/aws-setup.sh`.
+
+To try out the Nutanix flow, fork the repo and look at `samples/nutanix/nutanix-setup.sh`.
 
 ### Known Issues
 
