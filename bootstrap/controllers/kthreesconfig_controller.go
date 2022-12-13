@@ -183,7 +183,7 @@ func (r *KThreesConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	case configOwner.DataSecretName() != nil && (!config.Status.Ready || config.Status.DataSecretName == nil):
 		config.Status.Ready = true
 		config.Status.DataSecretName = configOwner.DataSecretName()
-		//conditions.MarkTrue(config, bootstrapv1.DataSecretAvailableCondition)
+		conditions.MarkTrue(config, bootstrapv1.DataSecretAvailableCondition)
 		return ctrl.Result{}, nil
 	// Status is ready means a config has been generated.
 	case config.Status.Ready:
@@ -594,7 +594,7 @@ func (r *KThreesConfigReconciler) storeBootstrapData(ctx context.Context, scope 
 
 	scope.Config.Status.DataSecretName = pointer.StringPtr(secret.Name)
 	scope.Config.Status.Ready = true
-	//	conditions.MarkTrue(scope.Config, bootstrapv1.DataSecretAvailableCondition)
+	conditions.MarkTrue(scope.Config, bootstrapv1.DataSecretAvailableCondition)
 	return nil
 }
 
