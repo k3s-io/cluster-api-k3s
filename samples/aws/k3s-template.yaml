@@ -32,6 +32,9 @@ spec:
       availabilityZoneUsageLimit: 1
   region: ${AWS_REGION}
   sshKeyName: ${AWS_SSH_KEY_NAME}
+  controlPlaneLoadBalancer:
+    # k3s creates elliptic-curve keypair by default but ELB healthcheck TLS client doesn't support it.
+    healthCheckProtocol: TCP
 ---
 apiVersion: controlplane.cluster.x-k8s.io/v1beta1
 kind: KThreesControlPlane
