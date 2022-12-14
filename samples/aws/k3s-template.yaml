@@ -30,6 +30,12 @@ spec:
   network:
     vpc:
       availabilityZoneUsageLimit: 1
+    cni:
+      cniIngressRules:
+      - description: flannel
+        fromPort: 8472
+        protocol: udp
+        toPort: 8472
   region: ${AWS_REGION}
   sshKeyName: ${AWS_SSH_KEY_NAME}
   controlPlaneLoadBalancer:
@@ -47,6 +53,9 @@ spec:
     kind: AWSMachineTemplate
     name: ${CLUSTER_NAME}-control-plane
   kthreesConfigSpec:
+    disableComponents:
+      # not needed since we're using AWS load balancer (ccm: external)
+      - servicelb
     agentConfig:
       nodeName: "{{ ds.meta_data.local_hostname }}"
   replicas: 1
