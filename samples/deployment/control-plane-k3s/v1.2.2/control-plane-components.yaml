@@ -370,7 +370,7 @@ spec:
                 type: string
               initialized:
                 description: Initialized denotes whether or not the k3s server is
-                  up.
+                  initialized.
                 type: boolean
               observedGeneration:
                 description: ObservedGeneration is the latest generation observed
@@ -653,7 +653,7 @@ spec:
         - --enable-leader-election
         command:
         - /manager
-        image: ghcr.io/zawachte/cluster-api-k3s/controlplane-controller:v0.1.4
+        image: ghcr.io/zawachte/cluster-api-k3s/controlplane-controller:v0.1.5
         name: manager
         resources:
           limits:

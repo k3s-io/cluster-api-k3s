@@ -743,6 +743,6 @@ spec:
         - --enable-leader-election
         command:
         - /manager
-        image: ghcr.io/zawachte/cluster-api-k3s/bootstrap-controller:v0.1.4
+        image: ghcr.io/zawachte/cluster-api-k3s/bootstrap-controller:v0.1.5
         name: manager
       terminationGracePeriodSeconds: 10
