@@ -1,0 +1,36 @@
+[
+    {
+      "name": "k3s-control-plane",
+      "config": {
+        "context": "controlplane",
+        "image": "ghcr.io/cluster-api-provider-k3s/cluster-api-k3s/cluster-api-provider-k3s-controlplane:dev",
+        "live_reload_deps": [
+          "main.go",
+          "api",
+          "controllers",
+          "../pkg",
+          "../go.mod",
+          "../go.sum"
+        ],
+        "label": "CACP3",
+        "kustomize_config": true
+      }
+    },
+    {
+        "name": "k3s-bootstrap",
+        "config": {
+          "context": "bootstrap",
+          "image": "ghcr.io/cluster-api-provider-k3s/cluster-api-k3s/cluster-api-provider-k3s-bootstrap:dev",
+          "live_reload_deps": [
+            "main.go",
+            "api",
+            "controllers",
+            "../pkg",
+            "../go.mod",
+            "../go.sum"
+          ],
+          "label": "CABP3",
+        "kustomize_config": true
+        }
+      }
+]

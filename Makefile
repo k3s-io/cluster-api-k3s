@@ -20,10 +20,10 @@ TOOLS_BIN_DIR := $(abspath $(BIN_DIR))
 
 
 # Image URL to use all building/pushing image targets
-BOOTSTRAP_IMG ?= ghcr.io/zawachte/cluster-api-k3s/bootstrap-controller:v0.1.5
+BOOTSTRAP_IMG ?= ghcr.io/cluster-api-provider-k3s/cluster-api-k3s/cluster-api-provider-k3s-controlplane:v0.1.5
 
 # Image URL to use all building/pushing image targets
-CONTROLPLANE_IMG ?= ghcr.io/zawachte/cluster-api-k3s/controlplane-controller:v0.1.5
+CONTROLPLANE_IMG ?= ghcr.io/cluster-api-provider-k3s/cluster-api-k3s/cluster-api-provider-k3s-controlplane:v0.1.5
 
 
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
