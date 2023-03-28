@@ -1,0 +1,24 @@
+- name: k3s-bootstrap
+  config:
+    context: bootstrap
+    image: ghcr.io/zawachte/cluster-api-k3s/bootstrap-controller
+    live_reload_deps:
+      - main.go
+      - api
+      - controllers
+      - ../go.mod
+      - ../go.sum
+      - ../pkg
+    label: CABP3
+- name: k3s-control-plane
+  config:
+    context: controlplane
+    image: ghcr.io/zawachte/cluster-api-k3s/controlplane-controller
+    live_reload_deps:
+      - main.go
+      - api
+      - controllers
+      - ../go.mod
+      - ../go.sum
+      - ../pkg
+    label: CACP3
