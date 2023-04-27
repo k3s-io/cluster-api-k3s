@@ -2,8 +2,9 @@ package k3s
 
 import (
 	"fmt"
-	bootstrapv1 "github.com/zawachte/cluster-api-k3s/bootstrap/api/v1beta1"
 	"strings"
+
+	bootstrapv1 "github.com/zawachte/cluster-api-k3s/bootstrap/api/v1beta1"
 )
 
 const DefaultK3sConfigLocation = "/etc/rancher/k3s/config.yaml"
@@ -30,8 +31,8 @@ type K3sAgentConfig struct {
 	Token           string   `json:"token,omitempty"`
 	Server          string   `json:"server,omitempty"`
 	KubeletArgs     []string `json:"kubelet-arg,omitempty"`
-	NodeLabels      []string `json:"node-labels,omitempty"`
-	NodeTaints      []string `json:"node-taints,omitempty"`
+	NodeLabels      []string `json:"node-label,omitempty"`
+	NodeTaints      []string `json:"node-taint,omitempty"`
 	PrivateRegistry string   `json:"private-registry,omitempty"`
 	KubeProxyArgs   []string `json:"kube-proxy-arg,omitempty"`
 	NodeName        string   `json:"node-name,omitempty"`
