@@ -28,7 +28,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	"sigs.k8s.io/controller-runtime/pkg/envtest/printer"
 
-	controlplanev1beta1 "github.com/zawachte/cluster-api-k3s/controlplane/api/v1beta1"
+	controlplanev1beta1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/controlplane/api/v1beta1"
 	// +kubebuilder:scaffold:imports
 )
 

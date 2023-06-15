@@ -21,8 +21,8 @@ import (
 	"strings"
 	"text/template"
 
+	bootstrapv1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/bootstrap/api/v1beta1"
 	"github.com/pkg/errors"
-	bootstrapv1 "github.com/zawachte/cluster-api-k3s/bootstrap/api/v1beta1"
 )
 
 var (

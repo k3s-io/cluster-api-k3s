@@ -9,7 +9,7 @@ import (
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/controllers/remote"
 
-	"github.com/zawachte/cluster-api-k3s/pkg/machinefilters"
+	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/machinefilters"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"

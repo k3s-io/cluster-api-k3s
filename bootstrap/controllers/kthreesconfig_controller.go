@@ -29,13 +29,13 @@ import (
 
 	"time"
 
+	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/k3s"
+	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/kubeconfig"
+	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/locking"
+	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/secret"
+	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/token"
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
-	"github.com/zawachte/cluster-api-k3s/pkg/k3s"
-	"github.com/zawachte/cluster-api-k3s/pkg/kubeconfig"
-	"github.com/zawachte/cluster-api-k3s/pkg/locking"
-	"github.com/zawachte/cluster-api-k3s/pkg/secret"
-	"github.com/zawachte/cluster-api-k3s/pkg/token"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -50,8 +50,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	bootstrapv1 "github.com/zawachte/cluster-api-k3s/bootstrap/api/v1beta1"
-	"github.com/zawachte/cluster-api-k3s/pkg/cloudinit"
+	bootstrapv1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/bootstrap/api/v1beta1"
+	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/cloudinit"
 )
 
 // InitLocker is a lock that is used around k3s init

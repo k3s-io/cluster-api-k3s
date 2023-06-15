@@ -21,12 +21,12 @@ import (
 	"encoding/json"
 	"strings"
 
+	bootstrapv1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/bootstrap/api/v1beta1"
+	controlplanev1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/controlplane/api/v1beta1"
 	"github.com/pkg/errors"
-	bootstrapv1 "github.com/zawachte/cluster-api-k3s/bootstrap/api/v1beta1"
-	controlplanev1 "github.com/zawachte/cluster-api-k3s/controlplane/api/v1beta1"
 
-	k3s "github.com/zawachte/cluster-api-k3s/pkg/k3s"
-	"github.com/zawachte/cluster-api-k3s/pkg/machinefilters"
+	k3s "github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/k3s"
+	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/machinefilters"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

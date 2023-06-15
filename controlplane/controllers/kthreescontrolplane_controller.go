@@ -31,10 +31,10 @@ import (
 
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 
+	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/kubeconfig"
+	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/secret"
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
-	"github.com/zawachte/cluster-api-k3s/pkg/kubeconfig"
-	"github.com/zawachte/cluster-api-k3s/pkg/secret"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
@@ -54,9 +54,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	controlplanev1 "github.com/zawachte/cluster-api-k3s/controlplane/api/v1beta1"
-	k3s "github.com/zawachte/cluster-api-k3s/pkg/k3s"
-	"github.com/zawachte/cluster-api-k3s/pkg/machinefilters"
+	controlplanev1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/controlplane/api/v1beta1"
+	k3s "github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/k3s"
+	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/machinefilters"
 )
 
 // KThreesControlPlaneReconciler reconciles a KThreesControlPlane object
