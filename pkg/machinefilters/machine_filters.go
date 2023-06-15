@@ -17,14 +17,14 @@ limitations under the License.
 package machinefilters
 
 import (
-	bootstrapv1 "github.com/zawachte/cluster-api-k3s/bootstrap/api/v1beta1"
+	bootstrapv1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/bootstrap/api/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 
-	controlplanev1 "github.com/zawachte/cluster-api-k3s/controlplane/api/v1beta1"
+	controlplanev1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/controlplane/api/v1beta1"
 
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/conditions"

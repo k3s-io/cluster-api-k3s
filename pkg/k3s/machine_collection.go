@@ -32,7 +32,7 @@ import (
 
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 
-	"github.com/zawachte/cluster-api-k3s/pkg/machinefilters"
+	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/machinefilters"
 
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/conditions"

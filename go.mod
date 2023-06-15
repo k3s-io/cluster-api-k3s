@@ -1,4 +1,4 @@
-module github.com/zawachte/cluster-api-k3s
+module github.com/cluster-api-provider-k3s/cluster-api-k3s
 
 go 1.13
 

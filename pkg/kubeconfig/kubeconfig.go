@@ -16,7 +16,7 @@ import (
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/certs"
 
-	"github.com/zawachte/cluster-api-k3s/pkg/secret"
+	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/secret"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )

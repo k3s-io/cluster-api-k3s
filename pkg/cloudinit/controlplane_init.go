@@ -19,7 +19,7 @@ package cloudinit
 import (
 	"fmt"
 
-	"github.com/zawachte/cluster-api-k3s/pkg/secret"
+	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/secret"
 )
 
 const (

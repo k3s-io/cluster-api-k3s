@@ -27,10 +27,10 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	controlplanev1beta1 "github.com/zawachte/cluster-api-k3s/controlplane/api/v1beta1"
-	"github.com/zawachte/cluster-api-k3s/controlplane/controllers"
+	controlplanev1beta1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/controlplane/api/v1beta1"
+	"github.com/cluster-api-provider-k3s/cluster-api-k3s/controlplane/controllers"
 
-	bootstrapv1beta1 "github.com/zawachte/cluster-api-k3s/bootstrap/api/v1beta1"
+	bootstrapv1beta1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/bootstrap/api/v1beta1"
 	clusterv1beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	expv1beta1 "sigs.k8s.io/cluster-api/exp/api/v1beta1"
 	// +kubebuilder:scaffold:imports

@@ -1,4 +1,4 @@
-GO_VERSION ?= 1.19.0
+GO_VERSION ?= 1.20.0
 GO_CONTAINER_IMAGE ?= docker.io/library/golang:$(GO_VERSION)
 
 ARCH ?= $(shell go env GOARCH)
@@ -20,10 +20,10 @@ TOOLS_BIN_DIR := $(abspath $(BIN_DIR))
 
 
 # Image URL to use all building/pushing image targets
-BOOTSTRAP_IMG ?= ghcr.io/zawachte/cluster-api-k3s/bootstrap-controller:v0.1.5
+BOOTSTRAP_IMG ?= ghcr.io/cluster-api-provider-k3s/cluster-api-k3s/bootstrap-controller:v0.2.0
 
 # Image URL to use all building/pushing image targets
-CONTROLPLANE_IMG ?= ghcr.io/zawachte/cluster-api-k3s/controlplane-controller:v0.1.5
+CONTROLPLANE_IMG ?= ghcr.io/cluster-api-provider-k3s/cluster-api-k3s/controlplane-controller:v0.2.0
 
 
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
@@ -38,7 +38,7 @@ endif
 
 CONTROLLER_GEN_BIN = controller-gen
 CONTROLLER_GEN_PKG = "sigs.k8s.io/controller-tools/cmd/controller-gen"
-CONTROLLER_GEN_VER = "v0.8.0"
+CONTROLLER_GEN_VER = "v0.12.0"
 CONTROLLER_GEN := $(abspath $(TOOLS_BIN_DIR)/$(CONTROLLER_GEN_BIN)-$(CONTROLLER_GEN_VER))
 
 .PHONY: controller-gen
