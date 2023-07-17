@@ -18,27 +18,17 @@ package controllers
 
 import (
 	"context"
+	"errors"
 	"fmt"
-
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/types"
-	kerrors "k8s.io/apimachinery/pkg/util/errors"
-	kubeyaml "sigs.k8s.io/yaml"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	"time"
 
-	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/k3s"
-	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/kubeconfig"
-	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/locking"
-	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/secret"
-	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/token"
 	"github.com/go-logr/logr"
-	"github.com/pkg/errors"
-
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/utils/pointer"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	bsutil "sigs.k8s.io/cluster-api/bootstrap/util"
@@ -46,21 +36,27 @@ import (
 	"sigs.k8s.io/cluster-api/util/annotations"
 	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/patch"
-
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	kubeyaml "sigs.k8s.io/yaml"
 
 	bootstrapv1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/bootstrap/api/v1beta1"
 	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/cloudinit"
+	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/k3s"
+	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/kubeconfig"
+	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/locking"
+	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/secret"
+	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/token"
 )
 
-// InitLocker is a lock that is used around k3s init
+// InitLocker is a lock that is used around k3s init.
 type InitLocker interface {
 	Lock(ctx context.Context, cluster *clusterv1.Cluster, machine *clusterv1.Machine) bool
 	Unlock(ctx context.Context, cluster *clusterv1.Cluster) bool
 }
 
-// KThreesConfigReconciler reconciles a KThreesConfig object
+// KThreesConfigReconciler reconciles a KThreesConfig object.
 type KThreesConfigReconciler struct {
 	client.Client
 	Log             logr.Logger
@@ -75,29 +71,34 @@ type Scope struct {
 	Cluster     *clusterv1.Cluster
 }
 
+var (
+	ErrInvalidRef   = errors.New("invalid reference")
+	ErrFailedUnlock = errors.New("failed to unlock the k3s init lock")
+)
+
 // +kubebuilder:rbac:groups=bootstrap.cluster.x-k8s.io,resources=kthreesconfigs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=bootstrap.cluster.x-k8s.io,resources=kthreesconfigs/status,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters;clusters/status;machines;machines/status,verbs=get;list;watch
 // +kubebuilder:rbac:groups=exp.cluster.x-k8s.io,resources=machinepools;machinepools/status,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=secrets;events;configmaps,verbs=get;list;watch;create;update;patch;delete
 
-func (r *KThreesConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, rerr error) {
+func (r *KThreesConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ reconcile.Result, rerr error) {
 	log := r.Log.WithValues("kthreesconfig", req.NamespacedName)
 
 	// Lookup the k3s config
 	config := &bootstrapv1.KThreesConfig{}
 	if err := r.Client.Get(ctx, req.NamespacedName, config); err != nil {
 		if apierrors.IsNotFound(err) {
-
 			return ctrl.Result{}, nil
 		}
+
 		log.Error(err, "Failed to get config")
 		return ctrl.Result{}, err
 	}
 
 	// Look up the owner of this KubeConfig if there is one
 	configOwner, err := bsutil.GetConfigOwner(ctx, r.Client, config)
-	if apierrors.IsNotFound(errors.Cause(err)) {
+	if apierrors.IsNotFound(err) {
 		// Could not find the owner yet, this is not an error and will rereconcile when the owner gets set.
 		return ctrl.Result{}, nil
 	}
@@ -114,12 +115,12 @@ func (r *KThreesConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	// Lookup the cluster the config owner is associated with
 	cluster, err := util.GetClusterByName(ctx, r.Client, configOwner.GetNamespace(), configOwner.ClusterName())
 	if err != nil {
-		if errors.Cause(err) == util.ErrNoCluster {
+		if errors.Is(err, util.ErrNoCluster) {
 			log.Info(fmt.Sprintf("%s does not belong to a cluster yet, waiting until it's part of a cluster", configOwner.GetKind()))
 			return ctrl.Result{}, nil
 		}
 
-		if apierrors.IsNotFound(errors.Cause(err)) {
+		if apierrors.IsNotFound(err) {
 			log.Info("Cluster does not exist yet, waiting until it is created")
 			return ctrl.Result{}, nil
 		}
@@ -204,39 +205,37 @@ func (r *KThreesConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	// it's a control plane join
 	if configOwner.IsControlPlaneMachine() {
-		return r.joinControlplane(ctx, scope)
+		return reconcile.Result{}, r.joinControlplane(ctx, scope)
 	}
 
 	// It's a worker join
-	return r.joinWorker(ctx, scope)
-
+	return reconcile.Result{}, r.joinWorker(ctx, scope)
 }
 
-func (r *KThreesConfigReconciler) joinControlplane(ctx context.Context, scope *Scope) (_ ctrl.Result, reterr error) {
-
+func (r *KThreesConfigReconciler) joinControlplane(ctx context.Context, scope *Scope) error {
 	machine := &clusterv1.Machine{}
 	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(scope.ConfigOwner.Object, machine); err != nil {
-		return ctrl.Result{}, errors.Wrapf(err, "cannot convert %s to Machine", scope.ConfigOwner.GetKind())
+		return fmt.Errorf("cannot convert %s to Machine: %w", scope.ConfigOwner.GetKind(), err)
 	}
 
 	// injects into config.Version values from top level object
 	r.reconcileTopLevelObjectSettings(scope.Cluster, machine, scope.Config)
 
-	serverUrl := fmt.Sprintf("https://%s", scope.Cluster.Spec.ControlPlaneEndpoint.String())
+	serverURL := fmt.Sprintf("https://%s", scope.Cluster.Spec.ControlPlaneEndpoint.String())
 
 	tokn, err := r.retrieveToken(ctx, scope)
 	if err != nil {
 		conditions.MarkFalse(scope.Config, bootstrapv1.DataSecretAvailableCondition, bootstrapv1.DataSecretGenerationFailedReason, clusterv1.ConditionSeverityWarning, err.Error())
-		return ctrl.Result{}, err
+		return err
 	}
 
-	configStruct := k3s.GenerateJoinControlPlaneConfig(serverUrl, tokn,
+	configStruct := k3s.GenerateJoinControlPlaneConfig(serverURL, tokn,
 		scope.Cluster.Spec.ControlPlaneEndpoint.Host,
 		scope.Config.Spec.ServerConfig,
 		scope.Config.Spec.AgentConfig)
 	b, err := kubeyaml.Marshal(configStruct)
 	if err != nil {
-		return ctrl.Result{}, err
+		return err
 	}
 
 	workerConfigFile := bootstrapv1.File{
@@ -249,7 +248,7 @@ func (r *KThreesConfigReconciler) joinControlplane(ctx context.Context, scope *S
 	files, err := r.resolveFiles(ctx, scope.Config)
 	if err != nil {
 		conditions.MarkFalse(scope.Config, bootstrapv1.DataSecretAvailableCondition, bootstrapv1.DataSecretGenerationFailedReason, clusterv1.ConditionSeverityWarning, err.Error())
-		return ctrl.Result{}, err
+		return err
 	}
 
 	cpInput := &cloudinit.ControlPlaneInput{
@@ -264,39 +263,38 @@ func (r *KThreesConfigReconciler) joinControlplane(ctx context.Context, scope *S
 
 	cloudInitData, err := cloudinit.NewJoinControlPlane(cpInput)
 	if err != nil {
-		return ctrl.Result{}, err
+		return err
 	}
 
 	if err := r.storeBootstrapData(ctx, scope, cloudInitData); err != nil {
 		scope.Error(err, "Failed to store bootstrap data")
-		return ctrl.Result{}, err
+		return err
 	}
-	return ctrl.Result{}, nil
+	return nil
 }
 
-func (r *KThreesConfigReconciler) joinWorker(ctx context.Context, scope *Scope) (_ ctrl.Result, reterr error) {
-
+func (r *KThreesConfigReconciler) joinWorker(ctx context.Context, scope *Scope) error {
 	machine := &clusterv1.Machine{}
 	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(scope.ConfigOwner.Object, machine); err != nil {
-		return ctrl.Result{}, errors.Wrapf(err, "cannot convert %s to Machine", scope.ConfigOwner.GetKind())
+		return fmt.Errorf("cannot convert %s to Machine: %w", scope.ConfigOwner.GetKind(), err)
 	}
 
 	// injects into config.Version values from top level object
 	r.reconcileTopLevelObjectSettings(scope.Cluster, machine, scope.Config)
 
-	serverUrl := fmt.Sprintf("https://%s", scope.Cluster.Spec.ControlPlaneEndpoint.String())
+	serverURL := fmt.Sprintf("https://%s", scope.Cluster.Spec.ControlPlaneEndpoint.String())
 
 	tokn, err := r.retrieveToken(ctx, scope)
 	if err != nil {
 		conditions.MarkFalse(scope.Config, bootstrapv1.DataSecretAvailableCondition, bootstrapv1.DataSecretGenerationFailedReason, clusterv1.ConditionSeverityWarning, err.Error())
-		return ctrl.Result{}, err
+		return err
 	}
 
-	configStruct := k3s.GenerateWorkerConfig(serverUrl, tokn, scope.Config.Spec.AgentConfig)
+	configStruct := k3s.GenerateWorkerConfig(serverURL, tokn, scope.Config.Spec.AgentConfig)
 
 	b, err := kubeyaml.Marshal(configStruct)
 	if err != nil {
-		return ctrl.Result{}, err
+		return err
 	}
 
 	workerConfigFile := bootstrapv1.File{
@@ -309,7 +307,7 @@ func (r *KThreesConfigReconciler) joinWorker(ctx context.Context, scope *Scope) 
 	files, err := r.resolveFiles(ctx, scope.Config)
 	if err != nil {
 		conditions.MarkFalse(scope.Config, bootstrapv1.DataSecretAvailableCondition, bootstrapv1.DataSecretGenerationFailedReason, clusterv1.ConditionSeverityWarning, err.Error())
-		return ctrl.Result{}, err
+		return err
 	}
 
 	winput := &cloudinit.WorkerInput{
@@ -324,15 +322,15 @@ func (r *KThreesConfigReconciler) joinWorker(ctx context.Context, scope *Scope) 
 
 	cloudInitData, err := cloudinit.NewWorker(winput)
 	if err != nil {
-		return ctrl.Result{}, err
+		return err
 	}
 
 	if err := r.storeBootstrapData(ctx, scope, cloudInitData); err != nil {
 		scope.Error(err, "Failed to store bootstrap data")
-		return ctrl.Result{}, err
+		return err
 	}
 
-	return ctrl.Result{}, nil
+	return nil
 }
 
 // resolveFiles maps .Spec.Files into cloudinit.Files, resolving any object references
@@ -345,7 +343,7 @@ func (r *KThreesConfigReconciler) resolveFiles(ctx context.Context, cfg *bootstr
 		if in.ContentFrom != nil {
 			data, err := r.resolveSecretFileContent(ctx, cfg.Namespace, in)
 			if err != nil {
-				return nil, errors.Wrapf(err, "failed to resolve file source")
+				return nil, fmt.Errorf("failed to resolve file source: %w", err)
 			}
 			in.ContentFrom = nil
 			in.Content = string(data)
@@ -362,13 +360,13 @@ func (r *KThreesConfigReconciler) resolveSecretFileContent(ctx context.Context, 
 	key := types.NamespacedName{Namespace: ns, Name: source.ContentFrom.Secret.Name}
 	if err := r.Client.Get(ctx, key, secret); err != nil {
 		if apierrors.IsNotFound(err) {
-			return nil, errors.Wrapf(err, "secret not found: %s", key)
+			return nil, fmt.Errorf("secret not found %s: %w", key, err)
 		}
-		return nil, errors.Wrapf(err, "failed to retrieve Secret %q", key)
+		return nil, fmt.Errorf("failed to retrieve Secret %q: %w", key, err)
 	}
 	data, ok := secret.Data[source.ContentFrom.Secret.Key]
 	if !ok {
-		return nil, errors.Errorf("secret references non-existent secret key: %q", source.ContentFrom.Secret.Key)
+		return nil, fmt.Errorf("secret references non-existent secret key %q: %w", source.ContentFrom.Secret.Key, ErrInvalidRef)
 	}
 	return data, nil
 }
@@ -383,13 +381,12 @@ func (r *KThreesConfigReconciler) handleClusterNotInitialized(ctx context.Contex
 
 	// if it's NOT a control plane machine, requeue
 	if !scope.ConfigOwner.IsControlPlaneMachine() {
-
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
 	machine := &clusterv1.Machine{}
 	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(scope.ConfigOwner.Object, machine); err != nil {
-		return ctrl.Result{}, errors.Wrapf(err, "cannot convert %s to Machine", scope.ConfigOwner.GetKind())
+		return ctrl.Result{}, fmt.Errorf("cannot convert %s to Machine: %w", scope.ConfigOwner.GetKind(), err)
 	}
 
 	// acquire the init lock so that only the first machine configured
@@ -404,7 +401,7 @@ func (r *KThreesConfigReconciler) handleClusterNotInitialized(ctx context.Contex
 	defer func() {
 		if reterr != nil {
 			if !r.KThreesInitLock.Unlock(ctx, scope.Cluster) {
-				reterr = kerrors.NewAggregate([]error{reterr, errors.New("failed to unlock the k3s init lock")})
+				reterr = kerrors.NewAggregate([]error{reterr, ErrFailedUnlock})
 			}
 		}
 	}()
@@ -434,7 +431,6 @@ func (r *KThreesConfigReconciler) handleClusterNotInitialized(ctx context.Contex
 
 	// TODO support k3s great feature of external backends.
 	// For now just use the etcd option
-
 	configStruct := k3s.GenerateInitControlPlaneConfig(
 		scope.Cluster.Spec.ControlPlaneEndpoint.Host,
 		token,
@@ -495,7 +491,7 @@ func (r *KThreesConfigReconciler) generateAndStoreToken(ctx context.Context, sco
 			Name:      token.Name(scope.Cluster.Name),
 			Namespace: scope.Config.Namespace,
 			Labels: map[string]string{
-				clusterv1.ClusterLabelName: scope.Cluster.Name,
+				clusterv1.ClusterNameLabel: scope.Cluster.Name,
 			},
 			OwnerReferences: []metav1.OwnerReference{
 				{
@@ -503,7 +499,7 @@ func (r *KThreesConfigReconciler) generateAndStoreToken(ctx context.Context, sco
 					Kind:       "KThreesConfig",
 					Name:       scope.Config.Name,
 					UID:        scope.Config.UID,
-					Controller: pointer.BoolPtr(true),
+					Controller: pointer.Bool(true),
 				},
 			},
 		},
@@ -517,11 +513,11 @@ func (r *KThreesConfigReconciler) generateAndStoreToken(ctx context.Context, sco
 	// it is possible that secret creation happens but the config.Status patches are not applied
 	if err := r.Client.Create(ctx, secret); err != nil {
 		if !apierrors.IsAlreadyExists(err) {
-			return "", errors.Wrapf(err, "failed to create token for KThreesConfig %s/%s", scope.Config.Namespace, scope.Config.Name)
+			return "", fmt.Errorf("failed to create token for KThreesConfig %s/%s: %w", scope.Config.Namespace, scope.Config.Name, err)
 		}
 		// r.Log.Info("bootstrap data secret for KThreesConfig already exists, updating", "secret", secret.Name, "KThreesConfig", scope.Config.Name)
 		if err := r.Client.Update(ctx, secret); err != nil {
-			return "", errors.Wrapf(err, "failed to update bootstrap token secret for KThreesConfig %s/%s", scope.Config.Namespace, scope.Config.Name)
+			return "", fmt.Errorf("failed to update bootstrap token secret for KThreesConfig %s/%s: %w", scope.Config.Namespace, scope.Config.Name, err)
 		}
 	}
 
@@ -529,7 +525,6 @@ func (r *KThreesConfigReconciler) generateAndStoreToken(ctx context.Context, sco
 }
 
 func (r *KThreesConfigReconciler) retrieveToken(ctx context.Context, scope *Scope) (string, error) {
-
 	secret := &corev1.Secret{}
 	obj := client.ObjectKey{
 		Namespace: scope.Config.Namespace,
@@ -537,14 +532,13 @@ func (r *KThreesConfigReconciler) retrieveToken(ctx context.Context, scope *Scop
 	}
 
 	if err := r.Client.Get(ctx, obj, secret); err != nil {
-		return "", errors.Wrapf(err, "failed to get token for KThreesConfig %s/%s", scope.Config.Namespace, scope.Config.Name)
+		return "", fmt.Errorf("failed to get token for KThreesConfig %s/%s: %w", scope.Config.Namespace, scope.Config.Name, err)
 	}
 
 	return string(secret.Data["value"]), nil
 }
 
 func (r *KThreesConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
-
 	if r.KThreesInitLock == nil {
 		r.KThreesInitLock = locking.NewControlPlaneInitMutex(ctrl.Log.WithName("init-locker"), mgr.GetClient())
 	}
@@ -562,7 +556,7 @@ func (r *KThreesConfigReconciler) storeBootstrapData(ctx context.Context, scope 
 			Name:      scope.Config.Name,
 			Namespace: scope.Config.Namespace,
 			Labels: map[string]string{
-				clusterv1.ClusterLabelName: scope.Cluster.Name,
+				clusterv1.ClusterNameLabel: scope.Cluster.Name,
 			},
 			OwnerReferences: []metav1.OwnerReference{
 				{
@@ -570,7 +564,7 @@ func (r *KThreesConfigReconciler) storeBootstrapData(ctx context.Context, scope 
 					Kind:       "KThreesConfig",
 					Name:       scope.Config.Name,
 					UID:        scope.Config.UID,
-					Controller: pointer.BoolPtr(true),
+					Controller: pointer.Bool(true),
 				},
 			},
 		},
@@ -584,15 +578,15 @@ func (r *KThreesConfigReconciler) storeBootstrapData(ctx context.Context, scope 
 	// it is possible that secret creation happens but the config.Status patches are not applied
 	if err := r.Client.Create(ctx, secret); err != nil {
 		if !apierrors.IsAlreadyExists(err) {
-			return errors.Wrapf(err, "failed to create bootstrap data secret for KThreesConfig %s/%s", scope.Config.Namespace, scope.Config.Name)
+			return fmt.Errorf("failed to create bootstrap data secret for KThreesConfig %s/%s: %w", scope.Config.Namespace, scope.Config.Name, err)
 		}
 		r.Log.Info("bootstrap data secret for KThreesConfig already exists, updating", "secret", secret.Name, "KThreesConfig", scope.Config.Name)
 		if err := r.Client.Update(ctx, secret); err != nil {
-			return errors.Wrapf(err, "failed to update bootstrap data secret for KThreesConfig %s/%s", scope.Config.Namespace, scope.Config.Name)
+			return fmt.Errorf("failed to update bootstrap data secret for KThreesConfig %s/%s: %w", scope.Config.Namespace, scope.Config.Name, err)
 		}
 	}
 
-	scope.Config.Status.DataSecretName = pointer.StringPtr(secret.Name)
+	scope.Config.Status.DataSecretName = pointer.String(secret.Name)
 	scope.Config.Status.Ready = true
 	conditions.MarkTrue(scope.Config, bootstrapv1.DataSecretAvailableCondition)
 	return nil
@@ -603,22 +597,22 @@ func (r *KThreesConfigReconciler) reconcileKubeconfig(ctx context.Context, scope
 
 	_, err := secret.Get(ctx, r.Client, util.ObjectKey(scope.Cluster), secret.Kubeconfig)
 	switch {
-	case apierrors.IsNotFound(errors.Cause(err)):
+	case apierrors.IsNotFound(err):
 		if err := kubeconfig.CreateSecret(ctx, r.Client, scope.Cluster); err != nil {
-			if err == kubeconfig.ErrDependentCertificateNotFound {
+			if errors.Is(err, kubeconfig.ErrDependentCertificateNotFound) {
 				logger.Info("could not find secret for cluster, requeuing", "secret", secret.ClusterCA)
 				return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 			}
 			return ctrl.Result{}, err
 		}
 	case err != nil:
-		return ctrl.Result{}, errors.Wrapf(err, "failed to retrieve Kubeconfig Secret for Cluster %q in namespace %q", scope.Cluster.Name, scope.Cluster.Namespace)
+		return ctrl.Result{}, fmt.Errorf("failed to retrieve Kubeconfig Secret for Cluster %q in namespace %q: %w", scope.Cluster.Name, scope.Cluster.Namespace, err)
 	}
 
 	return ctrl.Result{}, nil
 }
 
-func (r *KThreesConfigReconciler) reconcileTopLevelObjectSettings(cluster *clusterv1.Cluster, machine *clusterv1.Machine, config *bootstrapv1.KThreesConfig) {
+func (r *KThreesConfigReconciler) reconcileTopLevelObjectSettings(_ *clusterv1.Cluster, machine *clusterv1.Machine, config *bootstrapv1.KThreesConfig) {
 	log := r.Log.WithValues("kthreesconfig", fmt.Sprintf("%s/%s", config.Namespace, config.Name))
 
 	// If there are no Version settings defined in Config, use Version from machine, if defined

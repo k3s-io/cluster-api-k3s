@@ -15,7 +15,7 @@ type K3sServerConfig struct {
 	KubeControllerManagerArgs []string `json:"kube-controller-manager-arg,omitempty"`
 	TLSSan                    []string `json:"tls-san,omitempty"`
 	BindAddress               string   `json:"bind-address,omitempty"`
-	HttpsListenPort           string   `json:"https-listen-port,omitempty"`
+	HTTPSListenPort           string   `json:"https-listen-port,omitempty"`
 	AdvertiseAddress          string   `json:"advertise-address,omitempty"`
 	AdvertisePort             string   `json:"advertise-port,omitempty"`
 	ClusterCidr               string   `json:"cluster-cidr,omitempty"`
@@ -42,11 +42,11 @@ func GenerateInitControlPlaneConfig(controlPlaneEndpoint string, token string, s
 	k3sServerConfig := K3sServerConfig{
 		DisableCloudController:    true,
 		ClusterInit:               true,
-		KubeAPIServerArgs:         append(serverConfig.KubeAPIServerArgs, "anonymous-auth=true", getTlsCipherSuiteArg()),
+		KubeAPIServerArgs:         append(serverConfig.KubeAPIServerArgs, "anonymous-auth=true", getTLSCipherSuiteArg()),
 		TLSSan:                    append(serverConfig.TLSSan, controlPlaneEndpoint),
 		KubeControllerManagerArgs: append(serverConfig.KubeControllerManagerArgs, "cloud-provider=external"),
 		BindAddress:               serverConfig.BindAddress,
-		HttpsListenPort:           serverConfig.HttpsListenPort,
+		HTTPSListenPort:           serverConfig.HTTPSListenPort,
 		AdvertiseAddress:          serverConfig.AdvertiseAddress,
 		AdvertisePort:             serverConfig.AdvertisePort,
 		ClusterCidr:               serverConfig.ClusterCidr,
@@ -69,15 +69,14 @@ func GenerateInitControlPlaneConfig(controlPlaneEndpoint string, token string, s
 	return k3sServerConfig
 }
 
-func GenerateJoinControlPlaneConfig(serverUrl string, token string, controlplaneendpoint string, serverConfig bootstrapv1.KThreesServerConfig, agentConfig bootstrapv1.KThreesAgentConfig) K3sServerConfig {
-
+func GenerateJoinControlPlaneConfig(serverURL string, token string, controlplaneendpoint string, serverConfig bootstrapv1.KThreesServerConfig, agentConfig bootstrapv1.KThreesAgentConfig) K3sServerConfig {
 	k3sServerConfig := K3sServerConfig{
 		DisableCloudController:    true,
-		KubeAPIServerArgs:         append(serverConfig.KubeAPIServerArgs, "anonymous-auth=true", getTlsCipherSuiteArg()),
+		KubeAPIServerArgs:         append(serverConfig.KubeAPIServerArgs, "anonymous-auth=true", getTLSCipherSuiteArg()),
 		TLSSan:                    append(serverConfig.TLSSan, controlplaneendpoint),
 		KubeControllerManagerArgs: append(serverConfig.KubeControllerManagerArgs, "cloud-provider=external"),
 		BindAddress:               serverConfig.BindAddress,
-		HttpsListenPort:           serverConfig.HttpsListenPort,
+		HTTPSListenPort:           serverConfig.HTTPSListenPort,
 		AdvertiseAddress:          serverConfig.AdvertiseAddress,
 		AdvertisePort:             serverConfig.AdvertisePort,
 		ClusterCidr:               serverConfig.ClusterCidr,
@@ -89,7 +88,7 @@ func GenerateJoinControlPlaneConfig(serverUrl string, token string, controlplane
 
 	k3sServerConfig.K3sAgentConfig = K3sAgentConfig{
 		Token:           token,
-		Server:          serverUrl,
+		Server:          serverURL,
 		KubeletArgs:     append(agentConfig.KubeletArgs, "cloud-provider=external"),
 		NodeLabels:      agentConfig.NodeLabels,
 		NodeTaints:      agentConfig.NodeTaints,
@@ -101,9 +100,9 @@ func GenerateJoinControlPlaneConfig(serverUrl string, token string, controlplane
 	return k3sServerConfig
 }
 
-func GenerateWorkerConfig(serverUrl string, token string, agentConfig bootstrapv1.KThreesAgentConfig) K3sAgentConfig {
+func GenerateWorkerConfig(serverURL string, token string, agentConfig bootstrapv1.KThreesAgentConfig) K3sAgentConfig {
 	return K3sAgentConfig{
-		Server:          serverUrl,
+		Server:          serverURL,
 		Token:           token,
 		KubeletArgs:     append(agentConfig.KubeletArgs, "cloud-provider=external"),
 		NodeLabels:      agentConfig.NodeLabels,
@@ -114,8 +113,7 @@ func GenerateWorkerConfig(serverUrl string, token string, agentConfig bootstrapv
 	}
 }
 
-func getTlsCipherSuiteArg() string {
-
+func getTLSCipherSuiteArg() string {
 	/**
 	Can't use this method because k3s is using older apiserver pkgs that hardcode a subset of ciphers.
 	https://github.com/k3s-io/k3s/blob/master/vendor/k8s.io/component-base/cli/flag/ciphersuites_flag.go#L29

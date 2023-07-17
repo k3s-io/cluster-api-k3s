@@ -22,8 +22,7 @@ import (
 	"fmt"
 
 	"github.com/go-logr/logr"
-	"github.com/pkg/errors"
-	apicorev1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
@@ -46,7 +45,7 @@ func NewControlPlaneInitMutex(log logr.Logger, client client.Client) *ControlPla
 	}
 }
 
-// Lock allows a control plane node to be the first and only node to run k3s init
+// Lock allows a control plane node to be the first and only node to run k3s init.
 func (c *ControlPlaneInitMutex) Lock(ctx context.Context, cluster *clusterv1.Cluster, machine *clusterv1.Machine) bool {
 	sema := newSemaphore()
 	cmName := configMapName(cluster.Name)
@@ -61,13 +60,13 @@ func (c *ControlPlaneInitMutex) Lock(ctx context.Context, cluster *clusterv1.Clu
 	case err != nil:
 		log.Error(err, "Failed to acquire lock")
 		return false
-	default: // successfully found an existing config map
+	default: // successfully found an existing config map.
 		info, err := sema.information()
 		if err != nil {
 			log.Error(err, "Failed to get information about the existing lock")
 			return false
 		}
-		// the machine requesting the lock is the machine that created the lock, therefore the lock is acquired
+		// the machine requesting the lock is the machine that created the lock, therefore the lock is acquired.
 		if info.MachineName == machine.Name {
 			return true
 		}
@@ -75,9 +74,9 @@ func (c *ControlPlaneInitMutex) Lock(ctx context.Context, cluster *clusterv1.Clu
 		return false
 	}
 
-	// Adds owner reference, namespace and name
+	// Adds owner reference, namespace and name.
 	sema.setMetadata(cluster)
-	// Adds the additional information
+	// Adds the additional information.
 	if err := sema.setInformation(&information{MachineName: machine.Name}); err != nil {
 		log.Error(err, "Failed to acquire lock while setting semaphore information")
 		return false
@@ -97,7 +96,7 @@ func (c *ControlPlaneInitMutex) Lock(ctx context.Context, cluster *clusterv1.Clu
 	}
 }
 
-// Unlock releases the lock
+// Unlock releases the lock.
 func (c *ControlPlaneInitMutex) Unlock(ctx context.Context, cluster *clusterv1.Cluster) bool {
 	sema := newSemaphore()
 	cmName := configMapName(cluster.Name)
@@ -115,7 +114,7 @@ func (c *ControlPlaneInitMutex) Unlock(ctx context.Context, cluster *clusterv1.C
 		log.Error(err, "Error unlocking the control plane init lock")
 		return false
 	default:
-		// Delete the config map semaphore if there is no error fetching it
+		// Delete the config map semaphore if there is no error fetching it.
 		if err := c.client.Delete(ctx, sema.ConfigMap); err != nil {
 			if apierrors.IsNotFound(err) {
 				return true
@@ -132,11 +131,11 @@ type information struct {
 }
 
 type semaphore struct {
-	*apicorev1.ConfigMap
+	*corev1.ConfigMap
 }
 
 func newSemaphore() *semaphore {
-	return &semaphore{&apicorev1.ConfigMap{}}
+	return &semaphore{&corev1.ConfigMap{}}
 }
 
 func configMapName(clusterName string) string {
@@ -146,7 +145,7 @@ func configMapName(clusterName string) string {
 func (s semaphore) information() (*information, error) {
 	li := &information{}
 	if err := json.Unmarshal([]byte(s.Data[semaphoreInformationKey]), li); err != nil {
-		return nil, errors.Wrap(err, "failed to unmarshal semaphore information")
+		return nil, fmt.Errorf("failed to unmarshal semaphore information: %w", err)
 	}
 	return li, nil
 }
@@ -154,7 +153,7 @@ func (s semaphore) information() (*information, error) {
 func (s semaphore) setInformation(information *information) error {
 	b, err := json.Marshal(information)
 	if err != nil {
-		return errors.Wrap(err, "failed to marshal semaphore information")
+		return fmt.Errorf("failed to marshal semaphore information: %w", err)
 	}
 	s.Data = map[string]string{}
 	s.Data[semaphoreInformationKey] = string(b)
@@ -166,7 +165,7 @@ func (s *semaphore) setMetadata(cluster *clusterv1.Cluster) {
 		Namespace: cluster.Namespace,
 		Name:      configMapName(cluster.Name),
 		Labels: map[string]string{
-			clusterv1.ClusterLabelName: cluster.Name,
+			clusterv1.ClusterNameLabel: cluster.Name,
 		},
 		OwnerReferences: []metav1.OwnerReference{
 			{

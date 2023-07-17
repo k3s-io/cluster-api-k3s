@@ -18,10 +18,10 @@ package k3s
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
-	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/machinefilters"
 	"github.com/go-logr/logr"
-	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -29,14 +29,18 @@ import (
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apiserver/pkg/storage/names"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
-
-	bootstrapv1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/bootstrap/api/v1beta1"
-
-	controlplanev1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/controlplane/api/v1beta1"
 	"sigs.k8s.io/cluster-api/controllers/external"
-
 	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	bootstrapv1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/bootstrap/api/v1beta1"
+	controlplanev1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/controlplane/api/v1beta1"
+	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/machinefilters"
+)
+
+var (
+	ErrFailedToPickForDeletion   = errors.New("failed to pick machine to mark for deletion")
+	ErrFailedToCreatePatchHelper = errors.New("failed to create patch for machine")
 )
 
 // ControlPlane holds business logic around control planes.
@@ -71,7 +75,7 @@ func NewControlPlane(ctx context.Context, client client.Client, cluster *cluster
 	for _, machine := range ownedMachines {
 		patchHelper, err := patch.NewHelper(machine, client)
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to create patch helper for machine %s", machine.Name)
+			return nil, fmt.Errorf("machine: %s, %w", machine.Name, ErrFailedToCreatePatchHelper)
 		}
 		patchHelpers[machine.Name] = patchHelper
 	}
@@ -131,7 +135,7 @@ func (c *ControlPlane) MachineInFailureDomainWithMostMachines(machines Filterabl
 	machinesInFailureDomain := machines.Filter(machinefilters.InFailureDomains(fd))
 	machineToMark := machinesInFailureDomain.Oldest()
 	if machineToMark == nil {
-		return nil, errors.New("failed to pick control plane Machine to mark for deletion")
+		return nil, ErrFailedToPickForDeletion
 	}
 	return machineToMark, nil
 }
@@ -139,7 +143,7 @@ func (c *ControlPlane) MachineInFailureDomainWithMostMachines(machines Filterabl
 // MachineWithDeleteAnnotation returns a machine that has been annotated with DeleteMachineAnnotation key.
 func (c *ControlPlane) MachineWithDeleteAnnotation(machines FilterableMachineCollection) FilterableMachineCollection {
 	// See if there are any machines with DeleteMachineAnnotation key.
-	//annotatedMachines := machines.Filter(machinefilters.HasAnnotationKey(clusterv1.DeleteMachineAnnotation))
+	// annotatedMachines := machines.Filter(machinefilters.HasAnnotationKey(clusterv1.DeleteMachineAnnotation))
 	// If there are, return list of annotated machines.
 	return nil
 }
@@ -205,8 +209,8 @@ func (c *ControlPlane) GenerateKThreesConfig(spec *bootstrapv1.KThreesConfigSpec
 // ControlPlaneLabelsForCluster returns a set of labels to add to a control plane machine for this specific cluster.
 func ControlPlaneLabelsForCluster(clusterName string) map[string]string {
 	return map[string]string{
-		clusterv1.ClusterLabelName:             clusterName,
-		clusterv1.MachineControlPlaneLabelName: "",
+		clusterv1.ClusterNameLabel:             clusterName,
+		clusterv1.MachineControlPlaneNameLabel: "",
 	}
 }
 
@@ -274,10 +278,10 @@ func getInfraResources(ctx context.Context, cl client.Client, machines Filterabl
 	for _, m := range machines {
 		infraObj, err := external.Get(ctx, cl, &m.Spec.InfrastructureRef, m.Namespace)
 		if err != nil {
-			if apierrors.IsNotFound(errors.Cause(err)) {
+			if apierrors.IsNotFound(err) {
 				continue
 			}
-			return nil, errors.Wrapf(err, "failed to retrieve infra obj for machine %q", m.Name)
+			return nil, fmt.Errorf("failed to retrieve infra obj for machine %q, %w", m.Name, err)
 		}
 		result[m.Name] = infraObj
 	}
@@ -294,10 +298,10 @@ func getKThreesConfigs(ctx context.Context, cl client.Client, machines Filterabl
 		}
 		machineConfig := &bootstrapv1.KThreesConfig{}
 		if err := cl.Get(ctx, client.ObjectKey{Name: bootstrapRef.Name, Namespace: m.Namespace}, machineConfig); err != nil {
-			if apierrors.IsNotFound(errors.Cause(err)) {
+			if apierrors.IsNotFound(err) {
 				continue
 			}
-			return nil, errors.Wrapf(err, "failed to retrieve bootstrap config for machine %q", m.Name)
+			return nil, fmt.Errorf("failed to retrieve bootstrap config for machine %q: %w", m.Name, err)
 		}
 		result[m.Name] = machineConfig
 	}
@@ -333,11 +337,12 @@ func (c *ControlPlane) PatchMachines(ctx context.Context) error {
 				controlplanev1.MachineAgentHealthyCondition,
 				controlplanev1.MachineEtcdMemberHealthyCondition,
 			}}); err != nil {
-				errList = append(errList, errors.Wrapf(err, "failed to patch machine %s", machine.Name))
+				errList = append(errList, fmt.Errorf("failed to patch machine %s: %w", machine.Name, err))
 			}
 			continue
 		}
-		errList = append(errList, errors.Errorf("failed to get patch helper for machine %s", machine.Name))
+		errList = append(errList, fmt.Errorf("machine: %s, %w", machine.Name, ErrFailedToCreatePatchHelper))
 	}
+
 	return kerrors.NewAggregate(errList)
 }

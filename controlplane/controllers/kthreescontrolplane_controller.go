@@ -18,48 +18,41 @@ package controllers
 
 import (
 	"context"
+	"errors"
 	"fmt"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	"strings"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
-
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-
-	kerrors "k8s.io/apimachinery/pkg/util/errors"
-
-	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/kubeconfig"
-	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/secret"
 	"github.com/go-logr/logr"
-	"github.com/pkg/errors"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/client-go/tools/record"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/controllers/external"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/annotations"
-	"sigs.k8s.io/cluster-api/util/predicates"
-
 	"sigs.k8s.io/cluster-api/util/conditions"
-
 	"sigs.k8s.io/cluster-api/util/patch"
-
+	"sigs.k8s.io/cluster-api/util/predicates"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	controlplanev1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/controlplane/api/v1beta1"
 	k3s "github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/k3s"
+	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/kubeconfig"
 	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/machinefilters"
+	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/secret"
 )
 
-// KThreesControlPlaneReconciler reconciles a KThreesControlPlane object
+// KThreesControlPlaneReconciler reconciles a KThreesControlPlane object.
 type KThreesControlPlaneReconciler struct {
 	client.Client
 	Log        logr.Logger
@@ -71,14 +64,14 @@ type KThreesControlPlaneReconciler struct {
 	managementClusterUncached k3s.ManagementCluster
 }
 
-func (r *KThreesControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res ctrl.Result, reterr error) {
+func (r *KThreesControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := r.Log.WithValues("namespace", req.Namespace, "kthreesControlPlane", req.Name)
 
 	// Fetch the KThreesControlPlane instance.
 	kcp := &controlplanev1.KThreesControlPlane{}
 	if err := r.Client.Get(ctx, req.NamespacedName, kcp); err != nil {
 		if apierrors.IsNotFound(err) {
-			return ctrl.Result{}, nil
+			return reconcile.Result{}, nil
 		}
 		return ctrl.Result{Requeue: true}, nil
 	}
@@ -87,7 +80,7 @@ func (r *KThreesControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 	cluster, err := util.GetOwnerCluster(ctx, r.Client, kcp.ObjectMeta)
 	if err != nil {
 		logger.Error(err, "Failed to retrieve owner Cluster from the API Server")
-		return ctrl.Result{}, err
+		return reconcile.Result{}, err
 	}
 	if cluster == nil {
 		logger.Info("Cluster Controller has not yet set OwnerRef")
@@ -97,12 +90,12 @@ func (r *KThreesControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 
 	if annotations.IsPaused(cluster, kcp) {
 		logger.Info("Reconciliation is paused for this object")
-		return ctrl.Result{}, nil
+		return reconcile.Result{}, nil
 	}
 
 	// Wait for the cluster infrastructure to be ready before creating machines
 	if !cluster.Status.InfrastructureReady {
-		return ctrl.Result{}, nil
+		return reconcile.Result{}, nil
 	}
 
 	// Initialize the patch helper.
@@ -120,53 +113,53 @@ func (r *KThreesControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 		// because the main defer may take too much time to get cluster status
 		// Patch ObservedGeneration only if the reconciliation completed successfully
 		patchOpts := []patch.Option{}
-		if reterr == nil {
+		if err == nil {
 			patchOpts = append(patchOpts, patch.WithStatusObservedGeneration{})
 		}
 		if err := patchHelper.Patch(ctx, kcp, patchOpts...); err != nil {
 			logger.Error(err, "Failed to patch KThreesControlPlane to add finalizer")
-			return ctrl.Result{}, err
+			return reconcile.Result{}, err
 		}
 
-		return ctrl.Result{}, nil
+		return reconcile.Result{}, nil
 	}
 
-	defer func() {
-
-		// Always attempt to update status.
-		if err := r.updateStatus(ctx, kcp, cluster); err != nil {
-			var connFailure *k3s.RemoteClusterConnectionError
-			if errors.As(err, &connFailure) {
-				logger.Info("Could not connect to workload cluster to fetch status", "err", err.Error())
-			} else {
-				logger.Error(err, "Failed to update KThreesControlPlane Status")
-				reterr = kerrors.NewAggregate([]error{reterr, err})
-			}
-		}
-
-		// Always attempt to Patch the KThreesControlPlane object and status after each reconciliation.
-		if err := patchKThreesControlPlane(ctx, patchHelper, kcp); err != nil {
-			logger.Error(err, "Failed to patch KThreesControlPlane")
-			reterr = kerrors.NewAggregate([]error{reterr, err})
-		}
-
-		// TODO: remove this as soon as we have a proper remote cluster cache in place.
-		// Make KCP to requeue in case status is not ready, so we can check for node status without waiting for a full resync (by default 10 minutes).
-		// Only requeue if we are not going in exponential backoff due to error, or if we are not already re-queueing, or if the object has a deletion timestamp.
-		if reterr == nil && !res.Requeue && !(res.RequeueAfter > 0) && kcp.ObjectMeta.DeletionTimestamp.IsZero() {
-			if !kcp.Status.Ready {
-				res = ctrl.Result{RequeueAfter: 20 * time.Second}
-			}
-		}
-	}()
-
+	var res ctrl.Result
 	if !kcp.ObjectMeta.DeletionTimestamp.IsZero() {
 		// Handle deletion reconciliation loop.
-		return r.reconcileDelete(ctx, cluster, kcp)
+		res, err = r.reconcileDelete(ctx, cluster, kcp)
+	} else {
+		// Handle normal reconciliation loop.
+		res, err = r.reconcile(ctx, cluster, kcp)
 	}
 
-	// Handle normal reconciliation loop.
-	return r.reconcile(ctx, cluster, kcp)
+	// Always attempt to update status.
+	if updateErr := r.updateStatus(ctx, kcp, cluster); updateErr != nil {
+		var connFailure *k3s.RemoteClusterConnectionError
+		if errors.As(err, &connFailure) {
+			logger.Info("Could not connect to workload cluster to fetch status", "err", updateErr.Error())
+		} else {
+			logger.Error(err, "Failed to update KThreesControlPlane Status")
+			err = kerrors.NewAggregate([]error{err, updateErr})
+		}
+	}
+
+	// Always attempt to Patch the KThreesControlPlane object and status after each reconciliation.
+	if patchErr := patchKThreesControlPlane(ctx, patchHelper, kcp); patchErr != nil {
+		logger.Error(err, "Failed to patch KThreesControlPlane")
+		err = kerrors.NewAggregate([]error{err, patchErr})
+	}
+
+	// TODO: remove this as soon as we have a proper remote cluster cache in place.
+	// Make KCP to requeue in case status is not ready, so we can check for node status without waiting for a full resync (by default 10 minutes).
+	// Only requeue if we are not going in exponential backoff due to error, or if we are not already re-queueing, or if the object has a deletion timestamp.
+	if err == nil && !res.Requeue && !(res.RequeueAfter > 0) && kcp.ObjectMeta.DeletionTimestamp.IsZero() {
+		if !kcp.Status.Ready {
+			res = ctrl.Result{RequeueAfter: 20 * time.Second}
+		}
+	}
+
+	return res, err
 }
 
 // reconcileDelete handles KThreesControlPlane deletion.
@@ -179,25 +172,25 @@ func (r *KThreesControlPlaneReconciler) reconcileDelete(ctx context.Context, clu
 	// Gets all machines, not just control plane machines.
 	allMachines, err := r.managementCluster.GetMachinesForCluster(ctx, util.ObjectKey(cluster))
 	if err != nil {
-		return ctrl.Result{}, err
+		return reconcile.Result{}, err
 	}
 	ownedMachines := allMachines.Filter(machinefilters.OwnedMachines(kcp))
 
 	// If no control plane machines remain, remove the finalizer
 	if len(ownedMachines) == 0 {
 		controllerutil.RemoveFinalizer(kcp, controlplanev1.KThreesControlPlaneFinalizer)
-		return ctrl.Result{}, nil
+		return reconcile.Result{}, nil
 	}
 
 	controlPlane, err := k3s.NewControlPlane(ctx, r.Client, cluster, kcp, ownedMachines)
 	if err != nil {
 		logger.Error(err, "failed to initialize control plane")
-		return ctrl.Result{}, err
+		return reconcile.Result{}, err
 	}
 
 	// Updates conditions reporting the status of static pods and the status of the etcd cluster.
 	// NOTE: Ignoring failures given that we are deleting
-	if _, err := r.reconcileControlPlaneConditions(ctx, controlPlane); err != nil {
+	if err := r.reconcileControlPlaneConditions(ctx, controlPlane); err != nil {
 		logger.Info("failed to reconcile conditions", "error", err.Error())
 	}
 
@@ -229,7 +222,7 @@ func (r *KThreesControlPlaneReconciler) reconcileDelete(ctx context.Context, clu
 		err := kerrors.NewAggregate(errs)
 		r.recorder.Eventf(kcp, corev1.EventTypeWarning, "FailedDelete",
 			"Failed to delete control plane Machines for cluster %s/%s control plane: %v", cluster.Namespace, cluster.Name, err)
-		return ctrl.Result{}, err
+		return reconcile.Result{}, err
 	}
 	conditions.MarkFalse(kcp, controlplanev1.ResizedCondition, clusterv1.DeletingReason, clusterv1.ConditionSeverityInfo, "")
 	return ctrl.Result{RequeueAfter: deleteRequeueAfter}, nil
@@ -263,7 +256,6 @@ func patchKThreesControlPlane(ctx context.Context, patchHelper *patch.Helper, kc
 }
 
 func (r *KThreesControlPlaneReconciler) SetupWithManager(mgr ctrl.Manager) error {
-
 	c, err := ctrl.NewControllerManagedBy(mgr).
 		For(&controlplanev1.KThreesControlPlane{}).
 		Owns(&clusterv1.Machine{}).
@@ -271,7 +263,7 @@ func (r *KThreesControlPlaneReconciler) SetupWithManager(mgr ctrl.Manager) error
 		//	WithEventFilter(predicates.ResourceNotPaused(r.Log)).
 		Build(r)
 	if err != nil {
-		return errors.Wrap(err, "failed setting up with a controller manager")
+		return fmt.Errorf("failed setting up with a controller manager: %w", err)
 	}
 
 	err = c.Watch(
@@ -280,7 +272,7 @@ func (r *KThreesControlPlaneReconciler) SetupWithManager(mgr ctrl.Manager) error
 		predicates.ClusterUnpausedAndInfrastructureReady(r.Log),
 	)
 	if err != nil {
-		return errors.Wrap(err, "failed adding Watch for Clusters to controller manager")
+		return fmt.Errorf("failed adding Watch for Clusters to controller manager: %w", err)
 	}
 
 	r.Scheme = mgr.GetScheme()
@@ -290,6 +282,7 @@ func (r *KThreesControlPlaneReconciler) SetupWithManager(mgr ctrl.Manager) error
 	if r.managementCluster == nil {
 		r.managementCluster = &k3s.Management{Client: r.Client}
 	}
+
 	if r.managementClusterUncached == nil {
 		r.managementClusterUncached = &k3s.Management{Client: mgr.GetAPIReader()}
 	}
@@ -324,7 +317,7 @@ func (r *KThreesControlPlaneReconciler) updateStatus(ctx context.Context, kcp *c
 
 	ownedMachines, err := r.managementCluster.GetMachinesForCluster(ctx, util.ObjectKey(cluster), machinefilters.OwnedMachines(kcp))
 	if err != nil {
-		return errors.Wrap(err, "failed to get list of owned machines")
+		return fmt.Errorf("failed to get list of owned machines: %w", err)
 	}
 
 	logger := r.Log.WithValues("namespace", kcp.Namespace, "KThreesControlPlane", kcp.Name, "cluster", cluster.Name)
@@ -368,7 +361,7 @@ func (r *KThreesControlPlaneReconciler) updateStatus(ctx context.Context, kcp *c
 
 	workloadCluster, err := r.managementCluster.GetWorkloadCluster(ctx, util.ObjectKey(cluster))
 	if err != nil {
-		return errors.Wrap(err, "failed to create remote cluster client")
+		return fmt.Errorf("failed to create remote cluster client: %w", err)
 	}
 	status, err := workloadCluster.ClusterStatus(ctx)
 	if err != nil {
@@ -390,13 +383,13 @@ func (r *KThreesControlPlaneReconciler) updateStatus(ctx context.Context, kcp *c
 }
 
 // reconcile handles KThreesControlPlane reconciliation.
-func (r *KThreesControlPlaneReconciler) reconcile(ctx context.Context, cluster *clusterv1.Cluster, kcp *controlplanev1.KThreesControlPlane) (res ctrl.Result, reterr error) {
+func (r *KThreesControlPlaneReconciler) reconcile(ctx context.Context, cluster *clusterv1.Cluster, kcp *controlplanev1.KThreesControlPlane) (ctrl.Result, error) {
 	logger := r.Log.WithValues("namespace", kcp.Namespace, "KThreesControlPlane", kcp.Name, "cluster", cluster.Name)
 	logger.Info("Reconcile KThreesControlPlane")
 
 	// Make sure to reconcile the external infrastructure reference.
 	if err := r.reconcileExternalReference(ctx, cluster, kcp.Spec.InfrastructureTemplate); err != nil {
-		return ctrl.Result{}, err
+		return reconcile.Result{}, err
 	}
 
 	certificates := secret.NewCertificatesForInitialControlPlane()
@@ -404,14 +397,14 @@ func (r *KThreesControlPlaneReconciler) reconcile(ctx context.Context, cluster *
 	if err := certificates.LookupOrGenerate(ctx, r.Client, util.ObjectKey(cluster), *controllerRef); err != nil {
 		logger.Error(err, "unable to lookup or create cluster certificates")
 		conditions.MarkFalse(kcp, controlplanev1.CertificatesAvailableCondition, controlplanev1.CertificatesGenerationFailedReason, clusterv1.ConditionSeverityWarning, err.Error())
-		return ctrl.Result{}, err
+		return reconcile.Result{}, err
 	}
 	conditions.MarkTrue(kcp, controlplanev1.CertificatesAvailableCondition)
 
 	// If ControlPlaneEndpoint is not set, return early
 	if !cluster.Spec.ControlPlaneEndpoint.IsValid() {
 		logger.Info("Cluster does not yet have a ControlPlaneEndpoint defined")
-		return ctrl.Result{}, nil
+		return reconcile.Result{}, nil
 	}
 
 	// Generate Cluster Kubeconfig if needed
@@ -423,26 +416,26 @@ func (r *KThreesControlPlaneReconciler) reconcile(ctx context.Context, cluster *
 	controlPlaneMachines, err := r.managementClusterUncached.GetMachinesForCluster(ctx, util.ObjectKey(cluster), machinefilters.ControlPlaneMachines(cluster.Name))
 	if err != nil {
 		logger.Error(err, "failed to retrieve control plane machines for cluster")
-		return ctrl.Result{}, err
+		return reconcile.Result{}, err
 	}
 
 	adoptableMachines := controlPlaneMachines.Filter(machinefilters.AdoptableControlPlaneMachines(cluster.Name))
 	if len(adoptableMachines) > 0 {
 		// We adopt the Machines and then wait for the update event for the ownership reference to re-queue them so the cache is up-to-date
-		//err = r.adoptMachines(ctx, kcp, adoptableMachines, cluster)
-		return ctrl.Result{}, err
+		// err = r.adoptMachines(ctx, kcp, adoptableMachines, cluster)
+		return reconcile.Result{}, err
 	}
 
 	ownedMachines := controlPlaneMachines.Filter(machinefilters.OwnedMachines(kcp))
 	if len(ownedMachines) != len(controlPlaneMachines) {
 		logger.Info("Not all control plane machines are owned by this KThreesControlPlane, refusing to operate in mixed management mode")
-		return ctrl.Result{}, nil
+		return reconcile.Result{}, nil
 	}
 
 	controlPlane, err := k3s.NewControlPlane(ctx, r.Client, cluster, kcp, ownedMachines)
 	if err != nil {
 		logger.Error(err, "failed to initialize control plane")
-		return ctrl.Result{}, err
+		return reconcile.Result{}, err
 	}
 
 	// Aggregate the operational state of all the machines; while aggregating we are adding the
@@ -451,21 +444,21 @@ func (r *KThreesControlPlaneReconciler) reconcile(ctx context.Context, cluster *
 
 	// Updates conditions reporting the status of static pods and the status of the etcd cluster.
 	// NOTE: Conditions reporting KCP operation progress like e.g. Resized or SpecUpToDate are inlined with the rest of the execution.
-	if result, err := r.reconcileControlPlaneConditions(ctx, controlPlane); err != nil || !result.IsZero() {
-		return result, err
+	if err := r.reconcileControlPlaneConditions(ctx, controlPlane); err != nil {
+		return reconcile.Result{}, err
 	}
 
 	// Ensures the number of etcd members is in sync with the number of machines/nodes.
 	// NOTE: This is usually required after a machine deletion.
-	//if result, err := r.reconcileEtcdMembers(ctx, controlPlane); err != nil || !result.IsZero() {
+	// if result, err := r.reconcileEtcdMembers(ctx, controlPlane); err != nil || !result.IsZero() {
 	//	return result, err
-	//}
+	// }
 
 	// Reconcile unhealthy machines by triggering deletion and requeue if it is considered safe to remediate,
 	// otherwise continue with the other KCP operations.
-	//if result, err := r.reconcileUnhealthyMachines(ctx, controlPlane); err != nil || !result.IsZero() {
+	// if result, err := r.reconcileUnhealthyMachines(ctx, controlPlane); err != nil || !result.IsZero() {
 	//	return result, err
-	//}
+	// }
 
 	// Control plane machines rollout due to configuration changes (e.g. upgrades) takes precedence over other operations.
 	needRollout := controlPlane.MachinesNeedingRollout()
@@ -517,16 +510,16 @@ func (r *KThreesControlPlaneReconciler) reconcile(ctx context.Context, cluster *
 	// Update kube-proxy daemonset.
 	if err := workloadCluster.UpdateKubeProxyImageInfo(ctx, kcp); err != nil {
 		logger.Error(err, "failed to update kube-proxy daemonset")
-		return ctrl.Result{}, err
+		return reconcile.Result{}, err
 	}
 
 	// Update CoreDNS deployment.
 	if err := workloadCluster.UpdateCoreDNS(ctx, kcp); err != nil {
-		return ctrl.Result{}, errors.Wrap(err, "failed to update CoreDNS deployment")
+		return reconcile.Result{}, fmt.Errorf("failed to update CoreDNS deployment")
 	}
 	**/
 
-	return ctrl.Result{}, nil
+	return reconcile.Result{}, nil
 }
 
 func (r *KThreesControlPlaneReconciler) reconcileExternalReference(ctx context.Context, cluster *clusterv1.Cluster, ref corev1.ObjectReference) error {
@@ -558,13 +551,13 @@ func (r *KThreesControlPlaneReconciler) reconcileExternalReference(ctx context.C
 
 func (r *KThreesControlPlaneReconciler) reconcileKubeconfig(ctx context.Context, clusterName client.ObjectKey, endpoint clusterv1.APIEndpoint, kcp *controlplanev1.KThreesControlPlane) (ctrl.Result, error) {
 	if endpoint.IsZero() {
-		return ctrl.Result{}, nil
+		return reconcile.Result{}, nil
 	}
 
 	controllerOwnerRef := *metav1.NewControllerRef(kcp, controlplanev1.GroupVersion.WithKind("KThreesControlPlane"))
 	configSecret, err := secret.GetFromNamespacedName(ctx, r.Client, clusterName, secret.Kubeconfig)
 	switch {
-	case apierrors.IsNotFound(errors.Cause(err)):
+	case apierrors.IsNotFound(err):
 		createErr := kubeconfig.CreateSecretWithOwner(
 			ctx,
 			r.Client,
@@ -576,15 +569,15 @@ func (r *KThreesControlPlaneReconciler) reconcileKubeconfig(ctx context.Context,
 			return ctrl.Result{RequeueAfter: dependentCertRequeueAfter}, nil
 		}
 		// always return if we have just created in order to skip rotation checks
-		return ctrl.Result{}, createErr
+		return reconcile.Result{}, createErr
 
 	case err != nil:
-		return ctrl.Result{}, errors.Wrap(err, "failed to retrieve kubeconfig Secret")
+		return reconcile.Result{}, fmt.Errorf("failed to retrieve kubeconfig Secret: %w", err)
 	}
 
 	// only do rotation on owned secrets
 	if !util.IsControlledBy(configSecret, kcp) {
-		return ctrl.Result{}, nil
+		return reconcile.Result{}, nil
 	}
 
 	/**
@@ -597,26 +590,26 @@ func (r *KThreesControlPlaneReconciler) reconcileKubeconfig(ctx context.Context,
 	if needsRotation {
 		r.Log.Info("rotating kubeconfig secret")
 		if err := kubeconfig.RegenerateSecret(ctx, r.Client, configSecret); err != nil {
-			return errors.Wrap(err, "failed to regenerate kubeconfig")
+			return fmt.Errorf("failed to regenerate kubeconfig")
 		}
 	}
 	**/
 
-	return ctrl.Result{}, nil
+	return reconcile.Result{}, nil
 }
 
 // reconcileControlPlaneConditions is responsible of reconciling conditions reporting the status of static pods and
 // the status of the etcd cluster.
-func (r *KThreesControlPlaneReconciler) reconcileControlPlaneConditions(ctx context.Context, controlPlane *k3s.ControlPlane) (ctrl.Result, error) {
+func (r *KThreesControlPlaneReconciler) reconcileControlPlaneConditions(ctx context.Context, controlPlane *k3s.ControlPlane) error {
 	// If the cluster is not yet initialized, there is no way to connect to the workload cluster and fetch information
 	// for updating conditions. Return early.
 	if !controlPlane.KCP.Status.Initialized {
-		return ctrl.Result{}, nil
+		return nil
 	}
 
 	workloadCluster, err := r.managementCluster.GetWorkloadCluster(ctx, util.ObjectKey(controlPlane.Cluster))
 	if err != nil {
-		return ctrl.Result{}, errors.Wrap(err, "cannot get remote client to workload cluster")
+		return fmt.Errorf("cannot get remote client to workload cluster: %w", err)
 	}
 
 	// Update conditions status
@@ -625,11 +618,11 @@ func (r *KThreesControlPlaneReconciler) reconcileControlPlaneConditions(ctx cont
 
 	// Patch machines with the updated conditions.
 	if err := controlPlane.PatchMachines(ctx); err != nil {
-		return ctrl.Result{}, err
+		return err
 	}
 
 	// KCP will be patched at the end of Reconcile to reflect updated conditions, so we can return now.
-	return ctrl.Result{}, nil
+	return nil
 }
 
 func (r *KThreesControlPlaneReconciler) upgradeControlPlane(
@@ -646,38 +639,38 @@ func (r *KThreesControlPlaneReconciler) upgradeControlPlane(
 	workloadCluster, err := r.managementCluster.GetWorkloadCluster(ctx, util.ObjectKey(cluster))
 	if err != nil {
 		logger.Error(err, "failed to get remote client for workload cluster", "cluster key", util.ObjectKey(cluster))
-		return ctrl.Result{}, err
+		return reconcile.Result{}, err
 	}
 
 	/**
 	parsedVersion, err := semver.ParseTolerant(kcp.Spec.Version)
 	if err != nil {
-		return ctrl.Result{}, errors.Wrapf(err, "failed to parse kubernetes version %q", kcp.Spec.Version)
+		return reconcile.Result{}, fmt.Errorf(err, "failed to parse kubernetes version %q", kcp.Spec.Version)
 	}
 
 
 	if kcp.Spec.KThreesConfigSpec.ClusterConfiguration != nil {
 		imageRepository := kcp.Spec.KThreesConfigSpec.ClusterConfiguration.ImageRepository
 		if err := workloadCluster.UpdateImageRepositoryInKubeadmConfigMap(ctx, imageRepository); err != nil {
-			return ctrl.Result{}, errors.Wrap(err, "failed to update the image repository in the kubeadm config map")
+			return reconcile.Result{}, fmt.Errorf("failed to update the image repository in the kubeadm config map")
 		}
 	}
 
 	if kcp.Spec.KThreesConfigSpec.ClusterConfiguration != nil && kcp.Spec.KThreesConfigSpec.ClusterConfiguration.Etcd.Local != nil {
 		meta := kcp.Spec.KThreesConfigSpec.ClusterConfiguration.Etcd.Local.ImageMeta
 		if err := workloadCluster.UpdateEtcdVersionInKubeadmConfigMap(ctx, meta.ImageRepository, meta.ImageTag); err != nil {
-			return ctrl.Result{}, errors.Wrap(err, "failed to update the etcd version in the kubeadm config map")
+			return reconcile.Result{}, fmt.Errorf("failed to update the etcd version in the kubeadm config map")
 		}
 	}
 
 	if err := workloadCluster.UpdateKubeletConfigMap(ctx, parsedVersion); err != nil {
-		return ctrl.Result{}, errors.Wrap(err, "failed to upgrade kubelet config map")
+		return reconcile.Result{}, fmt.Errorf("failed to upgrade kubelet config map")
 	}
 	**/
 
 	status, err := workloadCluster.ClusterStatus(ctx)
 	if err != nil {
-		return ctrl.Result{}, err
+		return reconcile.Result{}, err
 	}
 
 	if status.Nodes <= *kcp.Spec.Replicas {

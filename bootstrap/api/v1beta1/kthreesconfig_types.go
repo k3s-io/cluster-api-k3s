@@ -24,7 +24,7 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// KThreesConfigSpec defines the desired state of KThreesConfig
+// KThreesConfigSpec defines the desired state of KThreesConfig.
 type KThreesConfigSpec struct {
 	// Files specifies extra files to be passed to user_data upon creation.
 	// +optional
@@ -68,9 +68,9 @@ type KThreesServerConfig struct {
 	// +optional
 	BindAddress string `json:"bindAddress,omitempty"`
 
-	// HttpsListenPort HTTPS listen port (default: 6443)
+	// HTTPSListenPort HTTPS listen port (default: 6443)
 	// +optional
-	HttpsListenPort string `json:"httpsListenPort,omitempty"`
+	HTTPSListenPort string `json:"httpsListenPort,omitempty"`
 
 	// AdvertiseAddress IP address that apiserver uses to advertise to members of the cluster (default: node-external-ip/node-ip)
 	// +optional
@@ -128,7 +128,7 @@ type KThreesAgentConfig struct {
 	NodeName string `json:"nodeName,omitempty"`
 }
 
-// KThreesConfigStatus defines the observed state of KThreesConfig
+// KThreesConfigStatus defines the observed state of KThreesConfig.
 type KThreesConfigStatus struct {
 	// Ready indicates the BootstrapData field is ready to be consumed
 	Ready bool `json:"ready,omitempty"`
@@ -159,7 +159,7 @@ type KThreesConfigStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 
-// KThreesConfig is the Schema for the kthreesconfigs API
+// KThreesConfig is the Schema for the kthreesconfigs API.
 type KThreesConfig struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -178,7 +178,7 @@ func (c *KThreesConfig) SetConditions(conditions clusterv1.Conditions) {
 
 // +kubebuilder:object:root=true
 
-// KThreesConfigList contains a list of KThreesConfig
+// KThreesConfigList contains a list of KThreesConfig.
 type KThreesConfigList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`

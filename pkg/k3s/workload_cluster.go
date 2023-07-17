@@ -2,11 +2,10 @@ package k3s
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
-	controlplanev1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/controlplane/api/v1beta1"
-	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -15,6 +14,8 @@ import (
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/conditions"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
+
+	controlplanev1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/controlplane/api/v1beta1"
 )
 
 const (
@@ -47,9 +48,11 @@ type WorkloadCluster interface {
 
 // Workload defines operations on workload clusters.
 type Workload struct {
+	WorkloadCluster
+
 	Client          ctrlclient.Client
 	CoreDNSMigrator coreDNSMigrator
-	//etcdClientGenerator etcdClientFor
+	// etcdClientGenerator etcdClientFor
 }
 
 // ClusterStatus holds stats information about the cluster.
@@ -202,7 +205,6 @@ func (w *Workload) UpdateAgentConditions(ctx context.Context, controlPlane *Cont
 				conditions.MarkTrue(machine, controlplanev1.MachineAgentHealthyCondition)
 			}
 		}
-
 	}
 
 	// If there are provisioned machines without corresponding nodes, report this as a failing conditions with SeverityError.
@@ -363,5 +365,4 @@ func (w *Workload) updateManagedEtcdConditions(ctx context.Context, controlPlane
 
 		conditions.MarkTrue(machine, controlplanev1.MachineEtcdMemberHealthyCondition)
 	}
-
 }

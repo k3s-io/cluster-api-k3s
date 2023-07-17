@@ -2,33 +2,33 @@ package k3s
 
 import (
 	"context"
+	"fmt"
 	"time"
 
-	"github.com/pkg/errors"
 	"k8s.io/client-go/kubernetes/scheme"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/controllers/remote"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/machinefilters"
-
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // ManagementCluster defines all behaviors necessary for something to function as a management cluster.
 type ManagementCluster interface {
-	ctrlclient.Reader
+	client.Reader
 
 	GetMachinesForCluster(ctx context.Context, cluster client.ObjectKey, filters ...machinefilters.Func) (FilterableMachineCollection, error)
-	GetWorkloadCluster(ctx context.Context, clusterKey client.ObjectKey) (WorkloadCluster, error)
+	GetWorkloadCluster(ctx context.Context, clusterKey client.ObjectKey) (*Workload, error)
 }
 
 // Management holds operations on the management cluster.
 type Management struct {
-	Client ctrlclient.Reader
+	ManagementCluster
+
+	Client client.Reader
 }
 
-// RemoteClusterConnectionError represents a failure to connect to a remote cluster
+// RemoteClusterConnectionError represents a failure to connect to a remote cluster.
 type RemoteClusterConnectionError struct {
 	Name string
 	Err  error
@@ -37,13 +37,13 @@ type RemoteClusterConnectionError struct {
 func (e *RemoteClusterConnectionError) Error() string { return e.Name + ": " + e.Err.Error() }
 func (e *RemoteClusterConnectionError) Unwrap() error { return e.Err }
 
-// Get implements ctrlclient.Reader
-func (m *Management) Get(ctx context.Context, key ctrlclient.ObjectKey, obj client.Object) error {
+// Get implements ctrlclient.Reader.
+func (m *Management) Get(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
 	return m.Client.Get(ctx, key, obj)
 }
 
-// List implements ctrlclient.Reader
-func (m *Management) List(ctx context.Context, list client.ObjectList, opts ...ctrlclient.ListOption) error {
+// List implements ctrlclient.Reader.
+func (m *Management) List(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
 	return m.Client.List(ctx, list, opts...)
 }
 
@@ -51,11 +51,11 @@ func (m *Management) List(ctx context.Context, list client.ObjectList, opts ...c
 // If no filter is supplied then all machines associated with the target cluster are returned.
 func (m *Management) GetMachinesForCluster(ctx context.Context, cluster client.ObjectKey, filters ...machinefilters.Func) (FilterableMachineCollection, error) {
 	selector := map[string]string{
-		clusterv1.ClusterLabelName: cluster.Name,
+		clusterv1.ClusterNameLabel: cluster.Name,
 	}
 	ml := &clusterv1.MachineList{}
 	if err := m.Client.List(ctx, ml, client.InNamespace(cluster.Namespace), client.MatchingLabels(selector)); err != nil {
-		return nil, errors.Wrap(err, "failed to list machines")
+		return nil, fmt.Errorf("failed to list machines: %w", err)
 	}
 
 	machines := NewFilterableMachineCollectionFromMachineList(ml)
@@ -69,7 +69,7 @@ const (
 
 // GetWorkloadCluster builds a cluster object.
 // The cluster comes with an etcd client generator to connect to any etcd pod living on a managed machine.
-func (m *Management) GetWorkloadCluster(ctx context.Context, clusterKey client.ObjectKey) (WorkloadCluster, error) {
+func (m *Management) GetWorkloadCluster(ctx context.Context, clusterKey client.ObjectKey) (*Workload, error) {
 	restConfig, err := remote.RESTConfig(ctx, KThreesControlPlaneControllerName, m.Client, clusterKey)
 	if err != nil {
 		return nil, err

@@ -17,12 +17,12 @@ limitations under the License.
 package v1beta1
 
 import (
-	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 
 	cabp3v1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/bootstrap/api/v1beta1"
+	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/errors"
 )
 
 const (
@@ -32,11 +32,11 @@ const (
 	// This annotation is used to detect any changes in ClusterConfiguration and trigger machine rollout in KCP.
 	KThreesServerConfigurationAnnotation = "controlplane.cluster.x-k8s.io/kthrees-server-configuration"
 
-	// SkipCoreDNSAnnotation annotation explicitly skips reconciling CoreDNS if set
+	// SkipCoreDNSAnnotation annotation explicitly skips reconciling CoreDNS if set.
 	SkipCoreDNSAnnotation = "controlplane.cluster.x-k8s.io/skip-coredns"
 )
 
-// KThreesControlPlaneSpec defines the desired state of KThreesControlPlane
+// KThreesControlPlaneSpec defines the desired state of KThreesControlPlane.
 type KThreesControlPlaneSpec struct {
 	// Number of desired machines. Defaults to 1. When stacked etcd is used only
 	// odd numbers are permitted, as per [etcd best practice](https://etcd.io/docs/v3.3.12/faq/#why-an-odd-number-of-cluster-members).
@@ -69,7 +69,7 @@ type KThreesControlPlaneSpec struct {
 	NodeDrainTimeout *metav1.Duration `json:"nodeDrainTimeout,omitempty"`
 }
 
-// KThreesControlPlaneStatus defines the observed state of KThreesControlPlane
+// KThreesControlPlaneStatus defines the observed state of KThreesControlPlane.
 type KThreesControlPlaneStatus struct {
 	// Selector is the label selector in string format to avoid introspection
 	// by clients, and is used to provide the CRD-based integration for the
@@ -141,7 +141,7 @@ type KThreesControlPlaneStatus struct {
 // +kubebuilder:printcolumn:name="Updated",type=integer,JSONPath=".status.updatedReplicas",description="Total number of non-terminated machines targeted by this control plane that have the desired template spec"
 // +kubebuilder:printcolumn:name="Unavailable",type=integer,JSONPath=".status.unavailableReplicas",description="Total number of unavailable machines targeted by this control plane"
 
-// KThreesControlPlane is the Schema for the kthreescontrolplanes API
+// KThreesControlPlane is the Schema for the kthreescontrolplanes API.
 type KThreesControlPlane struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -160,7 +160,7 @@ func (in *KThreesControlPlane) SetConditions(conditions clusterv1.Conditions) {
 
 // +kubebuilder:object:root=true
 
-// KThreesControlPlaneList contains a list of KThreesControlPlane
+// KThreesControlPlaneList contains a list of KThreesControlPlane.
 type KThreesControlPlaneList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
