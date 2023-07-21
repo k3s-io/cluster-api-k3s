@@ -95,7 +95,7 @@ all-bootstrap: manager-bootstrap
 
 # Run tests
 test-bootstrap: envtest generate-bootstrap lint manifests-bootstrap
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(TOOLS_BIN_DIR) -p path)" go test ./... -coverprofile cover.out
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(TOOLS_BIN_DIR) -p path)" go test $(shell pwd)/bootstrap/... -coverprofile cover.out
 
 # Build manager binary
 manager-bootstrap: generate-bootstrap lint
@@ -129,7 +129,7 @@ release-bootstrap: manifests-bootstrap ## Release bootstrap
 
 # Generate code
 generate-bootstrap: $(CONTROLLER_GEN)
-	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
+	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="$(shell pwd)/bootstrap/..."
 
 # Build the docker image
 docker-build-bootstrap: manager-bootstrap ## Build bootstrap
@@ -143,7 +143,7 @@ all-controlplane: manager-controlplane
 
 # Run tests
 test-controlplane: envtest generate-controlplane lint manifests-controlplane
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(TOOLS_BIN_DIR) -p path)" go test ./... -coverprofile cover.out
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(TOOLS_BIN_DIR) -p path)" go test $(shell pwd)/controlplane/... -coverprofile cover.out
 
 # Build manager binary
 manager-controlplane: generate-controlplane lint
@@ -168,7 +168,7 @@ deploy-controlplane: manifests-controlplane
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests-controlplane: $(KUSTOMIZE) $(CONTROLLER_GEN)
-	$(CONTROLLER_GEN) rbac:roleName=manager-role webhook crd paths="./..." output:crd:artifacts:config=controlplane/config/crd/bases output:rbac:dir=bootstrap/config/rbac
+	$(CONTROLLER_GEN) rbac:roleName=manager-role webhook crd paths="./..." output:crd:artifacts:config=controlplane/config/crd/bases output:rbac:dir=controlplane/config/rbac
 
 release-controlplane: manifests-controlplane ## Release control-plane
 	mkdir -p out
@@ -176,7 +176,7 @@ release-controlplane: manifests-controlplane ## Release control-plane
 	$(KUSTOMIZE) build controlplane/config/default > out/control-plane-components.yaml
 
 generate-controlplane: $(CONTROLLER_GEN)
-	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
+	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="$(shell pwd)/controlplane/..." 
 
 docker-build-controlplane: manager-controlplane ## Build control-plane
 	DOCKER_BUILDKIT=1 docker build --build-arg builder_image=$(GO_CONTAINER_IMAGE) --build-arg goproxy=$(GOPROXY) --build-arg ARCH=$(ARCH) --build-arg package=./controlplane/main.go --build-arg ldflags="$(LDFLAGS)" . -t ${CONTROLPLANE_IMG}
