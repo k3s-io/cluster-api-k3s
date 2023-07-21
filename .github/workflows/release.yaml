@@ -10,9 +10,13 @@ env:
   GO_VERSION: '1.20'
 
 jobs:
-  manager-image:
-    name: Build and push manager image
+  image:
+    name: Build and push ${{ matrix.target }} image
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [bootsrap, controlplane]
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -32,17 +36,17 @@ jobs:
         uses: actions/cache@v3
         with:
           path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-buildx-manager-${{ github.sha }}
+          key: ${{ runner.os }}-buildx-${{ matrix.target }}-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-buildx-manager-
+            ${{ runner.os }}-buildx-${{ matrix.target }}-
             ${{ runner.os }}-buildx-
 
-      - name: Docker manager metadata
+      - name: Docker ${{ matrix.target }} metadata
         id: meta
         uses: docker/metadata-action@v4
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ matrix.target }}-${{ env.IMAGE_NAME }}
           flavor: latest=false
           tags: type=ref,event=tag
 
@@ -60,7 +64,7 @@ jobs:
           echo $DOCKER_BUILD_LDFLAGS >> $GITHUB_ENV
           echo 'EOF' >> $GITHUB_ENV
 
-      - name: Build and push manager image
+      - name: Build and push ${{ matrix.target }} image
         uses: docker/build-push-action@v4
         with:
           context: .
@@ -85,7 +89,7 @@ jobs:
     name: Release
     runs-on: ubuntu-latest
     needs:
-      - manager-image
+      - image
     steps:
       - uses: actions/checkout@v3
 
@@ -99,7 +103,7 @@ jobs:
             ${{ runner.os }}-tools-bin-release-
             ${{ runner.os }}-tools-bin-
 
-      - name: Docker manager metadata
+      - name: Docker ${{ matrix.target }} metadata
         id: meta
         uses: docker/metadata-action@v4
         with:
@@ -109,7 +113,7 @@ jobs:
           tags: type=ref,event=tag
 
       - name: manifest
-        run: make release
+        run: make release-${{ matrix.target }}
         env:
           TAG: ${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.version'] }}
 
