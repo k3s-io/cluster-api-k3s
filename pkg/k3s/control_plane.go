@@ -211,6 +211,7 @@ func ControlPlaneLabelsForCluster(clusterName string) map[string]string {
 	return map[string]string{
 		clusterv1.ClusterNameLabel:             clusterName,
 		clusterv1.MachineControlPlaneNameLabel: "",
+		clusterv1.MachineControlPlaneLabel:     "",
 	}
 }
 
