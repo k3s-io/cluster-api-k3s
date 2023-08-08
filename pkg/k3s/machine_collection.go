@@ -31,14 +31,12 @@ import (
 	"sort"
 
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	"sigs.k8s.io/cluster-api/util/conditions"
 
 	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/machinefilters"
-
-	"sigs.k8s.io/cluster-api/util"
-	"sigs.k8s.io/cluster-api/util/conditions"
 )
 
-// FilterableMachineCollection is a set of Machines
+// FilterableMachineCollection is a set of Machines.
 type FilterableMachineCollection map[string]*clusterv1.Machine
 
 // NewFilterableMachineCollection creates a FilterableMachineCollection from a list of values.
@@ -48,7 +46,7 @@ func NewFilterableMachineCollection(machines ...*clusterv1.Machine) FilterableMa
 	return ss
 }
 
-// NewFilterableMachineCollectionFromMachineList creates a FilterableMachineCollection from the given MachineList
+// NewFilterableMachineCollectionFromMachineList creates a FilterableMachineCollection from the given MachineList.
 func NewFilterableMachineCollectionFromMachineList(machineList *clusterv1.MachineList) FilterableMachineCollection {
 	ss := make(FilterableMachineCollection, len(machineList.Items))
 	for i := range machineList.Items {
@@ -67,7 +65,7 @@ func (s FilterableMachineCollection) Insert(machines ...*clusterv1.Machine) {
 	}
 }
 
-// Difference returns a copy without machines that are in the given collection
+// Difference returns a copy without machines that are in the given collection.
 func (s FilterableMachineCollection) Difference(machines FilterableMachineCollection) FilterableMachineCollection {
 	return s.Filter(func(m *clusterv1.Machine) bool {
 		_, found := machines[m.Name]
@@ -75,13 +73,17 @@ func (s FilterableMachineCollection) Difference(machines FilterableMachineCollec
 	})
 }
 
-// SortedByCreationTimestamp returns the machines sorted by creation timestamp
+// SortedByCreationTimestamp returns the machines sorted by creation timestamp.
 func (s FilterableMachineCollection) SortedByCreationTimestamp() []*clusterv1.Machine {
-	res := make(util.MachinesByCreationTimestamp, 0, len(s))
+	res := make([]*clusterv1.Machine, 0, len(s))
 	for _, value := range s {
 		res = append(res, value)
 	}
-	sort.Sort(res)
+
+	sort.SliceStable(res, func(i, j int) bool {
+		return res[i].CreationTimestamp.Before(&res[j].CreationTimestamp)
+	})
+
 	return res
 }
 
@@ -111,17 +113,17 @@ func newFilteredMachineCollection(filter machinefilters.Func, machines ...*clust
 	return ss
 }
 
-// Filter returns a FilterableMachineCollection containing only the Machines that match all of the given MachineFilters
+// Filter returns a FilterableMachineCollection containing only the Machines that match all of the given MachineFilters.
 func (s FilterableMachineCollection) Filter(filters ...machinefilters.Func) FilterableMachineCollection {
 	return newFilteredMachineCollection(machinefilters.And(filters...), s.UnsortedList()...)
 }
 
-// AnyFilter returns a FilterableMachineCollection containing only the Machines that match any of the given MachineFilters
+// AnyFilter returns a FilterableMachineCollection containing only the Machines that match any of the given MachineFilters.
 func (s FilterableMachineCollection) AnyFilter(filters ...machinefilters.Func) FilterableMachineCollection {
 	return newFilteredMachineCollection(machinefilters.Or(filters...), s.UnsortedList()...)
 }
 
-// Oldest returns the Machine with the oldest CreationTimestamp
+// Oldest returns the Machine with the oldest CreationTimestamp.
 func (s FilterableMachineCollection) Oldest() *clusterv1.Machine {
 	if len(s) == 0 {
 		return nil
@@ -129,7 +131,7 @@ func (s FilterableMachineCollection) Oldest() *clusterv1.Machine {
 	return s.SortedByCreationTimestamp()[0]
 }
 
-// Newest returns the Machine with the most recent CreationTimestamp
+// Newest returns the Machine with the most recent CreationTimestamp.
 func (s FilterableMachineCollection) Newest() *clusterv1.Machine {
 	if len(s) == 0 {
 		return nil
@@ -137,7 +139,7 @@ func (s FilterableMachineCollection) Newest() *clusterv1.Machine {
 	return s.SortedByCreationTimestamp()[len(s)-1]
 }
 
-// DeepCopy returns a deep copy
+// DeepCopy returns a deep copy.
 func (s FilterableMachineCollection) DeepCopy() FilterableMachineCollection {
 	result := make(FilterableMachineCollection, len(s))
 	for _, m := range s {

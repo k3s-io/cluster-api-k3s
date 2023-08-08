@@ -24,14 +24,13 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
+	clusterv1beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	expv1beta1 "sigs.k8s.io/cluster-api/exp/api/v1beta1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	bootstrapv1beta1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/bootstrap/api/v1beta1"
 	"github.com/cluster-api-provider-k3s/cluster-api-k3s/bootstrap/controllers"
-	clusterv1beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
-	expv1beta1 "sigs.k8s.io/cluster-api/exp/api/v1beta1"
-	// +kubebuilder:scaffold:imports
 )
 
 var (

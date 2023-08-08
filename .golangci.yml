@@ -1,0 +1,156 @@
+run:
+  skip-files:
+  - ".*zz_generated.*\\.go"
+  - "contrib/.*"
+  timeout: 5m
+issue:
+  max-same-issues: 0
+  max-per-linter: 0
+issues:
+  exclude-rules:
+    - path: "test/e2e/*"
+      linters:
+        - gosec
+      text: "G106:"
+    - linters:
+        - revive
+      text: "dot-imports"
+      path: ".*test.*"
+    - linters:
+        - stylecheck
+      text: "ST1001"
+      path: ".*test.*"
+      
+linters:
+  fast: true
+  disable-all: true
+  enable:
+  - asciicheck
+  - bodyclose
+  - depguard
+  - dogsled
+  - errcheck
+  - exportloopref
+  - gci
+  - goconst
+  - gocritic
+  - gocyclo
+  - godot
+  - gofmt
+  - goimports
+  - goprintffuncname
+  - gosec
+  - gosimple
+  - govet
+  - importas
+  - ineffassign
+  - misspell
+  - nakedret
+  - nilerr
+  - noctx
+  - nolintlint
+  - prealloc
+  - predeclared
+  - revive
+  - rowserrcheck
+  - staticcheck
+  - stylecheck
+  - thelper
+  - typecheck
+  - unconvert
+  - unparam
+  - unused
+  - whitespace
+
+linters-settings:
+  depguard:
+    rules:
+      main:
+        allow:
+          - $gostd
+          - github.com/go-logr/logr
+          - github.com/coredns/corefile-migration/migration
+          
+          - k8s.io/api
+          - k8s.io/apimachinery/pkg
+          - k8s.io/apiserver
+          - k8s.io/client-go
+          - k8s.io/klog/v2/klogr
+          - k8s.io/utils/pointer
+          
+          - github.com/onsi/ginkgo
+          - github.com/onsi/gomega
+
+          - sigs.k8s.io/yaml
+          - sigs.k8s.io/controller-runtime
+          - sigs.k8s.io/cluster-api
+
+          - github.com/cluster-api-provider-k3s/cluster-api-k3s
+  gci:
+    sections:
+      - standard
+      - default
+      - prefix(github.com/cluster-api-provider-k3s/cluster-api-k3s)
+  gomoddirectives:
+    # List of allowed `replace` directives.
+    # Default: []
+    replace-allow-list:
+      - sigs.k8s.io/cluster-api
+  goimports:
+    # put imports beginning with prefix after 3rd-party packages;
+    # it's a comma-separated list of prefixes
+    local-prefixes: github.com/cluster-api-provider-k3s/cluster-api-k3s
+  godot:
+    #   declarations - for top level declaration comments (default);
+    #   toplevel     - for top level comments;
+    #   all          - for all comments.
+    scope: toplevel
+    exclude:
+    - '^ \+.*'
+    - '^ ANCHOR.*'
+  gosec:
+    excludes:
+    - G307 # Deferring unsafe method "Close" on type "\*os.File"
+    - G108 # Profiling endpoint is automatically exposed on /debug/pprof
+  importas:
+    # Do not allow unaliased imports of aliased packages.
+    # Default: false
+    no-unaliased: true
+    alias:
+      # Kubernetes
+      - pkg: k8s.io/api/core/v1
+        alias: corev1
+      - pkg: k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1
+        alias: apiextensionsv1
+      - pkg: k8s.io/apimachinery/pkg/apis/meta/v1
+        alias: metav1
+      - pkg: k8s.io/apimachinery/pkg/api/errors
+        alias: apierrors
+      - pkg: k8s.io/apimachinery/pkg/util/errors
+        alias: kerrors
+      # Controller Runtime
+      - pkg: sigs.k8s.io/controller-runtime
+        alias: ctrl
+  nolintlint:
+    # Enable to require nolint directives to mention the specific linter being suppressed.
+    # Default: false
+    require-specific: true
+  revive:
+    rules:
+      - name: exported
+        arguments:
+          - disableStutteringCheck
+      - name: unused-parameter
+        disabled: true
+  staticcheck:
+    go: "1.20"
+  stylecheck:
+    go: "1.20"
+  tagliatelle:
+    case:
+      rules:
+        # Any struct tag type can be used.
+        # Support string case: `camel`, `pascal`, `kebab`, `snake`, `goCamel`, `goPascal`, `goKebab`, `goSnake`, `upper`, `lower`, `header`
+        json: goCamel
+  unused:
+    go: "1.20"

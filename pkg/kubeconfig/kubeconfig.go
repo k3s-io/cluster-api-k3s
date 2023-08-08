@@ -4,9 +4,9 @@ import (
 	"context"
 	"crypto"
 	"crypto/x509"
+	"errors"
 	"fmt"
 
-	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -15,20 +15,21 @@ import (
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/certs"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/secret"
-
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var (
 	ErrDependentCertificateNotFound = errors.New("could not find secret ca")
+	ErrCertNotInKubeconfig          = errors.New("certificate not found in config")
+	ErrCAPrivateKeyNotFound         = errors.New("CA private key not found")
 )
 
 func generateKubeconfig(ctx context.Context, c client.Client, clusterName client.ObjectKey, endpoint string) ([]byte, error) {
 	clusterCA, err := secret.GetFromNamespacedName(ctx, c, clusterName, secret.ClusterCA)
 	if err != nil {
-		if apierrors.IsNotFound(errors.Cause(err)) {
+		if apierrors.IsNotFound(err) {
 			return nil, ErrDependentCertificateNotFound
 		}
 		return nil, err
@@ -36,7 +37,7 @@ func generateKubeconfig(ctx context.Context, c client.Client, clusterName client
 
 	clientClusterCA, err := secret.GetFromNamespacedName(ctx, c, clusterName, secret.ClientClusterCA)
 	if err != nil {
-		if apierrors.IsNotFound(errors.Cause(err)) {
+		if apierrors.IsNotFound(err) {
 			return nil, ErrDependentCertificateNotFound
 		}
 		return nil, err
@@ -44,40 +45,39 @@ func generateKubeconfig(ctx context.Context, c client.Client, clusterName client
 
 	clientCACert, err := certs.DecodeCertPEM(clientClusterCA.Data[secret.TLSCrtDataName])
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to decode CA Cert")
+		return nil, fmt.Errorf("failed to decode CA Cert: %w", err)
 	} else if clientCACert == nil {
-		return nil, errors.New("certificate not found in config")
+		return nil, ErrCertNotInKubeconfig
 	}
 
 	clientCAKey, err := certs.DecodePrivateKeyPEM(clientClusterCA.Data[secret.TLSKeyDataName])
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to decode private key")
+		return nil, fmt.Errorf("failed to decode private key: %w", err)
 	} else if clientCAKey == nil {
-		return nil, errors.New("CA private key not found")
+		return nil, ErrCAPrivateKeyNotFound
 	}
 
 	serverCACert, err := certs.DecodeCertPEM(clusterCA.Data[secret.TLSCrtDataName])
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to decode CA Cert")
+		return nil, fmt.Errorf("failed to decode CA Cert: %w", err)
 	} else if serverCACert == nil {
-		return nil, errors.New("certificate not found in config")
+		return nil, ErrCertNotInKubeconfig
 	}
 
 	cfg, err := New(clusterName.Name, endpoint, clientCACert, clientCAKey, serverCACert)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to generate a kubeconfig")
+		return nil, fmt.Errorf("failed to generate a kubeconfig: %w", err)
 	}
 
 	out, err := clientcmd.Write(*cfg)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to serialize config to yaml")
+		return nil, fmt.Errorf("failed to serialize config to yaml: %w", err)
 	}
 	return out, nil
 }
 
 // New creates a new Kubeconfig using the cluster name and specified endpoint.
 func New(clusterName, endpoint string, clientCACert *x509.Certificate, clientCAKey crypto.Signer, serverCACert *x509.Certificate) (*api.Config, error) {
-
 	cfg := &certs.Config{
 		CommonName:   "kubernetes-admin",
 		Organization: []string{"system:masters"},
@@ -86,12 +86,12 @@ func New(clusterName, endpoint string, clientCACert *x509.Certificate, clientCAK
 
 	clientKey, err := certs.NewPrivateKey()
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to create private key")
+		return nil, fmt.Errorf("unable to create private key: %w", err)
 	}
 
 	clientCert, err := cfg.NewSignedCert(clientKey, clientCACert, clientCAKey)
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to sign certificate")
+		return nil, fmt.Errorf("unable to sign certificate: %w", err)
 	}
 
 	userName := fmt.Sprintf("%s-admin", clusterName)
@@ -160,7 +160,7 @@ func GenerateSecretWithOwner(clusterName client.ObjectKey, data []byte, owner me
 			Name:      secret.Name(clusterName.Name, secret.Kubeconfig),
 			Namespace: clusterName.Namespace,
 			Labels: map[string]string{
-				clusterv1.ClusterLabelName: clusterName.Name,
+				clusterv1.ClusterNameLabel: clusterName.Name,
 			},
 			OwnerReferences: []metav1.OwnerReference{
 				owner,

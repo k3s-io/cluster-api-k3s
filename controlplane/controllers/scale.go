@@ -19,14 +19,10 @@ package controllers
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"strings"
 
-	bootstrapv1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/bootstrap/api/v1beta1"
-	controlplanev1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/controlplane/api/v1beta1"
-	"github.com/pkg/errors"
-
-	k3s "github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/k3s"
-	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/machinefilters"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -38,7 +34,14 @@ import (
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/conditions"
 	ctrl "sigs.k8s.io/controller-runtime"
+
+	bootstrapv1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/bootstrap/api/v1beta1"
+	controlplanev1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/controlplane/api/v1beta1"
+	k3s "github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/k3s"
+	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/machinefilters"
 )
+
+var ErrPreConditionFailed = errors.New("precondition check failed")
 
 func (r *KThreesControlPlaneReconciler) initializeControlPlane(ctx context.Context, cluster *clusterv1.Cluster, kcp *controlplanev1.KThreesControlPlane, controlPlane *k3s.ControlPlane) (ctrl.Result, error) {
 	logger := controlPlane.Logger()
@@ -51,9 +54,9 @@ func (r *KThreesControlPlaneReconciler) initializeControlPlane(ctx context.Conte
 		return ctrl.Result{}, err
 	}
 	if len(ownedMachines) > 0 {
-		return ctrl.Result{}, errors.Errorf(
-			"control plane has already been initialized, found %d owned machine for cluster %s/%s: controller cache or management cluster is misbehaving",
-			len(ownedMachines), cluster.Namespace, cluster.Name,
+		return ctrl.Result{}, fmt.Errorf(
+			"control plane has already been initialized, found %d owned machine for cluster %s/%s: controller cache or management cluster is misbehaving. %w",
+			len(ownedMachines), cluster.Namespace, cluster.Name, err,
 		)
 	}
 
@@ -102,7 +105,7 @@ func (r *KThreesControlPlaneReconciler) scaleDownControlPlane(
 	// Pick the Machine that we should scale down.
 	machineToDelete, err := selectMachineForScaleDown(controlPlane, outdatedMachines)
 	if err != nil {
-		return ctrl.Result{}, errors.Wrap(err, "failed to select machine for scale down")
+		return ctrl.Result{}, fmt.Errorf("failed to select machine for scale down: %w", err)
 	}
 
 	// Run preflight checks ensuring the control plane is stable before proceeding with a scale up/scale down operation; if not, wait.
@@ -111,15 +114,15 @@ func (r *KThreesControlPlaneReconciler) scaleDownControlPlane(
 		return result, err
 	}
 
-	//workloadCluster, err := r.managementCluster.GetWorkloadCluster(ctx, util.ObjectKey(cluster))
-	//if err != nil {
+	// workloadCluster, err := r.managementCluster.GetWorkloadCluster(ctx, util.ObjectKey(cluster))
+	// if err != nil {
 	//	logger.Error(err, "Failed to create client to workload cluster")
-	//	return ctrl.Result{}, errors.Wrapf(err, "failed to create client to workload cluster")
-	//}
+	//	return ctrl.Result{}, fmt.Errorf(err, "failed to create client to workload cluster")
+	// }
 
 	if machineToDelete == nil {
 		logger.Info("Failed to pick control plane Machine to delete")
-		return ctrl.Result{}, errors.New("failed to pick control plane Machine to delete")
+		return ctrl.Result{}, fmt.Errorf("failed to pick control plane Machine to delete: %w", err)
 	}
 
 	// TODO figure out etcd complexities
@@ -175,13 +178,10 @@ func (r *KThreesControlPlaneReconciler) preflightChecks(_ context.Context, contr
 
 	// Check machine health conditions; if there are conditions with False or Unknown, then wait.
 	allMachineHealthConditions := []clusterv1.ConditionType{controlplanev1.MachineAgentHealthyCondition}
-	if controlPlane.IsEtcdManaged() {
-	}
 	machineErrors := []error{}
 
 loopmachines:
 	for _, machine := range controlPlane.Machines {
-
 		for _, excluded := range excludeFor {
 			// If this machine should be excluded from the individual
 			// health check, continue the out loop.
@@ -196,6 +196,7 @@ loopmachines:
 			}
 		}
 	}
+
 	if len(machineErrors) > 0 {
 		aggregatedError := kerrors.NewAggregate(machineErrors)
 		r.recorder.Eventf(controlPlane.KCP, corev1.EventTypeWarning, "ControlPlaneUnhealthy",
@@ -209,17 +210,17 @@ loopmachines:
 }
 
 func preflightCheckCondition(kind string, obj conditions.Getter, condition clusterv1.ConditionType) error {
-
 	c := conditions.Get(obj, condition)
 	if c == nil {
-		return errors.Errorf("%s %s does not have %s condition", kind, obj.GetName(), condition)
+		return fmt.Errorf("%s %s does not have %s condition: %w", kind, obj.GetName(), condition, ErrPreConditionFailed)
 	}
 	if c.Status == corev1.ConditionFalse {
-		return errors.Errorf("%s %s reports %s condition is false (%s, %s)", kind, obj.GetName(), condition, c.Severity, c.Message)
+		return fmt.Errorf("%s %s reports %s condition is false (%s, %s): %w", kind, obj.GetName(), condition, c.Severity, c.Message, ErrPreConditionFailed)
 	}
 	if c.Status == corev1.ConditionUnknown {
-		return errors.Errorf("%s %s reports %s condition is unknown (%s)", kind, obj.GetName(), condition, c.Message)
+		return fmt.Errorf("%s %s reports %s condition is unknown (%s): %w", kind, obj.GetName(), condition, c.Message, ErrPreConditionFailed)
 	}
+
 	return nil
 }
 
@@ -249,7 +250,7 @@ func (r *KThreesControlPlaneReconciler) cloneConfigsAndGenerateMachine(ctx conte
 	}
 
 	// Clone the infrastructure template
-	infraRef, err := external.CloneTemplate(ctx, &external.CloneTemplateInput{
+	infraRef, err := external.CreateFromTemplate(ctx, &external.CreateFromTemplateInput{
 		Client:      r.Client,
 		TemplateRef: &kcp.Spec.InfrastructureTemplate,
 		Namespace:   kcp.Namespace,
@@ -259,26 +260,26 @@ func (r *KThreesControlPlaneReconciler) cloneConfigsAndGenerateMachine(ctx conte
 	})
 	if err != nil {
 		// Safe to return early here since no resources have been created yet.
-		return errors.Wrap(err, "failed to clone infrastructure template")
+		return fmt.Errorf("failed to clone infrastructure template: %w", err)
 	}
 
 	// Clone the bootstrap configuration
 	bootstrapRef, err := r.generateKThreesConfig(ctx, kcp, cluster, bootstrapSpec)
 	if err != nil {
-		errs = append(errs, errors.Wrap(err, "failed to generate bootstrap config"))
+		errs = append(errs, fmt.Errorf("failed to generate bootstrap config: %w", err))
 	}
 
 	// Only proceed to generating the Machine if we haven't encountered an error
 	if len(errs) == 0 {
 		if err := r.generateMachine(ctx, kcp, cluster, infraRef, bootstrapRef, failureDomain); err != nil {
-			errs = append(errs, errors.Wrap(err, "failed to create Machine"))
+			errs = append(errs, fmt.Errorf("failed to create Machine: %w", err))
 		}
 	}
 
 	// If we encountered any errors, attempt to clean up any dangling resources
 	if len(errs) > 0 {
 		if err := r.cleanupFromGeneration(ctx, infraRef, bootstrapRef); err != nil {
-			errs = append(errs, errors.Wrap(err, "failed to cleanup generated resources"))
+			errs = append(errs, fmt.Errorf("failed to cleanup generated resources: %w", err))
 		}
 
 		return kerrors.NewAggregate(errs)
@@ -299,7 +300,7 @@ func (r *KThreesControlPlaneReconciler) cleanupFromGeneration(ctx context.Contex
 			config.SetName(ref.Name)
 
 			if err := r.Client.Delete(ctx, config); err != nil && !apierrors.IsNotFound(err) {
-				errs = append(errs, errors.Wrap(err, "failed to cleanup generated resources after error"))
+				errs = append(errs, fmt.Errorf("failed to cleanup generated resources after error: %w", err))
 			}
 		}
 	}
@@ -327,7 +328,7 @@ func (r *KThreesControlPlaneReconciler) generateKThreesConfig(ctx context.Contex
 	}
 
 	if err := r.Client.Create(ctx, bootstrapConfig); err != nil {
-		return nil, errors.Wrap(err, "Failed to create bootstrap configuration")
+		return nil, fmt.Errorf("failed to create bootstrap configuration: %w", err)
 	}
 
 	bootstrapRef := &corev1.ObjectReference{
@@ -367,12 +368,12 @@ func (r *KThreesControlPlaneReconciler) generateMachine(ctx context.Context, kcp
 	// We store ClusterConfiguration as annotation here to detect any changes in KCP ClusterConfiguration and rollout the machine if any.
 	serverConfig, err := json.Marshal(kcp.Spec.KThreesConfigSpec.ServerConfig)
 	if err != nil {
-		return errors.Wrap(err, "failed to marshal cluster configuration")
+		return fmt.Errorf("failed to marshal cluster configuration: %w", err)
 	}
 	machine.SetAnnotations(map[string]string{controlplanev1.KThreesServerConfigurationAnnotation: string(serverConfig)})
 
 	if err := r.Client.Create(ctx, machine); err != nil {
-		return errors.Wrap(err, "failed to create machine")
+		return fmt.Errorf("failed to create machine: %w", err)
 	}
 	return nil
 }

@@ -24,13 +24,13 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/hex"
+	"errors"
+	"fmt"
 	"math/big"
 	"path/filepath"
 	"strings"
 	"time"
 
-	bootstrapv1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/bootstrap/api/v1beta1"
-	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -38,6 +38,8 @@ import (
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/util/certs"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	bootstrapv1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/bootstrap/api/v1beta1"
 )
 
 const (
@@ -47,20 +49,22 @@ const (
 )
 
 var (
-	// ErrMissingCertificate is an error indicating a certificate is entirely missing
+	// ErrMissingCertificate is an error indicating a certificate is entirely missing.
 	ErrMissingCertificate = errors.New("missing certificate")
 
-	// ErrMissingCrt is an error indicating the crt file is missing from the certificate
+	// ErrMissingCrt is an error indicating the crt file is missing from the certificate.
 	ErrMissingCrt = errors.New("missing crt data")
 
-	// ErrMissingKey is an error indicating the key file is missing from the certificate
+	// ErrMissingKey is an error indicating the key file is missing from the certificate.
 	ErrMissingKey = errors.New("missing key data")
+
+	ErrMissingData = errors.New("missing data")
 )
 
 // Certificates are the certificates necessary to bootstrap a cluster.
 type Certificates []*Certificate
 
-// NewCertificatesForInitialControlPlane returns a list of certificates configured for a control plane node
+// NewCertificatesForInitialControlPlane returns a list of certificates configured for a control plane node.
 func NewCertificatesForInitialControlPlane() Certificates {
 	certificatesDir := DefaultCertificatesDir
 
@@ -103,11 +107,11 @@ func (c Certificates) Lookup(ctx context.Context, ctrlclient client.Client, clus
 		if err := ctrlclient.Get(ctx, key, s); err != nil {
 			if apierrors.IsNotFound(err) {
 				if certificate.External {
-					return errors.WithMessage(err, "external certificate not found")
+					return fmt.Errorf("external certificate not found: %w", err)
 				}
 				continue
 			}
-			return errors.WithStack(err)
+			return err
 		}
 		// If a user has a badly formatted secret it will prevent the cluster from working.
 		kp, err := secretToKeyPair(s)
@@ -119,18 +123,18 @@ func (c Certificates) Lookup(ctx context.Context, ctrlclient client.Client, clus
 	return nil
 }
 
-// EnsureAllExist ensure that there is some data present for every certificate
+// EnsureAllExist ensure that there is some data present for every certificate.
 func (c Certificates) EnsureAllExist() error {
 	for _, certificate := range c {
 		if certificate.KeyPair == nil {
 			return ErrMissingCertificate
 		}
 		if len(certificate.KeyPair.Cert) == 0 {
-			return errors.Wrapf(ErrMissingCrt, "for certificate: %s", certificate.Purpose)
+			return fmt.Errorf("for certificate %s: %w", certificate.Purpose, ErrMissingCrt)
 		}
 		if !certificate.External {
 			if len(certificate.KeyPair.Key) == 0 {
-				return errors.Wrapf(ErrMissingKey, "for certificate: %s", certificate.Purpose)
+				return fmt.Errorf("for certificate %s: %w", certificate.Purpose, ErrMissingKey)
 			}
 		}
 	}
@@ -158,7 +162,7 @@ func (c Certificates) SaveGenerated(ctx context.Context, ctrlclient client.Clien
 		}
 		s := certificate.AsSecret(clusterName, owner)
 		if err := ctrlclient.Create(ctx, s); err != nil {
-			return errors.WithStack(err)
+			return err
 		}
 	}
 	return nil
@@ -197,7 +201,7 @@ type Certificate struct {
 func (c *Certificate) Hashes() ([]string, error) {
 	certificates, err := cert.ParseCertsPEM(c.KeyPair.Cert)
 	if err != nil {
-		return nil, errors.Wrapf(err, "unable to parse %s certificate", c.Purpose)
+		return nil, fmt.Errorf("unable to parse %s certificate: %w", c.Purpose, err)
 	}
 	out := make([]string, 0)
 	for _, c := range certificates {
@@ -219,7 +223,7 @@ func (c *Certificate) AsSecret(clusterName client.ObjectKey, owner metav1.OwnerR
 			Namespace: clusterName.Namespace,
 			Name:      Name(clusterName.Name, c.Purpose),
 			Labels: map[string]string{
-				clusterv1.ClusterLabelName: clusterName.Name,
+				clusterv1.ClusterNameLabel: clusterName.Name,
 			},
 		},
 		Data: map[string][]byte{
@@ -308,7 +312,7 @@ func (c Certificates) AsFiles() []bootstrapv1.File {
 func secretToKeyPair(s *corev1.Secret) (*certs.KeyPair, error) {
 	c, exists := s.Data[TLSCrtDataName]
 	if !exists {
-		return nil, errors.Errorf("missing data for key %s", TLSCrtDataName)
+		return nil, fmt.Errorf("key %s: %w", TLSCrtDataName, ErrMissingData)
 	}
 
 	// In some cases (external etcd) it's ok if the etcd.key does not exist.
@@ -350,7 +354,7 @@ func generateServiceAccountKeys() (*certs.KeyPair, error) {
 	}, nil
 }
 
-// newCertificateAuthority creates new certificate and private key for the certificate authority
+// newCertificateAuthority creates new certificate and private key for the certificate authority.
 func newCertificateAuthority() (*x509.Certificate, *rsa.PrivateKey, error) {
 	key, err := certs.NewPrivateKey()
 	if err != nil {
@@ -390,9 +394,9 @@ func newSelfSignedCACert(key *rsa.PrivateKey) (*x509.Certificate, error) {
 
 	b, err := x509.CreateCertificate(rand.Reader, &tmpl, &tmpl, key.Public(), key)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to create self signed CA certificate: %+v", tmpl)
+		return nil, fmt.Errorf("failed to create self signed CA certificate %+v: %w", tmpl, err)
 	}
 
 	c, err := x509.ParseCertificate(b)
-	return c, errors.WithStack(err)
+	return c, err
 }

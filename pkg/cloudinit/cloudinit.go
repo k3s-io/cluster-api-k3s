@@ -18,11 +18,11 @@ package cloudinit
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"text/template"
 
 	bootstrapv1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/bootstrap/api/v1beta1"
-	"github.com/pkg/errors"
 )
 
 var (
@@ -82,39 +82,24 @@ type BaseUserData struct {
 	K3sVersion      string
 }
 
-func (input *BaseUserData) prepare() error {
-	input.Header = cloudConfigHeader
-	input.WriteFiles = append(input.WriteFiles, input.AdditionalFiles...)
-
-	/**
-	scriptFile, err := generateBootstrapScript(input)
-	if err != nil {
-		return errors.Wrap(err, "failed to generate user data for machine joining control plane")
-	}
-	input.WriteFiles = append(input.WriteFiles, *scriptFile)
-	**/
-
-	return nil
-}
-
 func generate(kind string, tpl string, data interface{}) ([]byte, error) {
 	tm := template.New(kind).Funcs(defaultTemplateFuncMap)
 	if _, err := tm.Parse(filesTemplate); err != nil {
-		return nil, errors.Wrap(err, "failed to parse files template")
+		return nil, fmt.Errorf("failed to parse files template: %w", err)
 	}
 
 	if _, err := tm.Parse(commandsTemplate); err != nil {
-		return nil, errors.Wrap(err, "failed to parse commands template")
+		return nil, fmt.Errorf("failed to parse commands template: %w", err)
 	}
 
 	t, err := tm.Parse(tpl)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to parse %s template", kind)
+		return nil, fmt.Errorf("failed to parse %s template: %w", kind, err)
 	}
 
 	var out bytes.Buffer
 	if err := t.Execute(&out, data); err != nil {
-		return nil, errors.Wrapf(err, "failed to generate %s template", kind)
+		return nil, fmt.Errorf("failed to generate %s template: %w", kind, err)
 	}
 
 	return out.Bytes(), nil

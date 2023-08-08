@@ -17,18 +17,17 @@ limitations under the License.
 package machinefilters
 
 import (
-	bootstrapv1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/bootstrap/api/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
-
-	controlplanev1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/controlplane/api/v1beta1"
-
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/conditions"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	bootstrapv1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/bootstrap/api/v1beta1"
+	controlplanev1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/controlplane/api/v1beta1"
 )
 
 type Func func(machine *clusterv1.Machine) bool
@@ -64,7 +63,7 @@ func Not(mf Func) Func {
 	}
 }
 
-// HasControllerRef is a filter that returns true if the machine has a controller ref
+// HasControllerRef is a filter that returns true if the machine has a controller ref.
 func HasControllerRef(machine *clusterv1.Machine) bool {
 	if machine == nil {
 		return false
@@ -73,7 +72,7 @@ func HasControllerRef(machine *clusterv1.Machine) bool {
 }
 
 // InFailureDomains returns a filter to find all machines
-// in any of the given failure domains
+// in any of the given failure domains.
 func InFailureDomains(failureDomains ...*string) Func {
 	return func(machine *clusterv1.Machine) bool {
 		if machine == nil {
@@ -99,8 +98,8 @@ func InFailureDomains(failureDomains ...*string) Func {
 }
 
 // OwnedMachines returns a filter to find all owned control plane machines.
-// Usage: managementCluster.GetMachinesForCluster(ctx, cluster, machinefilters.OwnedMachines(controlPlane))
-func OwnedMachines(owner controllerutil.Object) func(machine *clusterv1.Machine) bool {
+// Usage: managementCluster.GetMachinesForCluster(ctx, cluster, machinefilters.OwnedMachines(controlPlane)).
+func OwnedMachines(owner client.Object) func(machine *clusterv1.Machine) bool {
 	return func(machine *clusterv1.Machine) bool {
 		if machine == nil {
 			return false
@@ -110,7 +109,7 @@ func OwnedMachines(owner controllerutil.Object) func(machine *clusterv1.Machine)
 }
 
 // ControlPlaneMachines returns a filter to find all control plane machines for a cluster, regardless of ownership.
-// Usage: managementCluster.GetMachinesForCluster(ctx, cluster, machinefilters.ControlPlaneMachines(cluster.Name))
+// Usage: managementCluster.GetMachinesForCluster(ctx, cluster, machinefilters.ControlPlaneMachines(cluster.Name)).
 func ControlPlaneMachines(clusterName string) func(machine *clusterv1.Machine) bool {
 	selector := ControlPlaneSelectorForCluster(clusterName)
 	return func(machine *clusterv1.Machine) bool {
@@ -122,7 +121,7 @@ func ControlPlaneMachines(clusterName string) func(machine *clusterv1.Machine) b
 }
 
 // AdoptableControlPlaneMachines returns a filter to find all un-controlled control plane machines.
-// Usage: managementCluster.GetMachinesForCluster(ctx, cluster, AdoptableControlPlaneMachines(cluster.Name, controlPlane))
+// Usage: managementCluster.GetMachinesForCluster(ctx, cluster, AdoptableControlPlaneMachines(cluster.Name, controlPlane)).
 func AdoptableControlPlaneMachines(clusterName string) func(machine *clusterv1.Machine) bool {
 	return And(
 		ControlPlaneMachines(clusterName),
@@ -145,7 +144,7 @@ func HasUnhealthyCondition(machine *clusterv1.Machine) bool {
 	if machine == nil {
 		return false
 	}
-	return conditions.IsFalse(machine, clusterv1.MachineHealthCheckSuccededCondition) && conditions.IsFalse(machine, clusterv1.MachineOwnerRemediatedCondition)
+	return conditions.IsFalse(machine, clusterv1.MachineHealthCheckSucceededCondition) && conditions.IsFalse(machine, clusterv1.MachineOwnerRemediatedCondition)
 }
 
 // IsReady returns a filter to find all machines with the ReadyCondition equals to True.
@@ -159,7 +158,7 @@ func IsReady() Func {
 }
 
 // ShouldRolloutAfter returns a filter to find all machines where
-// CreationTimestamp < rolloutAfter < reconciliationTIme
+// CreationTimestamp < rolloutAfter < reconciliationTIme.
 func ShouldRolloutAfter(reconciliationTime, rolloutAfter *metav1.Time) Func {
 	return func(machine *clusterv1.Machine) bool {
 		if machine == nil {
@@ -170,7 +169,7 @@ func ShouldRolloutAfter(reconciliationTime, rolloutAfter *metav1.Time) Func {
 }
 
 // HasAnnotationKey returns a filter to find all machines that have the
-// specified Annotation key present
+// specified Annotation key present.
 func HasAnnotationKey(key string) Func {
 	return func(machine *clusterv1.Machine) bool {
 		if machine == nil || machine.Annotations == nil {
@@ -184,16 +183,17 @@ func HasAnnotationKey(key string) Func {
 }
 
 // ControlPlaneSelectorForCluster returns the label selector necessary to get control plane machines for a given cluster.
-func ControlPlaneSelectorForCluster(clusterName string) labels.Selector {
+func ControlPlaneSelectorForCluster(clusterName string) labels.Selector { //nolint:ireturn
 	must := func(r *labels.Requirement, err error) labels.Requirement {
 		if err != nil {
 			panic(err)
 		}
 		return *r
 	}
+
 	return labels.NewSelector().Add(
-		must(labels.NewRequirement(clusterv1.ClusterLabelName, selection.Equals, []string{clusterName})),
-		must(labels.NewRequirement(clusterv1.MachineControlPlaneLabelName, selection.Exists, []string{})),
+		must(labels.NewRequirement(clusterv1.ClusterNameLabel, selection.Equals, []string{clusterName})),
+		must(labels.NewRequirement(clusterv1.MachineControlPlaneNameLabel, selection.Exists, []string{})),
 	)
 }
 
@@ -210,7 +210,6 @@ func MatchesKCPConfiguration(infraConfigs map[string]*unstructured.Unstructured,
 // MatchesTemplateClonedFrom returns a filter to find all machines that match a given KCP infra template.
 func MatchesTemplateClonedFrom(infraConfigs map[string]*unstructured.Unstructured, kcp *controlplanev1.KThreesControlPlane) Func {
 	return func(machine *clusterv1.Machine) bool {
-
 		if machine == nil {
 			return false
 		}
@@ -256,19 +255,4 @@ func MatchesKThreesBootstrapConfig(machineConfigs map[string]*bootstrapv1.KThree
 	return func(machine *clusterv1.Machine) bool {
 		return true
 	}
-}
-
-// getAdjustedKcpConfig takes the KThreesConfigSpec from KCP and applies the transformations required
-// to allow a comparison with the KThreesConfig referenced from the machine.
-// NOTE: The KCP controller applies a set of transformations when creating a KThreesConfig referenced from the machine,
-// mostly depending on the fact that the machine was the initial control plane node or a joining control plane node.
-// In this function we don't have such information, so we are making the KThreesConfigSpec similar to the KThreesConfig.
-func getAdjustedKcpConfig(kcp *controlplanev1.KThreesControlPlane, machineConfig *bootstrapv1.KThreesConfig) *bootstrapv1.KThreesConfigSpec {
-
-	return &kcp.Spec.KThreesConfigSpec
-}
-
-// cleanupConfigFields cleanups all the fields that are not relevant for the comparison.
-func cleanupConfigFields(kcpConfig *bootstrapv1.KThreesConfigSpec, machineConfig *bootstrapv1.KThreesConfig) {
-
 }

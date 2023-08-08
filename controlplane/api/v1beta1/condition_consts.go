@@ -18,7 +18,7 @@ package v1beta1
 
 import clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 
-// Conditions and condition Reasons for the KThreesControlPlane object
+// Conditions and condition Reasons for the KThreesControlPlane object.
 
 const (
 	// MachinesReady reports an aggregate of current status of the machines controlled by the KThreesControlPlane.
@@ -27,7 +27,7 @@ const (
 
 const (
 	// CertificatesAvailableCondition documents that cluster certificates were generated as part of the
-	// processing of a a KThreesControlPlane object.
+	// processing of a KThreesControlPlane object.
 	CertificatesAvailableCondition clusterv1.ConditionType = "CertificatesAvailable"
 
 	// CertificatesGenerationFailedReason (Severity=Warning) documents a KThreesControlPlane controller detecting

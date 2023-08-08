@@ -19,13 +19,13 @@ package cloudinit
 import (
 	"testing"
 
+	. "github.com/onsi/gomega"
+
 	infrav1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/bootstrap/api/v1beta1"
 	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/secret"
-	. "github.com/onsi/gomega"
 )
 
 func TestControlPlaneInit(t *testing.T) {
-
 	g := NewWithT(t)
 
 	cpinput := &ControlPlaneInput{

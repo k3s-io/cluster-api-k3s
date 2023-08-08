@@ -20,7 +20,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// KThreesConfigTemplateSpec defines the desired state of KThreesConfigTemplate
+// KThreesConfigTemplateSpec defines the desired state of KThreesConfigTemplate.
 type KThreesConfigTemplateSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
@@ -28,14 +28,14 @@ type KThreesConfigTemplateSpec struct {
 	Template KThreesConfigTemplateResource `json:"template"`
 }
 
-// KThreesConfigTemplateResource defines the Template structure
+// KThreesConfigTemplateResource defines the Template structure.
 type KThreesConfigTemplateResource struct {
 	Spec KThreesConfigSpec `json:"spec,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 
-// KThreesConfigTemplate is the Schema for the kthreesconfigtemplates API
+// KThreesConfigTemplate is the Schema for the kthreesconfigtemplates API.
 type KThreesConfigTemplate struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -45,7 +45,7 @@ type KThreesConfigTemplate struct {
 
 // +kubebuilder:object:root=true
 
-// KThreesConfigTemplateList contains a list of KThreesConfigTemplate
+// KThreesConfigTemplateList contains a list of KThreesConfigTemplate.
 type KThreesConfigTemplateList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
