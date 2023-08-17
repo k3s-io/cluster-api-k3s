@@ -20,7 +20,7 @@ SHELL:=/usr/bin/env bash
 
 .DEFAULT_GOAL:=help
 
-GO_VERSION ?= 1.20.6
+GO_VERSION ?= 1.20.7
 GO_CONTAINER_IMAGE ?= docker.io/library/golang:$(GO_VERSION)
 
 ARCH ?= $(shell go env GOARCH)
@@ -90,6 +90,32 @@ KUSTOMIZE_VER := v4.0.4
 KUSTOMIZE_BIN := kustomize
 KUSTOMIZE := $(TOOLS_BIN_DIR)/$(KUSTOMIZE_BIN)-$(KUSTOMIZE_VER)
 
+## --------------------------------------
+## Release
+## --------------------------------------
+
+##@ release:
+
+## latest git tag for the commit, e.g., v0.3.10
+RELEASE_TAG ?= $(shell git describe --abbrev=0 2>/dev/null)
+ifneq (,$(findstring -,$(RELEASE_TAG)))
+    PRE_RELEASE=true
+endif
+# the previous release tag, e.g., v0.3.9, excluding pre-release tags
+PREVIOUS_TAG ?= $(shell git tag -l | grep -E "^v[0-9]+\.[0-9]+\.[0-9]+$$" | sort -V | grep -B1 $(RELEASE_TAG) | head -n 1 2>/dev/null)
+## set by Prow, ref name of the base branch, e.g., main
+RELEASE_ALIAS_TAG := $(PULL_BASE_REF)
+RELEASE_DIR := out
+RELEASE_NOTES_DIR := _releasenotes
+
+.PHONY: $(RELEASE_DIR)
+$(RELEASE_DIR):
+	mkdir -p $(RELEASE_DIR)/
+
+.PHONY: $(RELEASE_NOTES_DIR)
+$(RELEASE_NOTES_DIR):
+	mkdir -p $(RELEASE_NOTES_DIR)/
+
 
 all-bootstrap: manager-bootstrap
 
@@ -122,10 +148,9 @@ deploy-bootstrap: manifests-bootstrap
 manifests-bootstrap: $(KUSTOMIZE) $(CONTROLLER_GEN)
 	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=bootstrap/config/crd/bases output:rbac:dir=bootstrap/config/rbac
 
-release-bootstrap: manifests-bootstrap ## Release bootstrap
-	mkdir -p out
+release-bootstrap:$(RELEASE_DIR) manifests-bootstrap ## Release bootstrap
 	cd bootstrap/config/manager && $(KUSTOMIZE) edit set image controller=${BOOTSTRAP_IMG}
-	$(KUSTOMIZE) build bootstrap/config/default > out/bootstrap-components.yaml
+	$(KUSTOMIZE) build bootstrap/config/default > $(RELEASE_DIR)/bootstrap-components.yaml
 
 # Generate code
 generate-bootstrap: $(CONTROLLER_GEN)
@@ -133,7 +158,7 @@ generate-bootstrap: $(CONTROLLER_GEN)
 
 # Build the docker image
 docker-build-bootstrap: manager-bootstrap ## Build bootstrap
-	DOCKER_BUILDKIT=1 docker build --build-arg builder_image=$(GO_CONTAINER_IMAGE) --build-arg goproxy=$(GOPROXY) --build-arg ARCH=$(ARCH) --build-arg package=./bootstrap/main.go --build-arg ldflags="$(LDFLAGS)" . -t ${BOOTSTRAP_IMG}
+	DOCKER_BUILDKIT=1 docker build --build-arg builder_image=$(GO_CONTAINER_IMAGE) --build-arg goproxy=$(GOPROXY) --build-arg TARGETARCH=$(ARCH) --build-arg package=./bootstrap/main.go --build-arg ldflags="$(LDFLAGS)" . -t ${BOOTSTRAP_IMG}
 
 # Push the docker image
 docker-push-bootstrap: ## Push bootstrap
@@ -170,21 +195,29 @@ deploy-controlplane: manifests-controlplane
 manifests-controlplane: $(KUSTOMIZE) $(CONTROLLER_GEN)
 	$(CONTROLLER_GEN) rbac:roleName=manager-role webhook crd paths="./..." output:crd:artifacts:config=controlplane/config/crd/bases output:rbac:dir=controlplane/config/rbac
 
-release-controlplane: manifests-controlplane ## Release control-plane
-	mkdir -p out
+release-controlplane: $(RELEASE_DIR) manifests-controlplane ## Release control-plane
 	cd controlplane/config/manager && $(KUSTOMIZE) edit set image controller=${CONTROLPLANE_IMG}
-	$(KUSTOMIZE) build controlplane/config/default > out/control-plane-components.yaml
+	$(KUSTOMIZE) build controlplane/config/default > $(RELEASE_DIR)/control-plane-components.yaml
 
 generate-controlplane: $(CONTROLLER_GEN)
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="$(shell pwd)/controlplane/..." 
 
 docker-build-controlplane: manager-controlplane ## Build control-plane
-	DOCKER_BUILDKIT=1 docker build --build-arg builder_image=$(GO_CONTAINER_IMAGE) --build-arg goproxy=$(GOPROXY) --build-arg ARCH=$(ARCH) --build-arg package=./controlplane/main.go --build-arg ldflags="$(LDFLAGS)" . -t ${CONTROLPLANE_IMG}
+	DOCKER_BUILDKIT=1 docker build --build-arg builder_image=$(GO_CONTAINER_IMAGE) --build-arg goproxy=$(GOPROXY) --build-arg TARGETARCH=$(ARCH) --build-arg package=./controlplane/main.go --build-arg ldflags="$(LDFLAGS)" . -t ${CONTROLPLANE_IMG}
 
 docker-push-controlplane: ## Push control-plane
 	docker push ${CONTROLPLANE_IMG}
 
 release: release-bootstrap release-controlplane
+
+.PHONY: release-notes
+release-notes: $(RELEASE_NOTES_DIR) $(RELEASE_NOTES)
+	if [ -n "${PRE_RELEASE}" ]; then \
+	echo ":rotating_light: This is a RELEASE CANDIDATE. Use it only for testing purposes. If you find any bugs, file an [issue](https://github.com/kubernetes-sigs/cluster-api/issues/new)." > $(RELEASE_NOTES_DIR)/$(RELEASE_TAG).md; \
+	else \
+	go run ./hack/tools/release/notes.go --from=$(PREVIOUS_TAG) > $(RELEASE_NOTES_DIR)/$(RELEASE_TAG).md; \
+	fi
+
 ## --------------------------------------
 ## Help
 ## --------------------------------------
