@@ -132,11 +132,11 @@ run-bootstrap: generate-bootstrap lint manifests-bootstrap
 	go run ./bootstrap/main.go
 
 # Install CRDs into a cluster
-install-bootstrap: kustomize manifests-bootstrap
+install-bootstrap: manifests-bootstrap
 	$(KUSTOMIZE) build bootstrap/config/crd | kubectl apply -f -
 
 # Uninstall CRDs from a cluster
-uninstall-bootstrap: kustomize manifests-bootstrap
+uninstall-bootstrap: manifests-bootstrap
 	$(KUSTOMIZE) build bootstrap/config/crd | kubectl delete -f -
 
 # Deploy controller in the configured Kubernetes cluster in ~/.kube/config
@@ -179,15 +179,15 @@ run-controlplane: generate-controlplane lint manifests-controlplane
 	go run ./controlplane/main.go
 
 # Install CRDs into a cluster
-install-controlplane: kustomize manifests-controlplane
+install-controlplane: manifests-controlplane
 	$(KUSTOMIZE) build controlplane/config/crd | kubectl apply -f -
 
 # Uninstall CRDs from a cluster
-uninstall-controlplane: kustomize manifests-controlplane
+uninstall-controlplane: manifests-controlplane
 	$(KUSTOMIZE) build controlplane/config/crd | kubectl delete -f -
 
 # Deploy controller in the configured Kubernetes cluster in ~/.kube/config
-deploy-controlplane: kustomize manifests-controlplane
+deploy-controlplane: manifests-controlplane
 	cd controlplane/config/manager && $(KUSTOMIZE) edit set image controller=${CONTROLPLANE_IMG}
 	$(KUSTOMIZE) build controlplane/config/default | kubectl apply -f -
 
