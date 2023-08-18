@@ -113,9 +113,10 @@ jobs:
           tags: type=ref,event=tag
 
       - name: manifest
-        run: make release-${{ matrix.target }}
-        env:
-          TAG: ${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.version'] }}
+        run: |
+          BOOTSTRAP_IMG_TAG=$RELEASE_TAG
+          CONTROLPLANE_IMG_TAG=$RELEASE_TAG
+          make release
 
       - name: Generate Release Notes
         run: |
