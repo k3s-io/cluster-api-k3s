@@ -7,7 +7,11 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  GO_VERSION: '1.20'
+  GO_VERSION: "1.20"
+
+permissions:
+  packages: write
+  contents: write
 
 jobs:
   image:
@@ -15,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        target: [bootsrap, controlplane]
+        target: [bootstrap, controlplane]
 
     steps:
       - name: Checkout code
@@ -46,7 +50,7 @@ jobs:
         uses: docker/metadata-action@v4
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          images: ${{ env.REGISTRY }}/${{ matrix.target }}-${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.target }}
           flavor: latest=false
           tags: type=ref,event=tag
 
@@ -71,6 +75,7 @@ jobs:
           push: true
           build-args: |
             LDFLAGS=${{ env.DOCKER_BUILD_LDFLAGS }}
+            package=./${{ matrix.target }}/main.go
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64,linux/arm64
@@ -93,7 +98,13 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - uses: ./.github/actions/setup-go
+      - name: Set release
+        run: echo "RELEASE_TAG=${GITHUB_REF:10}" >> $GITHUB_ENV
+
+      - uses: actions/setup-go@v4
+        with:
+          go-version: "${{ env.GO_VERSION }}"
+          cache: true
 
       - uses: actions/cache@v3
         with:
@@ -108,7 +119,9 @@ jobs:
         uses: docker/metadata-action@v4
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-controlplane
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-bootstrap
           flavor: latest=false
           tags: type=ref,event=tag
 
@@ -118,16 +131,8 @@ jobs:
           CONTROLPLANE_IMG_TAG=$RELEASE_TAG
           make release
 
-      - name: Generate Release Notes
-        run: |
-          release_notes=$(gh api repos/{owner}/{repo}/releases/generate-notes -F tag_name=${{ github.ref }} --jq .body)
-          echo 'RELEASE_NOTES<<EOF' >> $GITHUB_ENV
-          echo "${release_notes}" >> $GITHUB_ENV
-          echo 'EOF' >> $GITHUB_ENV
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          OWNER: ${{ github.repository_owner }}
-          REPO: ${{ github.event.repository.name }}
+      - name: manifest
+        run: make release-notes
 
       - name: Create Release
         id: create_release
@@ -135,7 +140,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          files: out/release/*
-          body: ${{ env.RELEASE_NOTES }}
-          draft: false
+          files: out/*
+          body_path: _releasenotes/${{ env.RELEASE_TAG }}.md
+          draft: true
           prerelease: false
