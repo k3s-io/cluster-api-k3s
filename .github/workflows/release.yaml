@@ -126,7 +126,10 @@ jobs:
           tags: type=ref,event=tag
 
       - name: manifest
-        run: make release
+        run: |
+          BOOTSTRAP_IMG_TAG=$RELEASE_TAG
+          CONTROLPLANE_IMG_TAG=$RELEASE_TAG
+          make release
 
       - name: manifest
         run: make release-notes

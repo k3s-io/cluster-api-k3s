@@ -43,10 +43,12 @@ $(TOOLS_BIN_DIR):
 	mkdir -p $(TOOLS_BIN_DIR)
 
 # Image URL to use all building/pushing image targets
+BOOTSTRAP_IMG_TAG ?= v0.2.0
 BOOTSTRAP_IMG ?= ghcr.io/cluster-api-provider-k3s/cluster-api-k3s/bootstrap-controller:v0.2.0
 
 # Image URL to use all building/pushing image targets
-CONTROLPLANE_IMG ?= ghcr.io/cluster-api-provider-k3s/cluster-api-k3s/controlplane-controller:v0.2.0
+CONTROLPLANE_IMG_TAG ?= v0.2.0
+CONTROLPLANE_IMG ?= ghcr.io/cluster-api-provider-k3s/cluster-api-k3s/controlplane-controller:$(CONTROLPLANE_IMG_TAG)
 
 
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
