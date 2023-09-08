@@ -44,7 +44,7 @@ $(TOOLS_BIN_DIR):
 
 # Image URL to use all building/pushing image targets
 BOOTSTRAP_IMG_TAG ?= v0.2.0
-BOOTSTRAP_IMG ?= ghcr.io/cluster-api-provider-k3s/cluster-api-k3s/bootstrap-controller:v0.2.0
+BOOTSTRAP_IMG ?= ghcr.io/cluster-api-provider-k3s/cluster-api-k3s/bootstrap-controller:$(BOOTSTRAP_IMG_TAG)
 
 # Image URL to use all building/pushing image targets
 CONTROLPLANE_IMG_TAG ?= v0.2.0
