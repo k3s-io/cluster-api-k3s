@@ -110,13 +110,15 @@ $(RELEASE_DIR):
 $(RELEASE_NOTES_DIR):
 	mkdir -p $(RELEASE_NOTES_DIR)/
 
+REGISTRY ?= ghcr.io/cluster-api-provider-k3s/cluster-api-k3s
+
 # Image URL to use all building/pushing image targets
 BOOTSTRAP_IMG_TAG ?= $(RELEASE_TAG)
-BOOTSTRAP_IMG ?= ghcr.io/cluster-api-provider-k3s/cluster-api-k3s/bootstrap-controller:$(BOOTSTRAP_IMG_TAG)
+BOOTSTRAP_IMG ?= $(REGISTRY)/bootstrap-controller:$(BOOTSTRAP_IMG_TAG)
 
 # Image URL to use all building/pushing image targets
 CONTROLPLANE_IMG_TAG ?= $(RELEASE_TAG)
-CONTROLPLANE_IMG ?= ghcr.io/cluster-api-provider-k3s/cluster-api-k3s/controlplane-controller:$(CONTROLPLANE_IMG_TAG)
+CONTROLPLANE_IMG ?= $(REGISTRY)/controlplane-controller:$(CONTROLPLANE_IMG_TAG)
 
 all-bootstrap: manager-bootstrap
 
