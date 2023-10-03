@@ -13,6 +13,7 @@ type K3sServerConfig struct {
 	DisableCloudController    bool     `json:"disable-cloud-controller,omitempty"`
 	KubeAPIServerArgs         []string `json:"kube-apiserver-arg,omitempty"`
 	KubeControllerManagerArgs []string `json:"kube-controller-manager-arg,omitempty"`
+	KubeSchedulerArgs         []string `json:"kube-scheduler-arg,omitempty"`
 	TLSSan                    []string `json:"tls-san,omitempty"`
 	BindAddress               string   `json:"bind-address,omitempty"`
 	HTTPSListenPort           string   `json:"https-listen-port,omitempty"`
@@ -45,6 +46,7 @@ func GenerateInitControlPlaneConfig(controlPlaneEndpoint string, token string, s
 		KubeAPIServerArgs:         append(serverConfig.KubeAPIServerArgs, "anonymous-auth=true", getTLSCipherSuiteArg()),
 		TLSSan:                    append(serverConfig.TLSSan, controlPlaneEndpoint),
 		KubeControllerManagerArgs: append(serverConfig.KubeControllerManagerArgs, "cloud-provider=external"),
+		KubeSchedulerArgs:         serverConfig.KubeSchedulerArgs,
 		BindAddress:               serverConfig.BindAddress,
 		HTTPSListenPort:           serverConfig.HTTPSListenPort,
 		AdvertiseAddress:          serverConfig.AdvertiseAddress,
@@ -75,6 +77,7 @@ func GenerateJoinControlPlaneConfig(serverURL string, token string, controlplane
 		KubeAPIServerArgs:         append(serverConfig.KubeAPIServerArgs, "anonymous-auth=true", getTLSCipherSuiteArg()),
 		TLSSan:                    append(serverConfig.TLSSan, controlplaneendpoint),
 		KubeControllerManagerArgs: append(serverConfig.KubeControllerManagerArgs, "cloud-provider=external"),
+		KubeSchedulerArgs:         serverConfig.KubeSchedulerArgs,
 		BindAddress:               serverConfig.BindAddress,
 		HTTPSListenPort:           serverConfig.HTTPSListenPort,
 		AdvertiseAddress:          serverConfig.AdvertiseAddress,

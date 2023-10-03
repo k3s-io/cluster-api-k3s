@@ -60,6 +60,10 @@ type KThreesServerConfig struct {
 	// +optional
 	KubeControllerManagerArgs []string `json:"kubeControllerManagerArgs,omitempty"`
 
+	// KubeSchedulerArgs is a customized flag for kube-scheduler process
+	// +optional
+	KubeSchedulerArgs []string `json:"kubeSchedulerArgs,omitempty"`
+
 	// TLSSan Add additional hostname or IP as a Subject Alternative Name in the TLS cert
 	// +optional
 	TLSSan []string `json:"tlsSan,omitempty"`
