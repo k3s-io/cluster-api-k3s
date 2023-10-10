@@ -256,7 +256,7 @@ func (r *KThreesControlPlaneReconciler) cloneConfigsAndGenerateMachine(ctx conte
 		Namespace:   kcp.Namespace,
 		OwnerRef:    infraCloneOwner,
 		ClusterName: cluster.Name,
-		Labels:      k3s.ControlPlaneLabelsForCluster(cluster.Name),
+		Labels:      k3s.ControlPlaneLabelsForCluster(cluster.Name, kcp.Spec.MachineLabels),
 	})
 	if err != nil {
 		// Safe to return early here since no resources have been created yet.
@@ -321,7 +321,7 @@ func (r *KThreesControlPlaneReconciler) generateKThreesConfig(ctx context.Contex
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            names.SimpleNameGenerator.GenerateName(kcp.Name + "-"),
 			Namespace:       kcp.Namespace,
-			Labels:          k3s.ControlPlaneLabelsForCluster(cluster.Name),
+			Labels:          k3s.ControlPlaneLabelsForCluster(cluster.Name, kcp.Spec.MachineLabels),
 			OwnerReferences: []metav1.OwnerReference{owner},
 		},
 		Spec: *spec,
@@ -347,7 +347,7 @@ func (r *KThreesControlPlaneReconciler) generateMachine(ctx context.Context, kcp
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      names.SimpleNameGenerator.GenerateName(kcp.Name + "-"),
 			Namespace: kcp.Namespace,
-			Labels:    k3s.ControlPlaneLabelsForCluster(cluster.Name),
+			Labels:    k3s.ControlPlaneLabelsForCluster(cluster.Name, kcp.Spec.MachineLabels),
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(kcp, controlplanev1.GroupVersion.WithKind("KThreesControlPlane")),
 			},

@@ -283,6 +283,12 @@ spec:
                     description: Version specifies the k3s version
                     type: string
                 type: object
+              machineLabels:
+                additionalProperties:
+                  type: string
+                description: MachineLabels is a map of key-value pairs that are set
+                  as labels on created control plane Machines and their KThreesConfig.
+                type: object
               nodeDrainTimeout:
                 description: 'NodeDrainTimeout is the total amount of time that the
                   controller will spend on draining a controlplane node The default

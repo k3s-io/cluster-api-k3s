@@ -67,6 +67,11 @@ type KThreesControlPlaneSpec struct {
 	// NOTE: NodeDrainTimeout is different from `kubectl drain --timeout`
 	// +optional
 	NodeDrainTimeout *metav1.Duration `json:"nodeDrainTimeout,omitempty"`
+
+	// MachineLabels is a map of key-value pairs that are set as labels on created
+	// control plane Machines and their KThreesConfig.
+	// +optional
+	MachineLabels map[string]string `json:"machineLabels,omitempty"`
 }
 
 // KThreesControlPlaneStatus defines the observed state of KThreesControlPlane.
