@@ -246,6 +246,11 @@ spec:
                         items:
                           type: string
                         type: array
+                      disableExternalCloudProvider:
+                        description: 'DisableExternalCloudProvider suppresses the
+                          ''cloud-provider=external'' kubelet argument. (default:
+                          false)'
+                        type: boolean
                       httpsListenPort:
                         description: 'HTTPSListenPort HTTPS listen port (default:
                           6443)'
@@ -278,10 +283,6 @@ spec:
                         items:
                           type: string
                         type: array
-                      useExternalCloudProvider:
-                        description: 'UseExternalCloudProvider adds the ''cloud-provider=external''
-                          kubelet argument. (default: false)'
-                        type: boolean
                     type: object
                   version:
                     description: Version specifies the k3s version
