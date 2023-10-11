@@ -325,6 +325,11 @@ func (in *KThreesServerConfig) DeepCopyInto(out *KThreesServerConfig) {
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
+	if in.KubeSchedulerArgs != nil {
+		in, out := &in.KubeSchedulerArgs, &out.KubeSchedulerArgs
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	if in.TLSSan != nil {
 		in, out := &in.TLSSan, &out.TLSSan
 		*out = make([]string, len(*in))
