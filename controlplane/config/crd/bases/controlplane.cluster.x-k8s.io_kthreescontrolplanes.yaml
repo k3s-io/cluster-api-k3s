@@ -262,6 +262,12 @@ spec:
                         items:
                           type: string
                         type: array
+                      kubeSchedulerArgs:
+                        description: KubeSchedulerArgs is a customized flag for kube-scheduler
+                          process
+                        items:
+                          type: string
+                        type: array
                       serviceCidr:
                         description: 'ServiceCidr Network CIDR to use for services
                           IPs (default: "10.43.0.0/16")'
@@ -272,6 +278,10 @@ spec:
                         items:
                           type: string
                         type: array
+                      useExternalCloudProvider:
+                        description: 'UseExternalCloudProvider adds the ''cloud-provider=external''
+                          kubelet argument. (default: false)'
+                        type: boolean
                     type: object
                   version:
                     description: Version specifies the k3s version
