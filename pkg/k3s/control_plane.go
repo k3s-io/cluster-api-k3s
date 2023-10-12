@@ -198,7 +198,7 @@ func (c *ControlPlane) GenerateKThreesConfig(spec *bootstrapv1.KThreesConfigSpec
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            names.SimpleNameGenerator.GenerateName(c.KCP.Name + "-"),
 			Namespace:       c.KCP.Namespace,
-			Labels:          ControlPlaneLabelsForCluster(c.Cluster.Name, c.KCP.Spec.MachineLabels),
+			Labels:          ControlPlaneLabelsForCluster(c.Cluster.Name, c.KCP.Spec.MachineTemplate),
 			OwnerReferences: []metav1.OwnerReference{owner},
 		},
 		Spec: *spec,
@@ -207,9 +207,9 @@ func (c *ControlPlane) GenerateKThreesConfig(spec *bootstrapv1.KThreesConfigSpec
 }
 
 // ControlPlaneLabelsForCluster returns a set of labels to add to a control plane machine for this specific cluster.
-func ControlPlaneLabelsForCluster(clusterName string, customLabels map[string]string) map[string]string {
+func ControlPlaneLabelsForCluster(clusterName string, machineTemplate controlplanev1.KThreesControlPlaneMachineTemplate) map[string]string {
 	labels := make(map[string]string)
-	for key, value := range customLabels {
+	for key, value := range machineTemplate.ObjectMeta.Labels {
 		labels[key] = value
 	}
 	labels[clusterv1.ClusterNameLabel] = clusterName
@@ -224,7 +224,7 @@ func (c *ControlPlane) NewMachine(infraRef, bootstrapRef *corev1.ObjectReference
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      names.SimpleNameGenerator.GenerateName(c.KCP.Name + "-"),
 			Namespace: c.KCP.Namespace,
-			Labels:    ControlPlaneLabelsForCluster(c.Cluster.Name, c.KCP.Spec.MachineLabels),
+			Labels:    ControlPlaneLabelsForCluster(c.Cluster.Name, c.KCP.Spec.MachineTemplate),
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(c.KCP, controlplanev1.GroupVersion.WithKind("KThreesControlPlane")),
 			},

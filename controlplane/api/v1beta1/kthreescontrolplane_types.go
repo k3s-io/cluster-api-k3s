@@ -68,10 +68,17 @@ type KThreesControlPlaneSpec struct {
 	// +optional
 	NodeDrainTimeout *metav1.Duration `json:"nodeDrainTimeout,omitempty"`
 
-	// MachineLabels is a map of key-value pairs that are set as labels on created
-	// control plane Machines and their KThreesConfig.
+	// MachineTemplate contains information about how machines
+	// should be shaped when creating or updating a control plane.
 	// +optional
-	MachineLabels map[string]string `json:"machineLabels,omitempty"`
+	MachineTemplate KThreesControlPlaneMachineTemplate `json:"machineTemplate,omitempty"`
+}
+
+type KThreesControlPlaneMachineTemplate struct {
+	// Standard object's metadata.
+	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
+	// +optional
+	ObjectMeta clusterv1.ObjectMeta `json:"metadata,omitempty"`
 }
 
 // KThreesControlPlaneStatus defines the observed state of KThreesControlPlane.
