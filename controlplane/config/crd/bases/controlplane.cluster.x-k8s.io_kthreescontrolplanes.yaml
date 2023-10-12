@@ -246,6 +246,11 @@ spec:
                         items:
                           type: string
                         type: array
+                      disableExternalCloudProvider:
+                        description: 'DisableExternalCloudProvider suppresses the
+                          ''cloud-provider=external'' kubelet argument. (default:
+                          false)'
+                        type: boolean
                       httpsListenPort:
                         description: 'HTTPSListenPort HTTPS listen port (default:
                           6443)'
@@ -259,6 +264,12 @@ spec:
                       kubeControllerManagerArgs:
                         description: KubeControllerManagerArgs is a customized flag
                           for kube-controller-manager process
+                        items:
+                          type: string
+                        type: array
+                      kubeSchedulerArgs:
+                        description: KubeSchedulerArgs is a customized flag for kube-scheduler
+                          process
                         items:
                           type: string
                         type: array

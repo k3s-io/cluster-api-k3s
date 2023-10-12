@@ -166,6 +166,10 @@ spec:
                     items:
                       type: string
                     type: array
+                  disableExternalCloudProvider:
+                    description: 'DisableExternalCloudProvider suppresses the ''cloud-provider=external''
+                      kubelet argument. (default: false)'
+                    type: boolean
                   httpsListenPort:
                     description: 'HTTPSListenPort HTTPS listen port (default: 6443)'
                     type: string

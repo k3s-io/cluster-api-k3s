@@ -5,4 +5,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: ghcr.io/cluster-api-provider-k3s/cluster-api-k3s/bootstrap-controller
-  newTag: v0.2.0
+  newTag: v0.1.7

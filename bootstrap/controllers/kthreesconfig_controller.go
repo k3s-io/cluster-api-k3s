@@ -290,7 +290,7 @@ func (r *KThreesConfigReconciler) joinWorker(ctx context.Context, scope *Scope) 
 		return err
 	}
 
-	configStruct := k3s.GenerateWorkerConfig(serverURL, tokn, scope.Config.Spec.AgentConfig)
+	configStruct := k3s.GenerateWorkerConfig(serverURL, tokn, scope.Config.Spec.ServerConfig, scope.Config.Spec.AgentConfig)
 
 	b, err := kubeyaml.Marshal(configStruct)
 	if err != nil {
