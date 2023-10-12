@@ -212,6 +212,7 @@ docker-push-controlplane: ## Push control-plane
 	docker push ${CONTROLPLANE_IMG}
 
 release: release-bootstrap release-controlplane
+	cp metadata.yaml $(RELEASE_DIR)/metadata.yaml
 
 .PHONY: release-notes
 release-notes: $(RELEASE_NOTES_DIR) $(RELEASE_NOTES)
