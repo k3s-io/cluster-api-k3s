@@ -70,7 +70,6 @@ type KThreesControlPlaneSpec struct {
 
 	// MachineTemplate contains information about how machines
 	// should be shaped when creating or updating a control plane.
-	// +optional
 	MachineTemplate KThreesControlPlaneMachineTemplate `json:"machineTemplate,omitempty"`
 }
 
