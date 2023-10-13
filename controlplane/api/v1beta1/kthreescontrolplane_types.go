@@ -49,6 +49,8 @@ type KThreesControlPlaneSpec struct {
 
 	// InfrastructureTemplate is a required reference to a custom resource
 	// offered by an infrastructure provider.
+	// In the next API version we will move this into the
+	// `KThreesControlPlaneMachineTemplate` struct.
 	InfrastructureTemplate corev1.ObjectReference `json:"infrastructureTemplate"`
 
 	// KThreesConfigSpec is a KThreesConfigSpec
@@ -68,11 +70,15 @@ type KThreesControlPlaneSpec struct {
 	// +optional
 	NodeDrainTimeout *metav1.Duration `json:"nodeDrainTimeout,omitempty"`
 
-	// MachineTemplate contains information about how machines
-	// should be shaped when creating or updating a control plane.
+	// MachineTemplate contains information about how machines should be shaped
+	// when creating or updating a control plane.
 	MachineTemplate KThreesControlPlaneMachineTemplate `json:"machineTemplate,omitempty"`
 }
 
+// MachineTemplate contains information about how machines should be shaped
+// when creating or updating a control plane.
+// In the next API version we will move the InfrastructureTemplate field into
+// this struct.
 type KThreesControlPlaneMachineTemplate struct {
 	// Standard object's metadata.
 	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
