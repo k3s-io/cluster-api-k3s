@@ -288,6 +288,32 @@ spec:
                     description: Version specifies the k3s version
                     type: string
                 type: object
+              machineTemplate:
+                description: MachineTemplate contains information about how machines
+                  should be shaped when creating or updating a control plane.
+                properties:
+                  metadata:
+                    description: 'Standard object''s metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata'
+                    properties:
+                      annotations:
+                        additionalProperties:
+                          type: string
+                        description: 'Annotations is an unstructured key value map
+                          stored with a resource that may be set by external tools
+                          to store and retrieve arbitrary metadata. They are not queryable
+                          and should be preserved when modifying objects. More info:
+                          http://kubernetes.io/docs/user-guide/annotations'
+                        type: object
+                      labels:
+                        additionalProperties:
+                          type: string
+                        description: 'Map of string keys and values that can be used
+                          to organize and categorize (scope and select) objects. May
+                          match selectors of replication controllers and services.
+                          More info: http://kubernetes.io/docs/user-guide/labels'
+                        type: object
+                    type: object
+                type: object
               nodeDrainTimeout:
                 description: 'NodeDrainTimeout is the total amount of time that the
                   controller will spend on draining a controlplane node The default
