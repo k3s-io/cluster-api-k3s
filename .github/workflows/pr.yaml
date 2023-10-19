@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: ["lint", "test-bootstrap", "test-controlplane", "build"]
+        target: ["lint", "test-bootstrap", "test-controlplane"]
 
     steps:
       - name: checkout

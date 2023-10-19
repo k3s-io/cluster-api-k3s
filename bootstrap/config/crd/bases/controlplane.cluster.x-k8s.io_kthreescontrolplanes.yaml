@@ -69,7 +69,9 @@ spec:
             properties:
               infrastructureTemplate:
                 description: InfrastructureTemplate is a required reference to a custom
-                  resource offered by an infrastructure provider.
+                  resource offered by an infrastructure provider. In the next API
+                  version we will move this into the `KThreesControlPlaneMachineTemplate`
+                  struct. See https://github.com/cluster-api-provider-k3s/cluster-api-k3s/issues/62
                 properties:
                   apiVersion:
                     description: API version of the referent.
