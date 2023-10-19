@@ -31,3 +31,6 @@ jobs:
 
       - name: ${{ matrix.target }}
         run: make ${{ matrix.target }}
+
+      - name: check there are no changes after re-generation
+        run: test -z "$(git status --porcelain)" || (echo 'Changes detected after running make build'; git status; git --no-pager diff; false)
