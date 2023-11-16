@@ -639,48 +639,47 @@ func (r *KThreesControlPlaneReconciler) upgradeControlPlane(
 	controlPlane *k3s.ControlPlane,
 	machinesRequireUpgrade k3s.FilterableMachineCollection,
 ) (ctrl.Result, error) {
-	logger := controlPlane.Logger()
+	// logger := controlPlane.Logger()
 
-	// TODO: handle reconciliation of etcd members and kubeadm config in case they get out of sync with cluster
+	// // TODO: handle reconciliation of etcd members and kubeadm config in case they get out of sync with cluster
 
-	workloadCluster, err := r.managementCluster.GetWorkloadCluster(ctx, util.ObjectKey(cluster))
-	if err != nil {
-		logger.Error(err, "failed to get remote client for workload cluster", "cluster key", util.ObjectKey(cluster))
-		return reconcile.Result{}, err
-	}
+	// workloadCluster, err := r.managementCluster.GetWorkloadCluster(ctx, util.ObjectKey(cluster))
+	// if err != nil {
+	// 	logger.Error(err, "failed to get remote client for workload cluster", "cluster key", util.ObjectKey(cluster))
+	// 	return reconcile.Result{}, err
+	// }
 
-	/**
-	parsedVersion, err := semver.ParseTolerant(kcp.Spec.Version)
-	if err != nil {
-		return reconcile.Result{}, fmt.Errorf(err, "failed to parse kubernetes version %q", kcp.Spec.Version)
-	}
+	// /**
+	// parsedVersion, err := semver.ParseTolerant(kcp.Spec.Version)
+	// if err != nil {
+	// 	return reconcile.Result{}, fmt.Errorf(err, "failed to parse kubernetes version %q", kcp.Spec.Version)
+	// }
 
+	// if kcp.Spec.KThreesConfigSpec.ClusterConfiguration != nil {
+	// 	imageRepository := kcp.Spec.KThreesConfigSpec.ClusterConfiguration.ImageRepository
+	// 	if err := workloadCluster.UpdateImageRepositoryInKubeadmConfigMap(ctx, imageRepository); err != nil {
+	// 		return reconcile.Result{}, fmt.Errorf("failed to update the image repository in the kubeadm config map")
+	// 	}
+	// }
 
-	if kcp.Spec.KThreesConfigSpec.ClusterConfiguration != nil {
-		imageRepository := kcp.Spec.KThreesConfigSpec.ClusterConfiguration.ImageRepository
-		if err := workloadCluster.UpdateImageRepositoryInKubeadmConfigMap(ctx, imageRepository); err != nil {
-			return reconcile.Result{}, fmt.Errorf("failed to update the image repository in the kubeadm config map")
-		}
-	}
+	// if kcp.Spec.KThreesConfigSpec.ClusterConfiguration != nil && kcp.Spec.KThreesConfigSpec.ClusterConfiguration.Etcd.Local != nil {
+	// 	meta := kcp.Spec.KThreesConfigSpec.ClusterConfiguration.Etcd.Local.ImageMeta
+	// 	if err := workloadCluster.UpdateEtcdVersionInKubeadmConfigMap(ctx, meta.ImageRepository, meta.ImageTag); err != nil {
+	// 		return reconcile.Result{}, fmt.Errorf("failed to update the etcd version in the kubeadm config map")
+	// 	}
+	// }
 
-	if kcp.Spec.KThreesConfigSpec.ClusterConfiguration != nil && kcp.Spec.KThreesConfigSpec.ClusterConfiguration.Etcd.Local != nil {
-		meta := kcp.Spec.KThreesConfigSpec.ClusterConfiguration.Etcd.Local.ImageMeta
-		if err := workloadCluster.UpdateEtcdVersionInKubeadmConfigMap(ctx, meta.ImageRepository, meta.ImageTag); err != nil {
-			return reconcile.Result{}, fmt.Errorf("failed to update the etcd version in the kubeadm config map")
-		}
-	}
+	// if err := workloadCluster.UpdateKubeletConfigMap(ctx, parsedVersion); err != nil {
+	// 	return reconcile.Result{}, fmt.Errorf("failed to upgrade kubelet config map")
+	// }
+	// **/
 
-	if err := workloadCluster.UpdateKubeletConfigMap(ctx, parsedVersion); err != nil {
-		return reconcile.Result{}, fmt.Errorf("failed to upgrade kubelet config map")
-	}
-	**/
+	// status, err := workloadCluster.ClusterStatus(ctx)
+	// if err != nil {
+	// 	return reconcile.Result{}, err
+	// }
 
-	status, err := workloadCluster.ClusterStatus(ctx)
-	if err != nil {
-		return reconcile.Result{}, err
-	}
-
-	if status.Nodes <= *kcp.Spec.Replicas {
+	if controlPlane.Machines.Len() <= int(*kcp.Spec.Replicas) {
 		// scaleUp ensures that we don't continue scaling up while waiting for Machines to have NodeRefs
 		return r.scaleUpControlPlane(ctx, cluster, kcp, controlPlane)
 	}
