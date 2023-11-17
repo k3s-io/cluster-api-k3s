@@ -223,13 +223,13 @@ func (r *KThreesConfigReconciler) joinControlplane(ctx context.Context, scope *S
 
 	serverURL := fmt.Sprintf("https://%s", scope.Cluster.Spec.ControlPlaneEndpoint.String())
 
-	tokn, err := r.retrieveToken(ctx, scope)
+	tokn, err := token.Lookup(ctx, r.Client, client.ObjectKeyFromObject(scope.Cluster))
 	if err != nil {
 		conditions.MarkFalse(scope.Config, bootstrapv1.DataSecretAvailableCondition, bootstrapv1.DataSecretGenerationFailedReason, clusterv1.ConditionSeverityWarning, err.Error())
 		return err
 	}
 
-	configStruct := k3s.GenerateJoinControlPlaneConfig(serverURL, tokn,
+	configStruct := k3s.GenerateJoinControlPlaneConfig(serverURL, *tokn,
 		scope.Cluster.Spec.ControlPlaneEndpoint.Host,
 		scope.Config.Spec.ServerConfig,
 		scope.Config.Spec.AgentConfig)
@@ -284,13 +284,13 @@ func (r *KThreesConfigReconciler) joinWorker(ctx context.Context, scope *Scope) 
 
 	serverURL := fmt.Sprintf("https://%s", scope.Cluster.Spec.ControlPlaneEndpoint.String())
 
-	tokn, err := r.retrieveToken(ctx, scope)
+	tokn, err := token.Lookup(ctx, r.Client, client.ObjectKeyFromObject(scope.Cluster))
 	if err != nil {
 		conditions.MarkFalse(scope.Config, bootstrapv1.DataSecretAvailableCondition, bootstrapv1.DataSecretGenerationFailedReason, clusterv1.ConditionSeverityWarning, err.Error())
 		return err
 	}
 
-	configStruct := k3s.GenerateWorkerConfig(serverURL, tokn, scope.Config.Spec.ServerConfig, scope.Config.Spec.AgentConfig)
+	configStruct := k3s.GenerateWorkerConfig(serverURL, *tokn, scope.Config.Spec.ServerConfig, scope.Config.Spec.AgentConfig)
 
 	b, err := kubeyaml.Marshal(configStruct)
 	if err != nil {
@@ -424,7 +424,7 @@ func (r *KThreesConfigReconciler) handleClusterNotInitialized(ctx context.Contex
 	}
 	conditions.MarkTrue(scope.Config, bootstrapv1.CertificatesAvailableCondition)
 
-	token, err := r.generateAndStoreToken(ctx, scope)
+	token, err := token.Lookup(ctx, r.Client, client.ObjectKeyFromObject(scope.Cluster))
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -433,7 +433,7 @@ func (r *KThreesConfigReconciler) handleClusterNotInitialized(ctx context.Contex
 	// For now just use the etcd option
 	configStruct := k3s.GenerateInitControlPlaneConfig(
 		scope.Cluster.Spec.ControlPlaneEndpoint.Host,
-		token,
+		*token,
 		scope.Config.Spec.ServerConfig,
 		scope.Config.Spec.AgentConfig)
 
@@ -478,64 +478,6 @@ func (r *KThreesConfigReconciler) handleClusterNotInitialized(ctx context.Contex
 
 	// TODO: move to controlplane provider
 	return r.reconcileKubeconfig(ctx, scope)
-}
-
-func (r *KThreesConfigReconciler) generateAndStoreToken(ctx context.Context, scope *Scope) (string, error) {
-	tokn, err := token.Random(16)
-	if err != nil {
-		return "", err
-	}
-
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      token.Name(scope.Cluster.Name),
-			Namespace: scope.Config.Namespace,
-			Labels: map[string]string{
-				clusterv1.ClusterNameLabel: scope.Cluster.Name,
-			},
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion: clusterv1.GroupVersion.String(),
-					Kind:       "Cluster",
-					Name:       scope.Cluster.Name,
-					UID:        scope.Cluster.UID,
-					Controller: pointer.Bool(true),
-				},
-			},
-		},
-		Data: map[string][]byte{
-			"value": []byte(tokn),
-		},
-		Type: clusterv1.ClusterSecretType,
-	}
-
-	// as secret creation and scope.Config status patch are not atomic operations
-	// it is possible that secret creation happens but the config.Status patches are not applied
-	if err := r.Client.Create(ctx, secret); err != nil {
-		if !apierrors.IsAlreadyExists(err) {
-			return "", fmt.Errorf("failed to create token for KThreesConfig %s/%s: %w", scope.Config.Namespace, scope.Config.Name, err)
-		}
-		// r.Log.Info("bootstrap data secret for KThreesConfig already exists, updating", "secret", secret.Name, "KThreesConfig", scope.Config.Name)
-		if err := r.Client.Update(ctx, secret); err != nil {
-			return "", fmt.Errorf("failed to update bootstrap token secret for KThreesConfig %s/%s: %w", scope.Config.Namespace, scope.Config.Name, err)
-		}
-	}
-
-	return tokn, nil
-}
-
-func (r *KThreesConfigReconciler) retrieveToken(ctx context.Context, scope *Scope) (string, error) {
-	secret := &corev1.Secret{}
-	obj := client.ObjectKey{
-		Namespace: scope.Config.Namespace,
-		Name:      token.Name(scope.Cluster.Name),
-	}
-
-	if err := r.Client.Get(ctx, obj, secret); err != nil {
-		return "", fmt.Errorf("failed to get token for KThreesConfig %s/%s: %w", scope.Config.Namespace, scope.Config.Name, err)
-	}
-
-	return string(secret.Data["value"]), nil
 }
 
 func (r *KThreesConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {

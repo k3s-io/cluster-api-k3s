@@ -50,6 +50,7 @@ import (
 	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/kubeconfig"
 	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/machinefilters"
 	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/secret"
+	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/token"
 )
 
 // KThreesControlPlaneReconciler reconciles a KThreesControlPlane object.
@@ -244,6 +245,7 @@ func patchKThreesControlPlane(ctx context.Context, patchHelper *patch.Helper, kc
 			controlplanev1.MachinesReadyCondition,
 			controlplanev1.AvailableCondition,
 			controlplanev1.CertificatesAvailableCondition,
+			controlplanev1.TokenAvailableCondition,
 		),
 	)
 
@@ -258,6 +260,7 @@ func patchKThreesControlPlane(ctx context.Context, patchHelper *patch.Helper, kc
 			controlplanev1.MachinesReadyCondition,
 			controlplanev1.AvailableCondition,
 			controlplanev1.CertificatesAvailableCondition,
+			controlplanev1.TokenAvailableCondition,
 		}},
 	)
 }
@@ -407,6 +410,12 @@ func (r *KThreesControlPlaneReconciler) reconcile(ctx context.Context, cluster *
 		return reconcile.Result{}, err
 	}
 	conditions.MarkTrue(kcp, controlplanev1.CertificatesAvailableCondition)
+
+	if err := token.Reconcile(ctx, r.Client, client.ObjectKeyFromObject(cluster), kcp); err != nil {
+		conditions.MarkFalse(kcp, controlplanev1.TokenAvailableCondition, controlplanev1.TokenGenerationFailedReason, clusterv1.ConditionSeverityWarning, err.Error())
+		return reconcile.Result{}, err
+	}
+	conditions.MarkTrue(kcp, controlplanev1.TokenAvailableCondition)
 
 	// If ControlPlaneEndpoint is not set, return early
 	if !cluster.Spec.ControlPlaneEndpoint.IsValid() {
