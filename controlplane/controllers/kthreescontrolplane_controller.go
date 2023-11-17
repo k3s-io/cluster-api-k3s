@@ -639,7 +639,6 @@ func (r *KThreesControlPlaneReconciler) upgradeControlPlane(
 	controlPlane *k3s.ControlPlane,
 	machinesRequireUpgrade k3s.FilterableMachineCollection,
 ) (ctrl.Result, error) {
-
 	// TODO: handle reconciliation of etcd members and kubeadm config in case they get out of sync with cluster
 
 	/**
