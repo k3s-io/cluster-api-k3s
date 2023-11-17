@@ -45,7 +45,7 @@ func Reconcile(ctx context.Context, ctrlclient client.Client, clusterKey client.
 	// Secret exists
 	// Ensure the secret has correct ownership; this is necessary because at one point, the secret was owned by KThreesConfig
 	if !metav1.IsControlledBy(s, owner) {
-		controllerutil.SetControllerReference(owner, s, ctrlclient.Scheme())
+		upsertControllerRef(s, owner)
 		if err := ctrlclient.Update(ctx, s); err != nil {
 			return fmt.Errorf("Failed to update ownership of token: %v", err)
 		}
@@ -111,4 +111,33 @@ func generateAndStore(ctx context.Context, ctrlclient client.Client, clusterKey 
 	}
 
 	return &tokn, nil
+}
+
+// upsertControllerRef takes controllee and controller objects, either replaces the existing controller ref
+// if one exists or appends the new controller ref if one does not exist, and returns the updated controllee
+// This is meant to be used in place of controllerutil.SetControllerReference(...), which would throw an error
+// if there were already an existing controller ref
+func upsertControllerRef(controllee client.Object, controller client.Object) {
+	newControllerRef := metav1.NewControllerRef(controller, controller.GetObjectKind().GroupVersionKind())
+
+	// Iterate through existing owner references
+	var updatedOwnerReferences []metav1.OwnerReference
+	var controllerRefUpdated bool
+	for _, ownerRef := range controllee.GetOwnerReferences() {
+		// Identify and replace the controlling owner reference
+		if metav1.IsControlledBy(controllee, controller) {
+			updatedOwnerReferences = append(updatedOwnerReferences, *newControllerRef)
+			controllerRefUpdated = true
+		} else {
+			// Keep non-controlling owner references intact
+			updatedOwnerReferences = append(updatedOwnerReferences, ownerRef)
+		}
+	}
+
+	// If the controlling owner reference was not found, add the new one
+	if !controllerRefUpdated {
+		updatedOwnerReferences = append(updatedOwnerReferences, *newControllerRef)
+	}
+
+	controllee.SetOwnerReferences(updatedOwnerReferences)
 }
