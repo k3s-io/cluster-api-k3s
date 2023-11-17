@@ -639,17 +639,17 @@ func (r *KThreesControlPlaneReconciler) upgradeControlPlane(
 	controlPlane *k3s.ControlPlane,
 	machinesRequireUpgrade k3s.FilterableMachineCollection,
 ) (ctrl.Result, error) {
-	logger := controlPlane.Logger()
-
 	// TODO: handle reconciliation of etcd members and kubeadm config in case they get out of sync with cluster
 
+	/**
+	logger := controlPlane.Logger()
 	workloadCluster, err := r.managementCluster.GetWorkloadCluster(ctx, util.ObjectKey(cluster))
+
 	if err != nil {
 		logger.Error(err, "failed to get remote client for workload cluster", "cluster key", util.ObjectKey(cluster))
 		return reconcile.Result{}, err
 	}
 
-	/**
 	parsedVersion, err := semver.ParseTolerant(kcp.Spec.Version)
 	if err != nil {
 		return reconcile.Result{}, fmt.Errorf(err, "failed to parse kubernetes version %q", kcp.Spec.Version)
@@ -675,12 +675,7 @@ func (r *KThreesControlPlaneReconciler) upgradeControlPlane(
 	}
 	**/
 
-	status, err := workloadCluster.ClusterStatus(ctx)
-	if err != nil {
-		return reconcile.Result{}, err
-	}
-
-	if status.Nodes <= *kcp.Spec.Replicas {
+	if controlPlane.Machines.Len() <= int(*kcp.Spec.Replicas) {
 		// scaleUp ensures that we don't continue scaling up while waiting for Machines to have NodeRefs
 		return r.scaleUpControlPlane(ctx, cluster, kcp, controlPlane)
 	}

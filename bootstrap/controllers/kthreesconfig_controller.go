@@ -495,10 +495,10 @@ func (r *KThreesConfigReconciler) generateAndStoreToken(ctx context.Context, sco
 			},
 			OwnerReferences: []metav1.OwnerReference{
 				{
-					APIVersion: bootstrapv1.GroupVersion.String(),
-					Kind:       "KThreesConfig",
-					Name:       scope.Config.Name,
-					UID:        scope.Config.UID,
+					APIVersion: clusterv1.GroupVersion.String(),
+					Kind:       "Cluster",
+					Name:       scope.Cluster.Name,
+					UID:        scope.Cluster.UID,
 					Controller: pointer.Bool(true),
 				},
 			},
