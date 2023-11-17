@@ -32,6 +32,7 @@ func TestLookup(t *testing.T) {
 		Data:       map[string][]byte{"value": []byte(testToken)},
 		Type:       clusterv1.ClusterSecretType,
 	}
+	//nolint:errcheck
 	ctrlClient.Create(context.Background(), secret)
 
 	if token, err := Lookup(context.Background(), ctrlClient, clusterKey); token == nil || *token != testToken || err != nil {

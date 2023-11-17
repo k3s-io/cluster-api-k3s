@@ -122,9 +122,9 @@ const (
 )
 
 const (
-	// TokenAvailableCondition documents whether the token required for nodes to join the cluster is available
+	// TokenAvailableCondition documents whether the token required for nodes to join the cluster is available.
 	TokenAvailableCondition clusterv1.ConditionType = "TokenAvailable"
 
-	// TokenGenerationFailedReason documents that the token required for nodes to join the cluster could not be generated
+	// TokenGenerationFailedReason documents that the token required for nodes to join the cluster could not be generated.
 	TokenGenerationFailedReason = "TokenGenerationFailed"
 )
