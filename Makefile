@@ -120,6 +120,9 @@ BOOTSTRAP_IMG ?= $(REGISTRY)/bootstrap-controller:$(BOOTSTRAP_IMG_TAG)
 CONTROLPLANE_IMG_TAG ?= $(RELEASE_TAG)
 CONTROLPLANE_IMG ?= $(REGISTRY)/controlplane-controller:$(CONTROLPLANE_IMG_TAG)
 
+test-common:
+	go test $(shell pwd)/pkg/... -coverprofile cover.out 
+
 all-bootstrap: manager-bootstrap
 
 # Run tests
