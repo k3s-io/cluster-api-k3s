@@ -52,7 +52,6 @@ type Workload struct {
 
 	Client          ctrlclient.Client
 	CoreDNSMigrator coreDNSMigrator
-	// etcdClientGenerator etcdClientFor
 }
 
 // ClusterStatus holds stats information about the cluster.
