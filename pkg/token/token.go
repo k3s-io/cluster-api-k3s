@@ -126,7 +126,7 @@ func upsertControllerRef(controllee client.Object, controller client.Object) {
 	var controllerRefUpdated bool
 	for _, ownerRef := range controllee.GetOwnerReferences() {
 		// Identify and replace the controlling owner reference
-		if metav1.IsControlledBy(controllee, controller) {
+		if ownerRef.Controller != nil && *ownerRef.Controller {
 			updatedOwnerReferences = append(updatedOwnerReferences, *newControllerRef)
 			controllerRefUpdated = true
 		} else {
