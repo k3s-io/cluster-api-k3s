@@ -86,6 +86,8 @@ linters-settings:
           - sigs.k8s.io/cluster-api
 
           - github.com/cluster-api-provider-k3s/cluster-api-k3s
+
+          - github.com/google/uuid
   gci:
     sections:
       - standard

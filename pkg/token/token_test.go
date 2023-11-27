@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
@@ -163,7 +164,7 @@ func TestUpsertControllerRef(t *testing.T) {
 		controllee := newPod("controllee")
 		oldController := newPod("old-controller")
 		newController := newPod("new-controller")
-		controllerutil.SetControllerReference(oldController, controllee, scheme.Scheme)
+		setControllerReference(oldController, controllee, scheme.Scheme)
 
 		upsertControllerRef(controllee, newController)
 
@@ -180,7 +181,7 @@ func TestUpsertControllerRef(t *testing.T) {
 		controllee := newPod("controllee")
 		controller := newPod("controller")
 		otherObject := newPod("otherObject")
-		controllerutil.SetOwnerReference(otherObject, controllee, scheme.Scheme)
+		setOwnerReference(otherObject, controllee, scheme.Scheme)
 
 		upsertControllerRef(controllee, controller)
 
@@ -197,7 +198,7 @@ func TestUpsertControllerRef(t *testing.T) {
 		controllee := newPod("controllee")
 
 		otherObject := newPod("otherObject")
-		controllerutil.SetOwnerReference(otherObject, controllee, scheme.Scheme)
+		setOwnerReference(otherObject, controllee, scheme.Scheme)
 
 		oldController := newPod("old-controller")
 		existingControllerRef := metav1.NewControllerRef(oldController, oldController.GetObjectKind().GroupVersionKind())
@@ -217,7 +218,7 @@ func TestUpsertControllerRef(t *testing.T) {
 }
 
 func addOwnerRef(client client.Client, object, owner client.Object) error {
-	controllerutil.SetOwnerReference(owner, object, client.Scheme())
+	setOwnerReference(owner, object, client.Scheme())
 
 	if err := client.Update(context.Background(), object); err != nil {
 		return fmt.Errorf("failed to add owner to object: %v", err)
@@ -227,7 +228,7 @@ func addOwnerRef(client client.Client, object, owner client.Object) error {
 }
 
 // isOwnedBy returns a boolean based upon whether the provided object "owned"
-// has an owner reference for the provided object "owner"
+// has an owner reference for the provided object "owner".
 func isOwnedBy(owned, owner metav1.Object) bool {
 	// Retrieve the owner references from the owned object
 	ownerReferences := owned.GetOwnerReferences()
@@ -240,4 +241,18 @@ func isOwnedBy(owned, owner metav1.Object) bool {
 	}
 
 	return false
+}
+
+// setOwnerReference is a helper function that wraps controllerutil.SetOwnerReference(...)
+// with an //nolint:errcheck comment to suppress error check linters.
+func setOwnerReference(owner, owned metav1.Object, scheme *runtime.Scheme) {
+	//nolint:errcheck
+	controllerutil.SetOwnerReference(owner, owned, scheme)
+}
+
+// setControllerReference is a helper function that wraps controllerutil.SetControllerReference(...)
+// with an //nolint:errcheck comment to suppress error check linters.
+func setControllerReference(owner, owned metav1.Object, scheme *runtime.Scheme) {
+	//nolint:errcheck
+	controllerutil.SetControllerReference(owner, owned, scheme)
 }
