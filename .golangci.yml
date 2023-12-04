@@ -88,6 +88,7 @@ linters-settings:
           - github.com/cluster-api-provider-k3s/cluster-api-k3s
 
           - github.com/google/uuid
+          - github.com/pkg/errors
   gci:
     sections:
       - standard
