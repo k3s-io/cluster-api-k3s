@@ -20,7 +20,7 @@ package util
 import (
 	"k8s.io/apimachinery/pkg/util/sets"
 
-	"github.com/cluster-api-provider-k3s/cluster-api-k3s/controlplane/etcd"
+	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/etcd"
 )
 
 // MemberForName returns the etcd member with the matching name.
