@@ -402,7 +402,7 @@ func (r *KThreesControlPlaneReconciler) reconcile(ctx context.Context, cluster *
 		return reconcile.Result{}, err
 	}
 
-	certificates := secret.NewCertificatesForInitialControlPlane()
+	certificates := secret.NewCertificatesForInitialControlPlane(&kcp.Spec.KThreesConfigSpec)
 	controllerRef := metav1.NewControllerRef(kcp, controlplanev1.GroupVersion.WithKind("KThreesControlPlane"))
 	if err := certificates.LookupOrGenerate(ctx, r.Client, util.ObjectKey(cluster), *controllerRef); err != nil {
 		logger.Error(err, "unable to lookup or create cluster certificates")

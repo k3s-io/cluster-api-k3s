@@ -411,7 +411,7 @@ func (r *KThreesConfigReconciler) handleClusterNotInitialized(ctx context.Contex
 	// injects into config.ClusterConfiguration values from top level object
 	r.reconcileTopLevelObjectSettings(scope.Cluster, machine, scope.Config)
 
-	certificates := secret.NewCertificatesForInitialControlPlane()
+	certificates := secret.NewCertificatesForInitialControlPlane(&scope.Config.Spec)
 	err := certificates.LookupOrGenerate(
 		ctx,
 		r.Client,
