@@ -23,7 +23,7 @@ const (
 {{template "files" .WriteFiles}}
 runcmd:
 {{- template "commands" .PreK3sCommands }}
-  - 'curl -sfL https://get.k3s.io |  INSTALL_K3S_VERSION=%s sh -s - agent'
+  - 'curl -sfL https://get.k3s.io |  INSTALL_K3S_VERSION=%s sh -s - agent && mkdir -p /run/cluster-api && echo success > /run/cluster-api/bootstrap-success.complete'
 {{- template "commands" .PostK3sCommands }}
 `
 )
