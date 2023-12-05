@@ -35,24 +35,22 @@ type WorkloadCluster interface {
 	ClusterStatus(ctx context.Context) (ClusterStatus, error)
 	UpdateAgentConditions(ctx context.Context, controlPlane *ControlPlane)
 	UpdateEtcdConditions(ctx context.Context, controlPlane *ControlPlane)
-	// Upgrade related tasks.
 
-	//	RemoveEtcdMemberForMachine(ctx context.Context, machine *clusterv1.Machine) error
+	// Etcd tasks
+	RemoveEtcdMemberForMachine(ctx context.Context, machine *clusterv1.Machine) error
+	ForwardEtcdLeadership(ctx context.Context, machine *clusterv1.Machine, leaderCandidate *clusterv1.Machine) error
+	ReconcileEtcdMembers(ctx context.Context, nodeNames []string) ([]string, error)
 
-	//	ForwardEtcdLeadership(ctx context.Context, machine *clusterv1.Machine, leaderCandidate *clusterv1.Machine) error
-	//	AllowBootstrapTokensToGetNodes(ctx context.Context) error
-
-	// State recovery tasks.
-	//	ReconcileEtcdMembers(ctx context.Context, nodeNames []string) ([]string, error)
+	// AllowBootstrapTokensToGetNodes(ctx context.Context) error
 }
 
 // Workload defines operations on workload clusters.
 type Workload struct {
 	WorkloadCluster
 
-	Client          ctrlclient.Client
-	CoreDNSMigrator coreDNSMigrator
-	// etcdClientGenerator etcdClientFor
+	Client              ctrlclient.Client
+	CoreDNSMigrator     coreDNSMigrator
+	etcdClientGenerator etcdClientFor
 }
 
 // ClusterStatus holds stats information about the cluster.

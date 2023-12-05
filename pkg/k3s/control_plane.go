@@ -314,7 +314,7 @@ func getKThreesConfigs(ctx context.Context, cl client.Client, machines Filterabl
 
 // IsEtcdManaged returns true if the control plane relies on a managed etcd.
 func (c *ControlPlane) IsEtcdManaged() bool {
-	return false
+	return true
 }
 
 // UnhealthyMachines returns the list of control plane machines marked as unhealthy by MHC.
