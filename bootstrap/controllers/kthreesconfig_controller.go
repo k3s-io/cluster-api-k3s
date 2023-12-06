@@ -43,6 +43,7 @@ import (
 
 	bootstrapv1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/bootstrap/api/v1beta1"
 	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/cloudinit"
+	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/etcd"
 	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/k3s"
 	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/kubeconfig"
 	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/locking"
@@ -453,6 +454,16 @@ func (r *KThreesConfigReconciler) handleClusterNotInitialized(ctx context.Contex
 	if err != nil {
 		conditions.MarkFalse(scope.Config, bootstrapv1.DataSecretAvailableCondition, bootstrapv1.DataSecretGenerationFailedReason, clusterv1.ConditionSeverityWarning, err.Error())
 		return ctrl.Result{}, err
+	}
+
+	if scope.Config.Spec.IsEtcdManaged() {
+		etcdProxyFile := bootstrapv1.File{
+			Path:        etcd.EtcdProxyDaemonsetYamlLocation,
+			Content:     etcd.EtcdProxyDaemonsetYaml,
+			Owner:       "root:root",
+			Permissions: "0640",
+		}
+		files = append(files, etcdProxyFile)
 	}
 
 	cpinput := &cloudinit.ControlPlaneInput{
