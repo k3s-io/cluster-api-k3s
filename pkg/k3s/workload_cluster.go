@@ -2,16 +2,25 @@ package k3s
 
 import (
 	"context"
-	"errors"
+	"crypto"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"fmt"
+	"math/big"
 	"strings"
+	"time"
 
+	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/util"
+	"sigs.k8s.io/cluster-api/util/certs"
 	"sigs.k8s.io/cluster-api/util/conditions"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -363,4 +372,54 @@ func (w *Workload) updateManagedEtcdConditions(ctx context.Context, controlPlane
 
 		conditions.MarkTrue(machine, controlplanev1.MachineEtcdMemberHealthyCondition)
 	}
+}
+
+func generateClientCert(caCertEncoded, caKeyEncoded []byte) (tls.Certificate, error) {
+	// TODO: need to cache clientkey to clusterCacheTracker to avoid recreating key frequently
+	clientKey, err := certs.NewPrivateKey()
+	if err != nil {
+		return tls.Certificate{}, errors.Wrapf(err, "error creating client key")
+	}
+
+	caCert, err := certs.DecodeCertPEM(caCertEncoded)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	caKey, err := certs.DecodePrivateKeyPEM(caKeyEncoded)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	x509Cert, err := newClientCert(caCert, clientKey, caKey)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	return tls.X509KeyPair(certs.EncodeCertPEM(x509Cert), certs.EncodePrivateKeyPEM(clientKey))
+}
+
+func newClientCert(caCert *x509.Certificate, key *rsa.PrivateKey, caKey crypto.Signer) (*x509.Certificate, error) {
+	cfg := certs.Config{
+		CommonName: "cluster-api.x-k8s.io",
+	}
+
+	now := time.Now().UTC()
+
+	tmpl := x509.Certificate{
+		SerialNumber: new(big.Int).SetInt64(0),
+		Subject: pkix.Name{
+			CommonName:   cfg.CommonName,
+			Organization: cfg.Organization,
+		},
+		NotBefore:   now.Add(time.Minute * -5),
+		NotAfter:    now.Add(time.Hour * 24 * 365 * 10), // 10 years
+		KeyUsage:    x509.KeyUsageDigitalSignature,
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+	}
+
+	b, err := x509.CreateCertificate(rand.Reader, &tmpl, caCert, key.Public(), caKey)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to create signed client certificate: %+v", tmpl)
+	}
+
+	c, err := x509.ParseCertificate(b)
+	return c, errors.WithStack(err)
 }
