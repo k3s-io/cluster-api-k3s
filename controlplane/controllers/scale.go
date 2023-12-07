@@ -122,7 +122,6 @@ func (r *KThreesControlPlaneReconciler) scaleDownControlPlane(
 	// TODO figure out etcd complexities
 	// If KCP should manage etcd, If etcd leadership is on machine that is about to be deleted, move it to the newest member available.
 	if controlPlane.IsEtcdManaged() {
-		logger.Info("will call etcd")
 		workloadCluster, err := r.managementCluster.GetWorkloadCluster(ctx, util.ObjectKey(cluster))
 		if err != nil {
 			logger.Error(err, "Failed to create client to workload cluster")
@@ -134,12 +133,12 @@ func (r *KThreesControlPlaneReconciler) scaleDownControlPlane(
 			logger.Error(err, "Failed to move leadership to candidate machine", "candidate", etcdLeaderCandidate.Name)
 			return ctrl.Result{}, err
 		}
-		logger.Info("etcd move etcd leader succeed")
+		logger.Info("etcd move etcd leader succeed, node to delete %s", machineToDelete.Status.NodeRef.Name)
 		if err := workloadCluster.RemoveEtcdMemberForMachine(ctx, machineToDelete); err != nil {
 			logger.Error(err, "Failed to remove etcd member for machine")
 			return ctrl.Result{}, err
 		}
-		logger.Info("etcd remove etcd member succeed")
+		logger.Info("etcd remove etcd member succeed, node to delete %s", machineToDelete.Status.NodeRef.Name)
 	}
 
 	logger = logger.WithValues("machine", machineToDelete)
