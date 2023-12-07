@@ -18,15 +18,29 @@ limitations under the License.
 package util
 
 import (
+	"strings"
+
 	"k8s.io/apimachinery/pkg/util/sets"
 
 	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/etcd"
 )
 
+// TODO: find document confirmation of mapping between etcd member and node in k3s.
+func NodeNameFromMember(member *etcd.Member) string {
+	memberName := member.Name
+	lastIndex := strings.LastIndex(memberName, "-")
+
+	if lastIndex != -1 {
+		memberName = memberName[:lastIndex]
+	}
+
+	return memberName
+}
+
 // MemberForName returns the etcd member with the matching name.
 func MemberForName(members []*etcd.Member, name string) *etcd.Member {
 	for _, m := range members {
-		if m.Name == name {
+		if NodeNameFromMember(m) == name {
 			return m
 		}
 	}
@@ -37,7 +51,7 @@ func MemberForName(members []*etcd.Member, name string) *etcd.Member {
 func MemberNames(members []*etcd.Member) []string {
 	names := make([]string, 0, len(members))
 	for _, m := range members {
-		names = append(names, m.Name)
+		names = append(names, NodeNameFromMember(m))
 	}
 	return names
 }

@@ -30,6 +30,7 @@ import (
 	"k8s.io/client-go/rest"
 
 	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/etcd"
+	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/etcd/util"
 	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/proxy"
 )
 
@@ -198,10 +199,11 @@ func (c *EtcdClientGenerator) getLeaderClient(ctx context.Context, nodeName stri
 	// If we found the leader, and it is one of the nodes,
 	// get a connection to the etcd leader via the node hosting it.
 	if leaderMember != nil {
-		if !allNodes.Has(leaderMember.Name) {
-			return nil, errors.Errorf("etcd leader is reported as %x with name %q, but we couldn't find a corresponding Node in the cluster", leaderMember.ID, leaderMember.Name)
+		nodeName := util.NodeNameFromMember(leaderMember)
+		if !allNodes.Has(nodeName) {
+			return nil, errors.Errorf("etcd leader is reported as %x with node name %q, but we couldn't find a corresponding Node in the cluster", leaderMember.ID, nodeName)
 		}
-		client, err = c.forFirstAvailableNode(ctx, []string{leaderMember.Name})
+		client, err = c.forFirstAvailableNode(ctx, []string{nodeName})
 		return client, err
 	}
 

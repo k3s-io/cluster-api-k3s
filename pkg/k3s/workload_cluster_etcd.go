@@ -65,21 +65,22 @@ func (w *Workload) reconcileEtcdMember(ctx context.Context, nodeNames []string, 
 	errs := []error{}
 loopmembers:
 	for _, member := range members {
+		curNodeName := etcdutil.NodeNameFromMember(member)
 		// If this member is just added, it has a empty name until the etcd pod starts. Ignore it.
-		if member.Name == "" {
+		if curNodeName == "" {
 			continue
 		}
 
 		for _, nodeName := range nodeNames {
-			if member.Name == nodeName {
+			if curNodeName == nodeName {
 				// We found the matching node, continue with the outer loop.
 				continue loopmembers
 			}
 		}
 
 		// If we're here, the node cannot be found.
-		removedMembers = append(removedMembers, member.Name)
-		if err := w.removeMemberForNode(ctx, member.Name); err != nil {
+		removedMembers = append(removedMembers, curNodeName)
+		if err := w.removeMemberForNode(ctx, curNodeName); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -183,42 +184,4 @@ func (w *Workload) ForwardEtcdLeadership(ctx context.Context, machine *clusterv1
 		return errors.Wrapf(err, "failed to move leader")
 	}
 	return nil
-}
-
-// EtcdMemberStatus contains status information for a single etcd member.
-type EtcdMemberStatus struct {
-	Name       string
-	Responsive bool
-}
-
-// EtcdMembers returns the current set of members in an etcd cluster.
-//
-// NOTE: This methods uses control plane machines/nodes only to get in contact with etcd,
-// but then it relies on etcd as ultimate source of truth for the list of members.
-// This is intended to allow informed decisions on actions impacting etcd quorum.
-func (w *Workload) EtcdMembers(ctx context.Context) ([]string, error) {
-	nodes, err := w.getControlPlaneNodes(ctx)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to list control plane nodes")
-	}
-	nodeNames := make([]string, 0, len(nodes.Items))
-	for _, node := range nodes.Items {
-		nodeNames = append(nodeNames, node.Name)
-	}
-	etcdClient, err := w.etcdClientGenerator.forLeader(ctx, nodeNames)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create etcd client")
-	}
-	defer etcdClient.Close()
-
-	members, err := etcdClient.Members(ctx)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to list etcd members using etcd client")
-	}
-
-	names := []string{}
-	for _, member := range members {
-		names = append(names, member.Name)
-	}
-	return names, nil
 }
