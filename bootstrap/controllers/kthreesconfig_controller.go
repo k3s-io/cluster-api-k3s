@@ -252,6 +252,16 @@ func (r *KThreesConfigReconciler) joinControlplane(ctx context.Context, scope *S
 		return err
 	}
 
+	if scope.Config.Spec.IsEtcdEmbedded() {
+		etcdProxyFile := bootstrapv1.File{
+			Path:        etcd.EtcdProxyDaemonsetYamlLocation,
+			Content:     etcd.EtcdProxyDaemonsetYaml,
+			Owner:       "root:root",
+			Permissions: "0640",
+		}
+		files = append(files, etcdProxyFile)
+	}
+
 	cpInput := &cloudinit.ControlPlaneInput{
 		BaseUserData: cloudinit.BaseUserData{
 			PreK3sCommands:  scope.Config.Spec.PreK3sCommands,
@@ -456,7 +466,7 @@ func (r *KThreesConfigReconciler) handleClusterNotInitialized(ctx context.Contex
 		return ctrl.Result{}, err
 	}
 
-	if scope.Config.Spec.IsEtcdManaged() {
+	if scope.Config.Spec.IsEtcdEmbedded() {
 		etcdProxyFile := bootstrapv1.File{
 			Path:        etcd.EtcdProxyDaemonsetYamlLocation,
 			Content:     etcd.EtcdProxyDaemonsetYaml,

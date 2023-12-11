@@ -26,6 +26,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/types"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apiserver/pkg/storage/names"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
@@ -51,6 +52,11 @@ type ControlPlane struct {
 	Cluster              *clusterv1.Cluster
 	Machines             FilterableMachineCollection
 	machinesPatchHelpers map[string]*patch.Helper
+
+	// check if mgmt cluster has target cluster's etcd ca.
+	// for old cluster created before connect-etcd feature, mgmt cluster don't
+	// store etcd ca, controlplane reconcile loop need bypass any etcd operations.
+	hasEtcdCA bool
 
 	// reconciliationTime is the time of the current reconciliation, and should be used for all "now" calculations
 	reconciliationTime metav1.Time
@@ -80,11 +86,25 @@ func NewControlPlane(ctx context.Context, client client.Client, cluster *cluster
 		patchHelpers[machine.Name] = patchHelper
 	}
 
+	hasEtcdCA := false
+	etcdCASecret := &corev1.Secret{}
+	etcdCAObjectKey := types.NamespacedName{
+		Namespace: cluster.Namespace,
+		Name:      fmt.Sprintf("%s-etcd", cluster.Name),
+	}
+
+	if err := client.Get(ctx, etcdCAObjectKey, etcdCASecret); err == nil {
+		hasEtcdCA = true
+	} else if !apierrors.IsNotFound(err) {
+		return nil, err
+	}
+
 	return &ControlPlane{
 		KCP:                  kcp,
 		Cluster:              cluster,
 		Machines:             ownedMachines,
 		machinesPatchHelpers: patchHelpers,
+		hasEtcdCA:            hasEtcdCA,
 		kthreesConfigs:       kthreesConfigs,
 		infraResources:       infraObjects,
 		reconciliationTime:   metav1.Now(),
@@ -314,7 +334,7 @@ func getKThreesConfigs(ctx context.Context, cl client.Client, machines Filterabl
 
 // IsEtcdManaged returns true if the control plane relies on a managed etcd.
 func (c *ControlPlane) IsEtcdManaged() bool {
-	return c.KCP.Spec.KThreesConfigSpec.IsEtcdManaged()
+	return c.KCP.Spec.KThreesConfigSpec.IsEtcdEmbedded() && c.hasEtcdCA
 }
 
 // UnhealthyMachines returns the list of control plane machines marked as unhealthy by MHC.
