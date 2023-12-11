@@ -81,7 +81,7 @@ func NewCertificatesForInitialControlPlane(config *bootstrapv1.KThreesConfigSpec
 		},
 	}
 
-	if config.IsEtcdManaged() {
+	if config.IsEtcdEmbedded() {
 		etcdCert := &Certificate{
 			Purpose:  EtcdCA,
 			CertFile: filepath.Join(certificatesDir, "etcd", "server-ca.crt"),

@@ -53,7 +53,7 @@ type KThreesConfigSpec struct {
 
 // TODO
 // Will need extend this func when implementing other k3s database options.
-func (c *KThreesConfigSpec) IsEtcdManaged() bool {
+func (c *KThreesConfigSpec) IsEtcdEmbedded() bool {
 	return true
 }
 
