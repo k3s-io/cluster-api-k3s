@@ -30,8 +30,9 @@ Three main pieces are
     * For more AWS information go to [CAPA Getting Started](https://cluster-api-aws.sigs.k8s.io/)
     * For more Nutanix information go to [CAPX Getting Started](https://opendocs.nutanix.com/capx/latest/getting_started/)
     * For more OpenStack information go to [CAPO Getting Started](https://cluster-api.sigs.k8s.io/user/quick-start.html)
+    * For more Vsphere information go to [CAPV Getting Started](https://cluster-api.sigs.k8s.io/user/quick-start.html)
 
-Cluster API k3s has been tested on AWS, Azure, AzureStackHCI, Nutanix and OpenStack environments. 
+Cluster API k3s has been tested on AWS, Azure, AzureStackHCI, Nutanix, OpenStack, and Vsphere environments. 
 
 To try out the Azure flow, fork the repo and look at `samples/azure/azure-setup.sh`.
 
@@ -41,13 +42,14 @@ To try out the Nutanix flow, fork the repo and look at `samples/nutanix/nutanix-
 
 To try out the OpenStack flow, fork the repo and look at `samples/openstack/setup.sh`.
 
+To try out the Vsphere flow, fork the repo and look at `samples/vsphere-capv/setup.sh`.
+
 ### Known Issues
 
 ## Roadmap
 
 * Support for External Databases
 * Fix Token Logic
-* Setup CAPV samples
 * Clean up Control Plane Provider Code
 * Post an issue!
 
