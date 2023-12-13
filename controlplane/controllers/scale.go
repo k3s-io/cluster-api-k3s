@@ -119,7 +119,6 @@ func (r *KThreesControlPlaneReconciler) scaleDownControlPlane(
 		return ctrl.Result{}, fmt.Errorf("failed to pick control plane Machine to delete: %w", err)
 	}
 
-	// TODO figure out etcd complexities
 	// If KCP should manage etcd, If etcd leadership is on machine that is about to be deleted, move it to the newest member available.
 	if controlPlane.IsEtcdManaged() {
 		workloadCluster, err := r.managementCluster.GetWorkloadCluster(ctx, util.ObjectKey(cluster))
