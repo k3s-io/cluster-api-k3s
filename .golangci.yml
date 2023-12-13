@@ -70,12 +70,13 @@ linters-settings:
           - $gostd
           - github.com/go-logr/logr
           - github.com/coredns/corefile-migration/migration
+          - github.com/pkg/errors
           
           - k8s.io/api
           - k8s.io/apimachinery/pkg
           - k8s.io/apiserver
           - k8s.io/client-go
-          - k8s.io/klog/v2/klogr
+          - k8s.io/klog/v2
           - k8s.io/utils/pointer
           
           - github.com/onsi/ginkgo
