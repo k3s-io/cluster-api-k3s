@@ -51,6 +51,12 @@ type KThreesConfigSpec struct {
 	Version string `json:"version,omitempty"`
 }
 
+// TODO
+// Will need extend this func when implementing other k3s database options.
+func (c *KThreesConfigSpec) IsEtcdEmbedded() bool {
+	return true
+}
+
 type KThreesServerConfig struct {
 	// KubeAPIServerArgs is a customized flag for kube-apiserver process
 	// +optional

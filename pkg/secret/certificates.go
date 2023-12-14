@@ -65,7 +65,7 @@ var (
 type Certificates []*Certificate
 
 // NewCertificatesForInitialControlPlane returns a list of certificates configured for a control plane node.
-func NewCertificatesForInitialControlPlane() Certificates {
+func NewCertificatesForInitialControlPlane(config *bootstrapv1.KThreesConfigSpec) Certificates {
 	certificatesDir := DefaultCertificatesDir
 
 	certificates := Certificates{
@@ -79,6 +79,15 @@ func NewCertificatesForInitialControlPlane() Certificates {
 			CertFile: filepath.Join(certificatesDir, "client-ca.crt"),
 			KeyFile:  filepath.Join(certificatesDir, "client-ca.key"),
 		},
+	}
+
+	if config.IsEtcdEmbedded() {
+		etcdCert := &Certificate{
+			Purpose:  EtcdCA,
+			CertFile: filepath.Join(certificatesDir, "etcd", "server-ca.crt"),
+			KeyFile:  filepath.Join(certificatesDir, "etcd", "server-ca.key"),
+		}
+		certificates = append(certificates, etcdCert)
 	}
 
 	return certificates
