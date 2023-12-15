@@ -7,6 +7,7 @@ commonLabels:
 # It should be run by config/default
 resources:
   - bases/controlplane.cluster.x-k8s.io_kthreescontrolplanes.yaml
+  - bases/controlplane.cluster.x-k8s.io_kthreescontrolplanetemplates.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patchesStrategicMerge:
