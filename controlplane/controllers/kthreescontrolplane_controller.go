@@ -262,6 +262,7 @@ func patchKThreesControlPlane(ctx context.Context, patchHelper *patch.Helper, kc
 			controlplanev1.CertificatesAvailableCondition,
 			controlplanev1.TokenAvailableCondition,
 		}},
+		patch.WithStatusObservedGeneration{},
 	)
 }
 
