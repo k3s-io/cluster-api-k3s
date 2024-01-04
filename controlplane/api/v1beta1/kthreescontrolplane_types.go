@@ -66,13 +66,6 @@ type KThreesControlPlaneSpec struct {
 	// Version defines the desired Kubernetes version.
 	Version string `json:"version"`
 
-	// InfrastructureTemplate is a required reference to a custom resource
-	// offered by an infrastructure provider.
-	// In the next API version we will move this into the
-	// `KThreesControlPlaneMachineTemplate` struct. See
-	// https://github.com/k3s-io/cluster-api-k3s/issues/62
-	InfrastructureTemplate corev1.ObjectReference `json:"infrastructureTemplate"`
-
 	// KThreesConfigSpec is a KThreesConfigSpec
 	// to use for initializing and joining machines to the control plane.
 	// +optional
@@ -83,12 +76,6 @@ type KThreesControlPlaneSpec struct {
 	// KThreesControlPlane
 	// +optional
 	UpgradeAfter *metav1.Time `json:"upgradeAfter,omitempty"`
-
-	// NodeDrainTimeout is the total amount of time that the controller will spend on draining a controlplane node
-	// The default value is 0, meaning that the node can be drained without any time limitations.
-	// NOTE: NodeDrainTimeout is different from `kubectl drain --timeout`
-	// +optional
-	NodeDrainTimeout *metav1.Duration `json:"nodeDrainTimeout,omitempty"`
 
 	// MachineTemplate contains information about how machines should be shaped
 	// when creating or updating a control plane.
@@ -101,13 +88,19 @@ type KThreesControlPlaneSpec struct {
 
 // MachineTemplate contains information about how machines should be shaped
 // when creating or updating a control plane.
-// In the next API version we will move the InfrastructureTemplate field into
-// this struct. See https://github.com/k3s-io/cluster-api-k3s/issues/62
 type KThreesControlPlaneMachineTemplate struct {
 	// Standard object's metadata.
 	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
 	// +optional
 	ObjectMeta clusterv1.ObjectMeta `json:"metadata,omitempty"`
+	// InfrastructureRef is a required reference to a custom resource
+	// offered by an infrastructure provider.
+	InfrastructureRef corev1.ObjectReference `json:"infrastructureRef"`
+	// NodeDrainTimeout is the total amount of time that the controller will spend on draining a controlplane node
+	// The default value is 0, meaning that the node can be drained without any time limitations.
+	// NOTE: NodeDrainTimeout is different from `kubectl drain --timeout`
+	// +optional
+	NodeDrainTimeout *metav1.Duration `json:"nodeDrainTimeout,omitempty"`
 }
 
 // RemediationStrategy allows to define how control plane machine remediation happens.

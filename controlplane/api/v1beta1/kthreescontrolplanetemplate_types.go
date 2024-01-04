@@ -18,6 +18,8 @@ package v1beta1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	cabp3v1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta1"
 )
 
 // KThreesControlPlaneTemplateSpec defines the desired state of KThreesControlPlaneTemplateSpec.
@@ -29,8 +31,29 @@ type KThreesControlPlaneTemplateResource struct {
 	// Standard object's metadata.
 	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
 	// +optional
-	ObjectMeta metav1.ObjectMeta       `json:"metadata,omitempty"`
-	Spec       KThreesControlPlaneSpec `json:"spec"`
+	ObjectMeta metav1.ObjectMeta                       `json:"metadata,omitempty"`
+	Spec       KThreesControlPlaneTemplateResourceSpec `json:"spec"`
+}
+
+type KThreesControlPlaneTemplateResourceSpec struct {
+	// KThreesConfigSpec is a KThreesConfigSpec
+	// to use for initializing and joining machines to the control plane.
+	// +optional
+	KThreesConfigSpec cabp3v1.KThreesConfigSpec `json:"kthreesConfigSpec,omitempty"`
+
+	// UpgradeAfter is a field to indicate an upgrade should be performed
+	// after the specified time even if no changes have been made to the
+	// KThreesControlPlane
+	// +optional
+	UpgradeAfter *metav1.Time `json:"upgradeAfter,omitempty"`
+
+	// MachineTemplate contains information about how machines should be shaped
+	// when creating or updating a control plane.
+	MachineTemplate KThreesControlPlaneMachineTemplate `json:"machineTemplate,omitempty"`
+
+	// The RemediationStrategy that controls how control plane machine remediation happens.
+	// +optional
+	RemediationStrategy *RemediationStrategy `json:"remediationStrategy,omitempty"`
 }
 
 //+kubebuilder:object:root=true

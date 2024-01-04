@@ -251,7 +251,7 @@ func (r *KThreesControlPlaneReconciler) cloneConfigsAndGenerateMachine(ctx conte
 	// Clone the infrastructure template
 	infraRef, err := external.CreateFromTemplate(ctx, &external.CreateFromTemplateInput{
 		Client:      r.Client,
-		TemplateRef: &kcp.Spec.InfrastructureTemplate,
+		TemplateRef: &kcp.Spec.MachineTemplate.InfrastructureRef,
 		Namespace:   kcp.Namespace,
 		OwnerRef:    infraCloneOwner,
 		ClusterName: cluster.Name,
@@ -359,7 +359,7 @@ func (r *KThreesControlPlaneReconciler) generateMachine(ctx context.Context, kcp
 				ConfigRef: bootstrapRef,
 			},
 			FailureDomain:    failureDomain,
-			NodeDrainTimeout: kcp.Spec.NodeDrainTimeout,
+			NodeDrainTimeout: kcp.Spec.MachineTemplate.NodeDrainTimeout,
 		},
 	}
 

@@ -412,7 +412,7 @@ func (r *KThreesControlPlaneReconciler) reconcile(ctx context.Context, cluster *
 	logger.Info("Reconcile KThreesControlPlane")
 
 	// Make sure to reconcile the external infrastructure reference.
-	if err := r.reconcileExternalReference(ctx, cluster, kcp.Spec.InfrastructureTemplate); err != nil {
+	if err := r.reconcileExternalReference(ctx, cluster, kcp.Spec.MachineTemplate.InfrastructureRef); err != nil {
 		return reconcile.Result{}, err
 	}
 

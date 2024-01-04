@@ -131,7 +131,7 @@ func (c *ControlPlane) Version() *string {
 
 // InfrastructureTemplate returns the KThreesControlPlane's infrastructure template.
 func (c *ControlPlane) InfrastructureTemplate() *corev1.ObjectReference {
-	return &c.KCP.Spec.InfrastructureTemplate
+	return &c.KCP.Spec.MachineTemplate.InfrastructureRef
 }
 
 // AsOwnerReference returns an owner reference to the KThreesControlPlane.
