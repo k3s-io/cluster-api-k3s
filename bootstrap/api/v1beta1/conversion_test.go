@@ -21,7 +21,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	utilconversion "sigs.k8s.io/cluster-api/util/conversion"
 
-	cabp3v1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/bootstrap/api/v1beta2"
+	cabp3v1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
 )
 
 func TestFuzzyConversion(t *testing.T) {

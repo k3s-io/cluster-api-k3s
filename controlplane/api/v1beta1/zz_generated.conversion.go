@@ -23,10 +23,10 @@ package v1beta1
 import (
 	unsafe "unsafe"
 
-	apiv1beta1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/bootstrap/api/v1beta1"
-	apiv1beta2 "github.com/cluster-api-provider-k3s/cluster-api-k3s/bootstrap/api/v1beta2"
-	v1beta2 "github.com/cluster-api-provider-k3s/cluster-api-k3s/controlplane/api/v1beta2"
-	errors "github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/errors"
+	apiv1beta1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta1"
+	apiv1beta2 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
+	v1beta2 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
+	errors "github.com/k3s-io/cluster-api-k3s/pkg/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	conversion "k8s.io/apimachinery/pkg/conversion"
 	runtime "k8s.io/apimachinery/pkg/runtime"

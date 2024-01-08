@@ -23,7 +23,7 @@ package v1beta1
 import (
 	unsafe "unsafe"
 
-	v1beta2 "github.com/cluster-api-provider-k3s/cluster-api-k3s/bootstrap/api/v1beta2"
+	v1beta2 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
 	conversion "k8s.io/apimachinery/pkg/conversion"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	apiv1beta1 "sigs.k8s.io/cluster-api/api/v1beta1"

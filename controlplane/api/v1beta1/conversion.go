@@ -20,9 +20,9 @@ import (
 	"k8s.io/apimachinery/pkg/conversion"
 	ctrlconversion "sigs.k8s.io/controller-runtime/pkg/conversion"
 
-	bootstrapv1beta1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/bootstrap/api/v1beta1"
-	bootstrapv1beta2 "github.com/cluster-api-provider-k3s/cluster-api-k3s/bootstrap/api/v1beta2"
-	cabp3v1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/controlplane/api/v1beta2"
+	bootstrapv1beta1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta1"
+	bootstrapv1beta2 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
+	cabp3v1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
 )
 
 func Convert_v1beta1_KThreesControlPlaneSpec_To_v1beta2_KThreesControlPlaneSpec(in *KThreesControlPlaneSpec, out *cabp3v1.KThreesControlPlaneSpec, s conversion.Scope) error { //nolint: stylecheck
