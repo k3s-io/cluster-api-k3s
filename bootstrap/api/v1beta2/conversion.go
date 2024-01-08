@@ -19,11 +19,5 @@ package v1beta2
 // Hub marks KThreesConfig as a conversion hub.
 func (*KThreesConfig) Hub() {}
 
-// Hub marks KThreesConfigList as a conversion hub.
-func (*KThreesConfigList) Hub() {}
-
 // Hub marks KThreesConfigTemplate as a conversion hub.
 func (*KThreesConfigTemplate) Hub() {}
-
-// Hub marks KThreesConfigTemplateList as a conversion hub.
-func (*KThreesConfigTemplateList) Hub() {}

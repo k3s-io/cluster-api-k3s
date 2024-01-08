@@ -14,10 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1beta2
-
-// Hub marks KThreesControlPlane as a conversion hub.
-func (*KThreesControlPlane) Hub() {}
-
-// Hub marks KThreesControlPlaneTemplate as a conversion hub.
-func (*KThreesControlPlaneTemplate) Hub() {}
+// Package v1beta1 contains API Schema definitions for the controlplane v1beta1 API group
+// +kubebuilder:object:generate=true
+// +groupName=controlplane.cluster.x-k8s.io
+// +k8s:defaulter-gen=TypeMeta
+// +k8s:conversion-gen=github.com/cluster-api-provider-k3s/cluster-api-k3s/controlplane/api/v1beta2
+package v1beta1
