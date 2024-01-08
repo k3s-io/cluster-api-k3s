@@ -45,7 +45,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta1"
+	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
 	k3s "github.com/k3s-io/cluster-api-k3s/pkg/k3s"
 	"github.com/k3s-io/cluster-api-k3s/pkg/kubeconfig"
 	"github.com/k3s-io/cluster-api-k3s/pkg/machinefilters"

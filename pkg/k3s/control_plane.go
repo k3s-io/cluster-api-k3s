@@ -34,8 +34,8 @@ import (
 	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta1"
-	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta1"
+	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
+	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
 	"github.com/k3s-io/cluster-api-k3s/pkg/machinefilters"
 )
 
