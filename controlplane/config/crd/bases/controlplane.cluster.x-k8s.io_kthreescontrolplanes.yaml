@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.13.0
   name: kthreescontrolplanes.controlplane.cluster.x-k8s.io
 spec:
   group: controlplane.cluster.x-k8s.io
@@ -840,15 +840,6 @@ spec:
                 required:
                 - infrastructureRef
                 type: object
-<<<<<<< HEAD
-              nodeDrainTimeout:
-                description: |-
-                  NodeDrainTimeout is the total amount of time that the controller will spend on draining a controlplane node
-                  The default value is 0, meaning that the node can be drained without any time limitations.
-                  NOTE: NodeDrainTimeout is different from `kubectl drain --timeout`
-                type: string
-=======
->>>>>>> 254ba2a (Implement KThreesControlPlaneTemplateResourceSpec and KThreesControlPlaneMachineTemplate)
               remediationStrategy:
                 description: The RemediationStrategy that controls how control plane
                   machine remediation happens.

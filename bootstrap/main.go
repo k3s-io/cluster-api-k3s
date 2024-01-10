@@ -95,6 +95,17 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "KThreesConfig")
 		os.Exit(1)
 	}
+
+	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
+		if err = (&bootstrapv1.KThreesConfig{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "KThreesConfig")
+			os.Exit(1)
+		}
+		if err = (&bootstrapv1.KThreesConfigTemplate{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "KThreesConfigTemplate")
+			os.Exit(1)
+		}
+	}
 	// +kubebuilder:scaffold:builder
 
 	setupLog.Info("starting manager")
