@@ -258,7 +258,7 @@ deploy-controlplane: manifests-controlplane
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests-controlplane: $(KUSTOMIZE) $(CONTROLLER_GEN)
-	$(CONTROLLER_GEN) rbac:roleName=manager-role webhook crd paths="./..." output:crd:artifacts:config=controlplane/config/crd/bases output:rbac:dir=controlplane/config/rbac
+	$(CONTROLLER_GEN) rbac:roleName=manager-role webhook crd paths="./..." output:crd:artifacts:config=controlplane/config/crd/bases output:rbac:dir=controlplane/config/rbac output:webhook:dir=controlplane/config/webhook
 
 release-controlplane: $(RELEASE_DIR) manifests-controlplane ## Release control-plane
 	cd controlplane/config/manager && $(KUSTOMIZE) edit set image controller=${CONTROLPLANE_IMG}:$(CONTROLPLANE_IMG_TAG)

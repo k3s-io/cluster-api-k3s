@@ -18,6 +18,3 @@ package v1beta2
 
 // Hub marks KThreesControlPlane as a conversion hub.
 func (*KThreesControlPlane) Hub() {}
-
-// Hub marks KThreesControlPlaneTemplate as a conversion hub.
-func (*KThreesControlPlaneTemplate) Hub() {}
