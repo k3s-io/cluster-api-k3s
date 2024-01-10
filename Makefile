@@ -215,7 +215,7 @@ docker-push-bootstrap: ## Push bootstrap
 all-controlplane: manager-controlplane
 
 # Run tests
-test-controlplane: envtest generate-controlplane lint manifests-controlplane
+test-controlplane: envtest generate-controlplane generate-controlplane-conversions lint manifests-controlplane
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(TOOLS_BIN_DIR) -p path)" go test $(shell pwd)/controlplane/... -coverprofile cover.out
 
 .PHONY: docker-build-e2e
