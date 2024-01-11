@@ -70,7 +70,7 @@ func Convert_v1beta2_KThreesConfigSpec_To_v1beta1_KThreesConfigSpec(in *bootstra
 	return bootstrapv1beta1.Convert_v1beta2_KThreesConfigSpec_To_v1beta1_KThreesConfigSpec(in, out, s)
 }
 
-// ConvertTo converts the v1beta1 KThreesConfig receiver to a v1beta2 KThreesConfig.
+// ConvertTo converts the v1beta1 KThreesControlPlane receiver to a v1beta2 KThreesControlPlane.
 func (in *KThreesControlPlane) ConvertTo(dstRaw ctrlconversion.Hub) error {
 	dst := dstRaw.(*cabp3v1.KThreesControlPlane)
 	if err := Convert_v1beta1_KThreesControlPlane_To_v1beta2_KThreesControlPlane(in, dst, nil); err != nil {
@@ -79,11 +79,29 @@ func (in *KThreesControlPlane) ConvertTo(dstRaw ctrlconversion.Hub) error {
 	return nil
 }
 
-// ConvertFrom converts the v1beta1 KThreesConfig receiver from a v1beta2 KThreesConfig.
+// ConvertFrom converts the v1beta1 KThreesControlPlane receiver from a v1beta2 KThreesControlPlane.
 func (in *KThreesControlPlane) ConvertFrom(srcRaw ctrlconversion.Hub) error {
 	src := srcRaw.(*cabp3v1.KThreesControlPlane)
 	if err := Convert_v1beta2_KThreesControlPlane_To_v1beta1_KThreesControlPlane(src, in, nil); err != nil {
 		return fmt.Errorf("converting KThreesControlPlane v1beta1 from v1beta2: %w", err)
+	}
+	return nil
+}
+
+// ConvertTo converts the v1beta1 KThreesControlPlaneList receiver to a v1beta2 KThreesControlPlaneList.
+func (in *KThreesControlPlaneList) ConvertTo(dstRaw ctrlconversion.Hub) error {
+	dst := dstRaw.(*cabp3v1.KThreesControlPlaneList)
+	if err := Convert_v1beta1_KThreesControlPlaneList_To_v1beta2_KThreesControlPlaneList(in, dst, nil); err != nil {
+		return fmt.Errorf("converting KThreesControlPlaneList v1beta1 to v1beta2: %w", err)
+	}
+	return nil
+}
+
+// ConvertFrom converts the v1beta1 KThreesControlPlaneList receiver from a v1beta2 KThreesControlPlaneList.
+func (in *KThreesControlPlaneList) ConvertFrom(srcRaw ctrlconversion.Hub) error {
+	src := srcRaw.(*cabp3v1.KThreesControlPlaneList)
+	if err := Convert_v1beta2_KThreesControlPlaneList_To_v1beta1_KThreesControlPlaneList(src, in, nil); err != nil {
+		return fmt.Errorf("converting KThreesControlPlaneList v1beta1 from v1beta2: %w", err)
 	}
 	return nil
 }
