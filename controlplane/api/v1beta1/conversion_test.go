@@ -30,7 +30,7 @@ func TestFuzzyConversion(t *testing.T) {
 	g.Expect(AddToScheme(scheme)).To(Succeed())
 	g.Expect(cabp3v1.AddToScheme(scheme)).To(Succeed())
 
-	t.Run("for KThreesConfig", utilconversion.FuzzTestFunc(utilconversion.FuzzTestFuncInput{
+	t.Run("for KThreesControlPlane", utilconversion.FuzzTestFunc(utilconversion.FuzzTestFuncInput{
 		Scheme:      scheme,
 		Hub:         &cabp3v1.KThreesControlPlane{},
 		Spoke:       &KThreesControlPlane{},

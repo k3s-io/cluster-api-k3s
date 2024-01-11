@@ -18,6 +18,7 @@ import (
 	unsafe "unsafe"
 
 	"k8s.io/apimachinery/pkg/conversion"
+	utilconversion "sigs.k8s.io/cluster-api/util/conversion"
 	ctrlconversion "sigs.k8s.io/controller-runtime/pkg/conversion"
 
 	bootstrapv1beta1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta1"
@@ -76,6 +77,11 @@ func (in *KThreesControlPlane) ConvertTo(dstRaw ctrlconversion.Hub) error {
 	if err := Convert_v1beta1_KThreesControlPlane_To_v1beta2_KThreesControlPlane(in, dst, nil); err != nil {
 		return fmt.Errorf("converting KThreesControlPlane v1beta1 to v1beta2: %w", err)
 	}
+
+	restored := &cabp3v1.KThreesControlPlane{}
+	if ok, err := utilconversion.UnmarshalData(in, restored); err != nil || !ok {
+		return fmt.Errorf("add KThreesControlPlane conversion data v1beta1 to v1beta2: %w", err)
+	}
 	return nil
 }
 
@@ -84,6 +90,9 @@ func (in *KThreesControlPlane) ConvertFrom(srcRaw ctrlconversion.Hub) error {
 	src := srcRaw.(*cabp3v1.KThreesControlPlane)
 	if err := Convert_v1beta2_KThreesControlPlane_To_v1beta1_KThreesControlPlane(src, in, nil); err != nil {
 		return fmt.Errorf("converting KThreesControlPlane v1beta1 from v1beta2: %w", err)
+	}
+	if err := utilconversion.MarshalData(src, in); err != nil {
+		return fmt.Errorf("add KThreesControlPlane conversion data v1beta1 from v1beta2: %w", err)
 	}
 	return nil
 }
