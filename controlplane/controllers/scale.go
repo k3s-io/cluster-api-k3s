@@ -132,12 +132,12 @@ func (r *KThreesControlPlaneReconciler) scaleDownControlPlane(
 			logger.Error(err, "Failed to move leadership to candidate machine", "candidate", etcdLeaderCandidate.Name)
 			return ctrl.Result{}, err
 		}
-		logger.Info("etcd move etcd leader succeed, node to delete %s", machineToDelete.Status.NodeRef.Name)
+		logger.Info("etcd move etcd leader succeeded, node to delete %s", machineToDelete.Status.NodeRef.Name)
 		if err := workloadCluster.RemoveEtcdMemberForMachine(ctx, machineToDelete); err != nil {
 			logger.Error(err, "Failed to remove etcd member for machine")
 			return ctrl.Result{}, err
 		}
-		logger.Info("etcd remove etcd member succeed, node to delete %s", machineToDelete.Status.NodeRef.Name)
+		logger.Info("etcd remove etcd member succeeded, node to delete %s", machineToDelete.Status.NodeRef.Name)
 	}
 
 	logger = logger.WithValues("machine", machineToDelete)
