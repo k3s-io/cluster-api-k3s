@@ -32,6 +32,7 @@ import (
 	bootstrapv1beta1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/bootstrap/api/v1beta1"
 	controlplanev1beta1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/controlplane/api/v1beta1"
 	"github.com/cluster-api-provider-k3s/cluster-api-k3s/controlplane/controllers"
+	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/etcd"
 )
 
 var (
@@ -53,6 +54,8 @@ func main() {
 	var metricsAddr string
 	var enableLeaderElection bool
 	var syncPeriod time.Duration
+	var etcdDialTimeout time.Duration
+	var etcdCallTimeout time.Duration
 
 	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,
@@ -61,6 +64,13 @@ func main() {
 
 	flag.DurationVar(&syncPeriod, "sync-period", 10*time.Minute,
 		"The minimum interval at which watched resources are reconciled (e.g. 15m)")
+
+	flag.DurationVar(&etcdDialTimeout, "etcd-dial-timeout-duration", 10*time.Second,
+		"Duration that the etcd client waits at most to establish a connection with etcd")
+
+	flag.DurationVar(&etcdCallTimeout, "etcd-call-timeout-duration", etcd.DefaultCallTimeout,
+		"Duration that the etcd client waits at most for read and write operations to etcd.")
+
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
@@ -79,9 +89,11 @@ func main() {
 	}
 
 	if err = (&controllers.KThreesControlPlaneReconciler{
-		Client: mgr.GetClient(),
-		Log:    ctrl.Log.WithName("controllers").WithName("KThreesControlPlane"),
-		Scheme: mgr.GetScheme(),
+		Client:          mgr.GetClient(),
+		Log:             ctrl.Log.WithName("controllers").WithName("KThreesControlPlane"),
+		Scheme:          mgr.GetScheme(),
+		EtcdDialTimeout: etcdDialTimeout,
+		EtcdCallTimeout: etcdCallTimeout,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "KThreesControlPlane")
 		os.Exit(1)

@@ -61,6 +61,9 @@ type KThreesControlPlaneReconciler struct {
 	controller controller.Controller
 	recorder   record.EventRecorder
 
+	EtcdDialTimeout time.Duration
+	EtcdCallTimeout time.Duration
+
 	managementCluster         k3s.ManagementCluster
 	managementClusterUncached k3s.ManagementCluster
 }
@@ -291,11 +294,19 @@ func (r *KThreesControlPlaneReconciler) SetupWithManager(mgr ctrl.Manager) error
 	r.recorder = mgr.GetEventRecorderFor("k3s-control-plane-controller")
 
 	if r.managementCluster == nil {
-		r.managementCluster = &k3s.Management{Client: r.Client}
+		r.managementCluster = &k3s.Management{
+			Client:          r.Client,
+			EtcdDialTimeout: r.EtcdDialTimeout,
+			EtcdCallTimeout: r.EtcdCallTimeout,
+		}
 	}
 
 	if r.managementClusterUncached == nil {
-		r.managementClusterUncached = &k3s.Management{Client: mgr.GetAPIReader()}
+		r.managementClusterUncached = &k3s.Management{
+			Client:          mgr.GetAPIReader(),
+			EtcdDialTimeout: r.EtcdDialTimeout,
+			EtcdCallTimeout: r.EtcdCallTimeout,
+		}
 	}
 
 	return nil

@@ -2,15 +2,21 @@ package k3s
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"time"
 
+	"github.com/pkg/errors"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/kubernetes/scheme"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/controllers/remote"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/machinefilters"
+	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/secret"
 )
 
 // ManagementCluster defines all behaviors necessary for something to function as a management cluster.
@@ -25,7 +31,9 @@ type ManagementCluster interface {
 type Management struct {
 	ManagementCluster
 
-	Client client.Reader
+	Client          client.Reader
+	EtcdDialTimeout time.Duration
+	EtcdCallTimeout time.Duration
 }
 
 // RemoteClusterConnectionError represents a failure to connect to a remote cluster.
@@ -81,8 +89,58 @@ func (m *Management) GetWorkloadCluster(ctx context.Context, clusterKey client.O
 		return nil, &RemoteClusterConnectionError{Name: clusterKey.String(), Err: err}
 	}
 
-	return &Workload{
+	workload := &Workload{
 		Client:          c,
 		CoreDNSMigrator: &CoreDNSMigrator{},
-	}, nil
+	}
+
+	// Retrieves the etcd CA key Pair
+	crtData, keyData, err := m.getEtcdCAKeyPair(ctx, clusterKey)
+	if err != nil {
+		return nil, err
+	}
+
+	// If etcd CA is not nil, then it's managed etcd
+	if crtData != nil {
+		clientCert, err := generateClientCert(crtData, keyData)
+		if err != nil {
+			return nil, err
+		}
+
+		caPool := x509.NewCertPool()
+		caPool.AppendCertsFromPEM(crtData)
+		tlsConfig := &tls.Config{
+			RootCAs:      caPool,
+			Certificates: []tls.Certificate{clientCert},
+			MinVersion:   tls.VersionTLS12,
+		}
+		tlsConfig.InsecureSkipVerify = true
+		workload.etcdClientGenerator = NewEtcdClientGenerator(restConfig, tlsConfig, m.EtcdDialTimeout, m.EtcdCallTimeout)
+	}
+
+	return workload, nil
+}
+
+func (m *Management) getEtcdCAKeyPair(ctx context.Context, clusterKey client.ObjectKey) ([]byte, []byte, error) {
+	etcdCASecret := &corev1.Secret{}
+	etcdCAObjectKey := client.ObjectKey{
+		Namespace: clusterKey.Namespace,
+		Name:      fmt.Sprintf("%s-etcd", clusterKey.Name),
+	}
+
+	// Try to get the certificate via the uncached client.
+	if err := m.Client.Get(ctx, etcdCAObjectKey, etcdCASecret); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, nil, nil
+		} else {
+			return nil, nil, errors.Wrapf(err, "failed to get secret; etcd CA bundle %s/%s", etcdCAObjectKey.Namespace, etcdCAObjectKey.Name)
+		}
+	}
+
+	crtData, ok := etcdCASecret.Data[secret.TLSCrtDataName]
+	if !ok {
+		return nil, nil, errors.Errorf("etcd tls crt does not exist for cluster %s/%s", clusterKey.Namespace, clusterKey.Name)
+	}
+	keyData := etcdCASecret.Data[secret.TLSKeyDataName]
+	return crtData, keyData, nil
 }

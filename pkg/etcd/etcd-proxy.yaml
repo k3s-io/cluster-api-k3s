@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: etcd-proxy
+  namespace: kube-system
+  labels:
+    app: etcd-proxy
+spec:
+  selector:
+    matchLabels:
+      app: etcd-proxy
+  template:
+    metadata:
+      labels:
+        app: etcd-proxy
+    spec:
+      nodeSelector:
+        node-role.kubernetes.io/etcd: "true"
+      tolerations:
+      - key: node-role.kubernetes.io/control-plane
+        operator: Exists
+        effect: NoSchedule
+      - key: node-role.kubernetes.io/master
+        operator: Exists
+        effect: NoSchedule
+      containers:
+      - name: etcd-proxy
+        image: alpine/socat
+        env:
+        - name: HOSTIP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        args: 
+        - TCP4-LISTEN:2379,fork,reuseaddr
+        - TCP4:$(HOSTIP):2379
+        resources:
+          limits:
+            memory: 200Mi
+          requests:
+            cpu: 100m
+            memory: 200Mi
+        volumeMounts:
+        - name: varlog
+          mountPath: /var/log
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - name: varlog
+        hostPath:
+          path: /var/log
