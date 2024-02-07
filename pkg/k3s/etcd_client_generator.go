@@ -29,9 +29,9 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
-	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/etcd"
-	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/etcd/util"
-	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/proxy"
+	"github.com/k3s-io/cluster-api-k3s/pkg/etcd"
+	"github.com/k3s-io/cluster-api-k3s/pkg/etcd/util"
+	"github.com/k3s-io/cluster-api-k3s/pkg/proxy"
 )
 
 // EtcdClientGenerator generates etcd clients that connect to specific etcd members on particular control plane nodes.

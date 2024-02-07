@@ -33,7 +33,7 @@ import (
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/util/conditions"
 
-	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/machinefilters"
+	"github.com/k3s-io/cluster-api-k3s/pkg/machinefilters"
 )
 
 // FilterableMachineCollection is a set of Machines.

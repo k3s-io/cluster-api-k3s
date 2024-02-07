@@ -1,5 +1,5 @@
 domain: cluster.x-k8s.io
-repo: github.com/cluster-api-provider-k3s/cluster-api-k3s/bootstrap
+repo: github.com/k3s-io/cluster-api-k3s/bootstrap
 resources:
 - group: bootstrap
   kind: KThreesConfig

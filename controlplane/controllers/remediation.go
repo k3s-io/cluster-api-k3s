@@ -33,8 +33,8 @@ import (
 	"sigs.k8s.io/cluster-api/util/patch"
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	controlplanev1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/controlplane/api/v1beta1"
-	k3s "github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/k3s"
+	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta1"
+	k3s "github.com/k3s-io/cluster-api-k3s/pkg/k3s"
 )
 
 // reconcileUnhealthyMachines tries to remediate KThreesControlPlane unhealthy machines

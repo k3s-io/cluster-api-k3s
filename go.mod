@@ -1,4 +1,4 @@
-module github.com/cluster-api-provider-k3s/cluster-api-k3s
+module github.com/k3s-io/cluster-api-k3s
 
 go 1.20
 

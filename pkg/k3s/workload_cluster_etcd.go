@@ -23,8 +23,8 @@ import (
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 
-	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/etcd"
-	etcdutil "github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/etcd/util"
+	"github.com/k3s-io/cluster-api-k3s/pkg/etcd"
+	etcdutil "github.com/k3s-io/cluster-api-k3s/pkg/etcd/util"
 )
 
 type etcdClientFor interface {

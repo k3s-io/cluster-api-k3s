@@ -33,10 +33,10 @@ version::get_version_vars() {
         # compatible semantic version that looks something like this:
         #   v1.1.0-alpha.0.6+84c76d1142ea4d
         DASHES_IN_VERSION=$(echo "${GIT_VERSION}" | sed "s/[^-]//g")
-        if [[ "${DASHES_IN_VERSION}" == "---" ]] ; then
+        if [[ "${DASHES_IN_VERSION}" == "---" ]]; then
             # We have distance to subversion (v1.1.0-subversion-1-gCommitHash)
             GIT_VERSION=$(echo "${GIT_VERSION}" | sed "s/-\([0-9]\{1,\}\)-g\([0-9a-f]\{14\}\)$/.\1\-\2/")
-        elif [[ "${DASHES_IN_VERSION}" == "--" ]] ; then
+        elif [[ "${DASHES_IN_VERSION}" == "--" ]]; then
             # We have distance to base tag (v1.1.0-1-gCommitHash)
             GIT_VERSION=$(echo "${GIT_VERSION}" | sed "s/-g\([0-9a-f]\{14\}\)$/-\1/")
         fi
@@ -46,7 +46,6 @@ version::get_version_vars() {
             # so use our idea of "dirty" from git status instead.
             GIT_VERSION+="-dirty"
         fi
-
 
         # Try to match the "git describe" output to a regex to try to extract
         # the "major" and "minor" versions and whether this is the exact tagged
@@ -77,7 +76,7 @@ version::ldflags() {
         local key=${1}
         local val=${2}
         ldflags+=(
-            "-X 'github.com/cluster-api-provider-k3s/cluster-api-k3s/version.${key}=${val}'"
+            "-X 'github.com/k3s-io/cluster-api-k3s/version.${key}=${val}'"
         )
     }
 

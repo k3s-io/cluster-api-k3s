@@ -23,8 +23,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 
-	cabp3v1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/bootstrap/api/v1beta1"
-	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/errors"
+	cabp3v1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta1"
+	"github.com/k3s-io/cluster-api-k3s/pkg/errors"
 )
 
 const (
@@ -70,7 +70,7 @@ type KThreesControlPlaneSpec struct {
 	// offered by an infrastructure provider.
 	// In the next API version we will move this into the
 	// `KThreesControlPlaneMachineTemplate` struct. See
-	// https://github.com/cluster-api-provider-k3s/cluster-api-k3s/issues/62
+	// https://github.com/k3s-io/cluster-api-k3s/issues/62
 	InfrastructureTemplate corev1.ObjectReference `json:"infrastructureTemplate"`
 
 	// KThreesConfigSpec is a KThreesConfigSpec
@@ -102,7 +102,7 @@ type KThreesControlPlaneSpec struct {
 // MachineTemplate contains information about how machines should be shaped
 // when creating or updating a control plane.
 // In the next API version we will move the InfrastructureTemplate field into
-// this struct. See https://github.com/cluster-api-provider-k3s/cluster-api-k3s/issues/62
+// this struct. See https://github.com/k3s-io/cluster-api-k3s/issues/62
 type KThreesControlPlaneMachineTemplate struct {
 	// Standard object's metadata.
 	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
