@@ -41,14 +41,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	kubeyaml "sigs.k8s.io/yaml"
 
-	bootstrapv1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/bootstrap/api/v1beta1"
-	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/cloudinit"
-	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/etcd"
-	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/k3s"
-	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/kubeconfig"
-	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/locking"
-	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/secret"
-	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/token"
+	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta1"
+	"github.com/k3s-io/cluster-api-k3s/pkg/cloudinit"
+	"github.com/k3s-io/cluster-api-k3s/pkg/etcd"
+	"github.com/k3s-io/cluster-api-k3s/pkg/k3s"
+	"github.com/k3s-io/cluster-api-k3s/pkg/kubeconfig"
+	"github.com/k3s-io/cluster-api-k3s/pkg/locking"
+	"github.com/k3s-io/cluster-api-k3s/pkg/secret"
+	"github.com/k3s-io/cluster-api-k3s/pkg/token"
 )
 
 // InitLocker is a lock that is used around k3s init.

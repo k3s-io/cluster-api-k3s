@@ -35,10 +35,10 @@ import (
 	"sigs.k8s.io/cluster-api/util/conditions"
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	bootstrapv1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/bootstrap/api/v1beta1"
-	controlplanev1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/controlplane/api/v1beta1"
-	k3s "github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/k3s"
-	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/machinefilters"
+	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta1"
+	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta1"
+	k3s "github.com/k3s-io/cluster-api-k3s/pkg/k3s"
+	"github.com/k3s-io/cluster-api-k3s/pkg/machinefilters"
 )
 
 var ErrPreConditionFailed = errors.New("precondition check failed")

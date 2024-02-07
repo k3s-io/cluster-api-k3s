@@ -24,7 +24,7 @@ import (
 	"sigs.k8s.io/cluster-api/util/conditions"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
-	controlplanev1 "github.com/cluster-api-provider-k3s/cluster-api-k3s/controlplane/api/v1beta1"
+	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta1"
 )
 
 const (

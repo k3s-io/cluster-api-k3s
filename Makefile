@@ -110,7 +110,7 @@ $(RELEASE_DIR):
 $(RELEASE_NOTES_DIR):
 	mkdir -p $(RELEASE_NOTES_DIR)/
 
-REGISTRY ?= ghcr.io/cluster-api-provider-k3s/cluster-api-k3s
+REGISTRY ?= ghcr.io/k3s-io/cluster-api-k3s
 
 # Image URL to use all building/pushing image targets
 BOOTSTRAP_IMG_TAG ?= $(RELEASE_TAG)

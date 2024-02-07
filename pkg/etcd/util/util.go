@@ -22,7 +22,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/util/sets"
 
-	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/etcd"
+	"github.com/k3s-io/cluster-api-k3s/pkg/etcd"
 )
 
 // TODO: find document confirmation of mapping between etcd member and node in k3s.

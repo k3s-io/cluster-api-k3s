@@ -86,7 +86,7 @@ linters-settings:
           - sigs.k8s.io/controller-runtime
           - sigs.k8s.io/cluster-api
 
-          - github.com/cluster-api-provider-k3s/cluster-api-k3s
+          - github.com/k3s-io/cluster-api-k3s
 
           - github.com/google/uuid
           - github.com/pkg/errors
@@ -94,7 +94,7 @@ linters-settings:
     sections:
       - standard
       - default
-      - prefix(github.com/cluster-api-provider-k3s/cluster-api-k3s)
+      - prefix(github.com/k3s-io/cluster-api-k3s)
   gomoddirectives:
     # List of allowed `replace` directives.
     # Default: []
@@ -103,7 +103,7 @@ linters-settings:
   goimports:
     # put imports beginning with prefix after 3rd-party packages;
     # it's a comma-separated list of prefixes
-    local-prefixes: github.com/cluster-api-provider-k3s/cluster-api-k3s
+    local-prefixes: github.com/k3s-io/cluster-api-k3s
   godot:
     #   declarations - for top level declaration comments (default);
     #   toplevel     - for top level comments;

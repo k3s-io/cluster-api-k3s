@@ -15,8 +15,8 @@ import (
 	"sigs.k8s.io/cluster-api/controllers/remote"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/machinefilters"
-	"github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/secret"
+	"github.com/k3s-io/cluster-api-k3s/pkg/machinefilters"
+	"github.com/k3s-io/cluster-api-k3s/pkg/secret"
 )
 
 // ManagementCluster defines all behaviors necessary for something to function as a management cluster.

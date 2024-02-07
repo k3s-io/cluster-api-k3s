@@ -1,5 +1,5 @@
 domain: cluster.x-k8s.io
-repo: github.com/cluster-api-provider-k3s/cluster-api-k3s/controlplane
+repo: github.com/k3s-io/cluster-api-k3s/controlplane
 resources:
 - group: controlplane
   kind: KThreesControlPlane

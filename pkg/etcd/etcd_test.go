@@ -25,7 +25,7 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	etcdfake "github.com/cluster-api-provider-k3s/cluster-api-k3s/pkg/etcd/fake"
+	etcdfake "github.com/k3s-io/cluster-api-k3s/pkg/etcd/fake"
 )
 
 var (
