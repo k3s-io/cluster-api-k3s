@@ -18,5 +18,5 @@ limitations under the License.
 // +kubebuilder:object:generate=true
 // +groupName=controlplane.cluster.x-k8s.io
 // +k8s:defaulter-gen=TypeMeta
-// +k8s:conversion-gen=github.com/cluster-api-provider-k3s/cluster-api-k3s/controlplane/api/v1beta2
+// +k8s:conversion-gen=github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2
 package v1beta1
