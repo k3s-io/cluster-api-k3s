@@ -29,7 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	bsutil "sigs.k8s.io/cluster-api/bootstrap/util"
 	"sigs.k8s.io/cluster-api/util"
@@ -527,7 +527,7 @@ func (r *KThreesConfigReconciler) storeBootstrapData(ctx context.Context, scope 
 					Kind:       "KThreesConfig",
 					Name:       scope.Config.Name,
 					UID:        scope.Config.UID,
-					Controller: pointer.Bool(true),
+					Controller: ptr.To[bool](true),
 				},
 			},
 		},
@@ -549,7 +549,7 @@ func (r *KThreesConfigReconciler) storeBootstrapData(ctx context.Context, scope 
 		}
 	}
 
-	scope.Config.Status.DataSecretName = pointer.String(secret.Name)
+	scope.Config.Status.DataSecretName = ptr.To[string](secret.Name)
 	scope.Config.Status.Ready = true
 	conditions.MarkTrue(scope.Config, bootstrapv1.DataSecretAvailableCondition)
 	return nil

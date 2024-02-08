@@ -269,7 +269,7 @@ func patchKThreesControlPlane(ctx context.Context, patchHelper *patch.Helper, kc
 	)
 }
 
-func (r *KThreesControlPlaneReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *KThreesControlPlaneReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, log *logr.Logger) error {
 	c, err := ctrl.NewControllerManagedBy(mgr).
 		For(&controlplanev1.KThreesControlPlane{}).
 		Owns(&clusterv1.Machine{}).
@@ -281,8 +281,8 @@ func (r *KThreesControlPlaneReconciler) SetupWithManager(mgr ctrl.Manager) error
 	}
 
 	err = c.Watch(
-		&source.Kind{Type: &clusterv1.Cluster{}},
-		handler.EnqueueRequestsFromMapFunc(r.ClusterToKThreesControlPlane),
+		source.Kind(mgr.GetCache(), &clusterv1.Cluster{}),
+		handler.EnqueueRequestsFromMapFunc(r.ClusterToKThreesControlPlane(ctx, log)),
 		predicates.ClusterUnpausedAndInfrastructureReady(r.Log),
 	)
 	if err != nil {
@@ -314,19 +314,21 @@ func (r *KThreesControlPlaneReconciler) SetupWithManager(mgr ctrl.Manager) error
 
 // ClusterToKThreesControlPlane is a handler.ToRequestsFunc to be used to enqueue requests for reconciliation
 // for KThreesControlPlane based on updates to a Cluster.
-func (r *KThreesControlPlaneReconciler) ClusterToKThreesControlPlane(o client.Object) []ctrl.Request {
-	c, ok := o.(*clusterv1.Cluster)
-	if !ok {
-		r.Log.Error(nil, fmt.Sprintf("Expected a Cluster but got a %T", o))
+func (r *KThreesControlPlaneReconciler) ClusterToKThreesControlPlane(ctx context.Context, log *logr.Logger) handler.MapFunc {
+	return func(ctx context.Context, o client.Object) []ctrl.Request {
+		c, ok := o.(*clusterv1.Cluster)
+		if !ok {
+			r.Log.Error(nil, fmt.Sprintf("Expected a Cluster but got a %T", o))
+			return nil
+		}
+
+		controlPlaneRef := c.Spec.ControlPlaneRef
+		if controlPlaneRef != nil && controlPlaneRef.Kind == "KThreesControlPlane" {
+			return []ctrl.Request{{NamespacedName: client.ObjectKey{Namespace: controlPlaneRef.Namespace, Name: controlPlaneRef.Name}}}
+		}
+
 		return nil
 	}
-
-	controlPlaneRef := c.Spec.ControlPlaneRef
-	if controlPlaneRef != nil && controlPlaneRef.Kind == "KThreesControlPlane" {
-		return []ctrl.Request{{NamespacedName: client.ObjectKey{Namespace: controlPlaneRef.Namespace, Name: controlPlaneRef.Name}}}
-	}
-
-	return nil
 }
 
 // updateStatus is called after every reconcilitation loop in a defer statement to always make sure we have the
