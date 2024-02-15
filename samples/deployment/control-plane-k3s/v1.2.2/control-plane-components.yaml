@@ -1,3 +1,4 @@
+# WARNING: This file is outdated, it is kept only for tryout. please refer to the steps in Getting Started Guide to deploy the latest version of the controlplane provider.
 apiVersion: v1
 kind: Namespace
 metadata:
