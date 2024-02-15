@@ -77,7 +77,7 @@ linters-settings:
           - k8s.io/apiserver
           - k8s.io/client-go
           - k8s.io/klog/v2
-          - k8s.io/utils/pointer
+          - k8s.io/utils/ptr
           
           - github.com/onsi/ginkgo
           - github.com/onsi/gomega

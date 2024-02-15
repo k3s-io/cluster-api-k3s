@@ -54,7 +54,7 @@ GOBIN=$(shell go env GOBIN)
 endif
 
 # Sync to controller-tools version in https://github.com/kubernetes-sigs/cluster-api/blob/v{VERSION}/hack/tools/go.mod
-CONTROLLER_GEN_VER := v0.12.1
+CONTROLLER_GEN_VER := v0.14.0
 CONTROLLER_GEN_BIN := controller-gen
 CONTROLLER_GEN := $(TOOLS_BIN_DIR)/$(CONTROLLER_GEN_BIN)-$(CONTROLLER_GEN_VER)
 
@@ -63,10 +63,10 @@ ENVSUBST_VER := v2.0.0-20210730161058-179042472c46
 ENVSUBST_BIN := envsubst
 ENVSUBST := $(TOOLS_BIN_DIR)/$(ENVSUBST_BIN)
 
-ENVTEST_VER := latest
+ENVTEST_VER := v0.0.0-20231012212722-e25aeebc7846
 ENVTEST_BIN := setup-envtest
 ENVTEST := $(TOOLS_BIN_DIR)/$(ENVTEST_BIN)
-ENVTEST_K8S_VERSION = "1.26.0"
+ENVTEST_K8S_VERSION = "1.28.0"
 
 # Sync to github.com/drone/envsubst/v2 in https://github.com/kubernetes-sigs/cluster-api/blob/v{VERSION}/go.mod
 ENVSUBST_VER := v2.0.0-20210730161058-179042472c46
@@ -74,13 +74,13 @@ ENVSUBST_BIN := envsubst
 ENVSUBST := $(TOOLS_BIN_DIR)/$(ENVSUBST_BIN)
 
 # Bump as necessary/desired to latest that supports our version of go at https://github.com/golangci/golangci-lint/releases
-GOLANGCI_LINT_VER := v1.53.3
+GOLANGCI_LINT_VER := v1.55.2
 GOLANGCI_LINT_BIN := golangci-lint
 GOLANGCI_LINT := $(TOOLS_BIN_DIR)/$(GOLANGCI_LINT_BIN)-$(GOLANGCI_LINT_VER)
 
 # Keep at 4.0.4 until we figure out how to get later verisons to not mangle the calico yamls
 # HACK bump latest version once https://github.com/kubernetes-sigs/kustomize/issues/947 is fixed
-KUSTOMIZE_VER := v4.0.4
+KUSTOMIZE_VER := v4.5.2
 KUSTOMIZE_BIN := kustomize
 KUSTOMIZE := $(TOOLS_BIN_DIR)/$(KUSTOMIZE_BIN)-$(KUSTOMIZE_VER)
 

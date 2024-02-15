@@ -27,7 +27,10 @@ import (
 	clusterv1beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	expv1beta1 "sigs.k8s.io/cluster-api/exp/api/v1beta1"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	bootstrapv1beta1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta1"
 	controlplanev1beta1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta1"
@@ -75,26 +78,35 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
 
+	ctx := ctrl.SetupSignalHandler()
+
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme:             scheme,
-		MetricsBindAddress: metricsAddr,
-		Port:               9443,
-		LeaderElection:     enableLeaderElection,
-		LeaderElectionID:   "148fa072.controlplane.cluster.x-k8s.io",
-		SyncPeriod:         &syncPeriod,
+		Scheme: scheme,
+		Metrics: server.Options{
+			BindAddress: metricsAddr,
+		},
+		WebhookServer: webhook.NewServer(webhook.Options{
+			Port: 9443,
+		}),
+		LeaderElection:   enableLeaderElection,
+		LeaderElectionID: "148fa072.controlplane.cluster.x-k8s.io",
+		Cache: cache.Options{
+			SyncPeriod: &syncPeriod,
+		},
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
 	}
 
+	ctrPlaneLogger := ctrl.Log.WithName("controllers").WithName("KThreesControlPlane")
 	if err = (&controllers.KThreesControlPlaneReconciler{
 		Client:          mgr.GetClient(),
-		Log:             ctrl.Log.WithName("controllers").WithName("KThreesControlPlane"),
+		Log:             ctrPlaneLogger,
 		Scheme:          mgr.GetScheme(),
 		EtcdDialTimeout: etcdDialTimeout,
 		EtcdCallTimeout: etcdCallTimeout,
-	}).SetupWithManager(mgr); err != nil {
+	}).SetupWithManager(ctx, mgr, &ctrPlaneLogger); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "KThreesControlPlane")
 		os.Exit(1)
 	}
