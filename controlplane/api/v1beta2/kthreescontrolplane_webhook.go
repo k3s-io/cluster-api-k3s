@@ -20,6 +20,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 // SetupWebhookWithManager will setup the webhooks for the KThreesControlPlane.
@@ -36,18 +37,18 @@ var _ webhook.Defaulter = &KThreesControlPlane{}
 var _ webhook.Validator = &KThreesControlPlane{}
 
 // ValidateCreate will do any extra validation when creating a KThreesControlPlane.
-func (in *KThreesControlPlane) ValidateCreate() error {
-	return nil
+func (in *KThreesControlPlane) ValidateCreate() (admission.Warnings, error) {
+	return []string{}, nil
 }
 
 // ValidateUpdate will do any extra validation when updating a KThreesControlPlane.
-func (in *KThreesControlPlane) ValidateUpdate(runtime.Object) error {
-	return nil
+func (in *KThreesControlPlane) ValidateUpdate(runtime.Object) (admission.Warnings, error) {
+	return []string{}, nil
 }
 
 // ValidateDelete allows you to add any extra validation when deleting.
-func (in *KThreesControlPlane) ValidateDelete() error {
-	return nil
+func (in *KThreesControlPlane) ValidateDelete() (admission.Warnings, error) {
+	return []string{}, nil
 }
 
 // Default will set default values for the KThreesControlPlane.
