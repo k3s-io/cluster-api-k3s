@@ -1,0 +1,90 @@
+---
+# E2E test scenario using local dev images and manifests built from the source tree for following providers:
+# - cluster-api
+# - bootstrap k3s
+# - control-plane k3s
+# - docker
+managementClusterName: k3s-e2e
+
+images:
+  # Use local dev images built source tree;
+  - name: ghcr.io/k3s-io/cluster-api-k3s/controlplane-controller:dev
+    loadBehavior: mustLoad
+  - name: ghcr.io/k3s-io/cluster-api-k3s/bootstrap-controller:dev
+    loadBehavior: mustLoad
+
+providers:
+  - name: cluster-api
+    type: CoreProvider
+    versions:
+      - name: v1.6.2
+        value: https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.6.2/core-components.yaml
+        type: url
+        files:
+          - sourcePath: "../data/shared/v1beta1/metadata.yaml"
+        replacements:
+          - old: "imagePullPolicy: Always"
+            new: "imagePullPolicy: IfNotPresent"
+  - name: docker
+    type: InfrastructureProvider
+    versions:
+      - name: v1.6.2
+        value: https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.6.2/infrastructure-components-development.yaml
+        type: url
+        files:
+          - sourcePath: "../data/shared/v1beta1/metadata.yaml"
+        replacements:
+          - old: "imagePullPolicy: Always"
+            new: "imagePullPolicy: IfNotPresent"
+  - name: k3s
+    type: BootstrapProvider
+    versions:
+      - name: v0.1.99 # next; use manifest from source files
+        value: "${PWD}/bootstrap/config/default"
+    files:
+      - sourcePath: "${PWD}/metadata.yaml"
+        targetName: "metadata.yaml"
+  - name: k3s
+    type: ControlPlaneProvider
+    versions:
+      - name: v0.1.99 # next; use manifest from source files
+        value: "${PWD}/controlplane/config/default"
+    files:
+      - sourcePath: "${PWD}/metadata.yaml"
+        targetName: "metadata.yaml"
+
+
+variables:
+  KUBERNETES_VERSION: "v1.28.6"
+  KUBERNETES_VERSION_MANAGEMENT: "v1.28.6"
+  DOCKER_SERVICE_DOMAIN: "cluster.local"
+  IP_FAMILY: "dual"
+  DOCKER_SERVICE_CIDRS: "10.128.0.0/12"
+  DOCKER_POD_CIDRS: "192.168.0.0/16"
+  DOCKER_SERVICE_IPV6_CIDRS: "fd00:100:64::/108"
+  DOCKER_POD_IPV6_CIDRS: "fd00:100:96::/48"
+
+intervals:
+  # the array is defined as [timeout, polling interval]
+  # copied from https://github.com/kubernetes-sigs/cluster-api/blob/main/test/e2e/config/docker.yaml
+  default/wait-controllers: ["3m", "10s"]
+  default/wait-cluster: ["5m", "10s"]
+  default/wait-control-plane: ["10m", "10s"]
+  default/wait-worker-nodes: ["5m", "10s"]
+  default/wait-machine-pool-nodes: ["5m", "10s"]
+  default/wait-delete-cluster: ["3m", "10s"]
+  default/wait-machine-upgrade: ["20m", "10s"]
+  default/wait-machine-pool-upgrade: ["5m", "10s"]
+  default/wait-nodes-ready: ["10m", "10s"]
+  default/wait-machine-remediation: ["5m", "10s"]
+  default/wait-autoscaler: ["5m", "10s"]
+  node-drain/wait-deployment-available: ["3m", "10s"]
+  node-drain/wait-control-plane: ["15m", "10s"]
+  node-drain/wait-machine-deleted: ["2m", "10s"]
+  kcp-remediation/wait-machines: ["5m", "10s"]
+  kcp-remediation/check-machines-stable: ["30s", "5s"]
+  kcp-remediation/wait-machine-provisioned: ["5m", "10s"]
+  #  Giving a bit more time during scale tests, we analyze independently if everything works quickly enough.
+  scale/wait-cluster: ["10m", "10s"]
+  scale/wait-control-plane: ["20m", "10s"]
+  scale/wait-worker-nodes: ["20m", "10s"]
