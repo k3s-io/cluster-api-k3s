@@ -36,6 +36,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	capi_e2e "sigs.k8s.io/cluster-api/test/e2e"
 	"sigs.k8s.io/cluster-api/test/framework"
 	"sigs.k8s.io/cluster-api/test/framework/bootstrap"
 	"sigs.k8s.io/cluster-api/test/framework/clusterctl"
@@ -130,14 +131,14 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	By("Initializing a runtime.Scheme with all the GVK relevant for this test")
 	scheme := initScheme()
 
-	Byf("Loading the e2e test configuration from %q", configPath)
+	capi_e2e.Byf("Loading the e2e test configuration from %q", configPath)
 	e2eConfig = loadE2EConfig(configPath)
 
 	if clusterctlConfig == "" {
-		Byf("Creating a clusterctl local repository into %q", artifactFolder)
+		capi_e2e.Byf("Creating a clusterctl local repository into %q", artifactFolder)
 		clusterctlConfigPath = createClusterctlLocalRepository(e2eConfig, filepath.Join(artifactFolder, "repository"))
 	} else {
-		Byf("Using existing clusterctl config %q", clusterctlConfig)
+		capi_e2e.Byf("Using existing clusterctl config %q", clusterctlConfig)
 		clusterctlConfigPath = clusterctlConfig
 	}
 
@@ -206,13 +207,7 @@ func createClusterctlLocalRepository(config *clusterctl.E2EConfig, repositoryFol
 		RepositoryFolder: repositoryFolder,
 	}
 
-	// Ensuring a CNI file is defined in the config and register a FileTransformation to inject the referenced file in place of the CNI_RESOURCES envSubst variable.
-	Expect(config.Variables).To(HaveKey(CNIPath), "Missing %s variable in the config", CNIPath)
-	cniPath := config.GetVariable(CNIPath)
-	Expect(cniPath).To(BeAnExistingFile(), "The %s variable should resolve to an existing file", CNIPath)
-
-	createRepositoryInput.RegisterClusterResourceSetConfigMapTransformation(cniPath, CNIResources)
-
+	// TODO: double confirm if CNI is needed
 	clusterctlConfig := clusterctl.CreateRepository(ctx, createRepositoryInput)
 	Expect(clusterctlConfig).To(BeAnExistingFile(), "The clusterctl config file does not exists in the local repository %s", repositoryFolder)
 	return clusterctlConfig
@@ -225,10 +220,10 @@ func setupBootstrapCluster(config *clusterctl.E2EConfig, scheme *runtime.Scheme,
 		By("Creating the bootstrap cluster")
 		clusterProvider = bootstrap.CreateKindBootstrapClusterAndLoadImages(ctx, bootstrap.CreateKindBootstrapClusterAndLoadImagesInput{
 			Name:               config.ManagementClusterName,
-			KubernetesVersion:  config.GetVariable(KubernetesVersionManagement),
+			KubernetesVersion:  config.GetVariable(capi_e2e.KubernetesVersionManagement),
 			RequiresDockerSock: config.HasDockerProvider(),
 			Images:             config.Images,
-			IPFamily:           config.GetVariable(IPFamily),
+			IPFamily:           config.GetVariable(capi_e2e.IPFamily),
 			LogFolder:          filepath.Join(artifactFolder, "kind"),
 		})
 		Expect(clusterProvider).ToNot(BeNil(), "Failed to create a bootstrap cluster")
