@@ -36,6 +36,8 @@ providers:
         replacements:
           - old: "imagePullPolicy: Always"
             new: "imagePullPolicy: IfNotPresent"
+    files:
+      - sourcePath: "../data/infrastructure-docker/cluster-template.yaml"
   - name: k3s
     type: BootstrapProvider
     versions:
