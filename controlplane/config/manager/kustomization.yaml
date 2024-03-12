@@ -5,4 +5,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: ghcr.io/k3s-io/cluster-api-k3s/controlplane-controller
-  newTag: v0.1.7
+  newTag: dev
