@@ -42,17 +42,17 @@ providers:
     type: BootstrapProvider
     versions:
       - name: v0.1.99 # next; use manifest from source files
-        value: "${PWD}/bootstrap/config/default"
+        value: "../../../bootstrap/config/default"
     files:
-      - sourcePath: "${PWD}/metadata.yaml"
+      - sourcePath: "../../../metadata.yaml"
         targetName: "metadata.yaml"
   - name: k3s
     type: ControlPlaneProvider
     versions:
       - name: v0.1.99 # next; use manifest from source files
-        value: "${PWD}/controlplane/config/default"
+        value: "../../../controlplane/config/default"
     files:
-      - sourcePath: "${PWD}/metadata.yaml"
+      - sourcePath: "../../../metadata.yaml"
         targetName: "metadata.yaml"
 
 

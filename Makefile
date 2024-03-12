@@ -84,6 +84,33 @@ KUSTOMIZE_VER := v4.5.2
 KUSTOMIZE_BIN := kustomize
 KUSTOMIZE := $(TOOLS_BIN_DIR)/$(KUSTOMIZE_BIN)-$(KUSTOMIZE_VER)
 
+# Ginkgo
+TEST_DIR := $(shell pwd)/test
+ARTIFACTS ?= $(shell pwd)/_artifacts
+GINKGO_FOCUS ?=
+GINKGO_SKIP ?=
+GINKGO_NODES ?= 1
+GINKGO_TIMEOUT ?= 2h
+GINKGO_POLL_PROGRESS_AFTER ?= 60m
+GINKGO_POLL_PROGRESS_INTERVAL ?= 5m
+E2E_CONF_FILE ?= $(TEST_DIR)/e2e/config/k3s-docker.yaml
+SKIP_RESOURCE_CLEANUP ?= false
+USE_EXISTING_CLUSTER ?= false
+GINKGO_NOCOLOR ?= false
+
+# to set multiple ginkgo skip flags, if any
+ifneq ($(strip $(GINKGO_SKIP)),)
+_SKIP_ARGS := $(foreach arg,$(strip $(GINKGO_SKIP)),-skip="$(arg)")
+endif
+
+# Helper function to get dependency version from go.mod
+get_go_version = $(shell go list -m $1 | awk '{print $$2}')
+
+GINKGO_BIN := ginkgo
+GINKGO_VER := $(call get_go_version,github.com/onsi/ginkgo/v2)
+GINKGO := $(abspath $(TOOLS_BIN_DIR)/$(GINKGO_BIN)-$(GINKGO_VER))
+GINKGO_PKG := github.com/onsi/ginkgo/v2/ginkgo
+
 ## --------------------------------------
 ## Release
 ## --------------------------------------
@@ -114,11 +141,11 @@ REGISTRY ?= ghcr.io/k3s-io/cluster-api-k3s
 
 # Image URL to use all building/pushing image targets
 BOOTSTRAP_IMG_TAG ?= $(RELEASE_TAG)
-BOOTSTRAP_IMG ?= $(REGISTRY)/bootstrap-controller:$(BOOTSTRAP_IMG_TAG)
+BOOTSTRAP_IMG ?= $(REGISTRY)/bootstrap-controller
 
 # Image URL to use all building/pushing image targets
 CONTROLPLANE_IMG_TAG ?= $(RELEASE_TAG)
-CONTROLPLANE_IMG ?= $(REGISTRY)/controlplane-controller:$(CONTROLPLANE_IMG_TAG)
+CONTROLPLANE_IMG ?= $(REGISTRY)/controlplane-controller
 
 test-common:
 	go test $(shell pwd)/pkg/... -coverprofile cover.out 
@@ -147,7 +174,7 @@ uninstall-bootstrap: manifests-bootstrap
 
 # Deploy controller in the configured Kubernetes cluster in ~/.kube/config
 deploy-bootstrap: manifests-bootstrap
-	cd bootstrap/config/manager && $(KUSTOMIZE) edit set image controller=${BOOTSTRAP_IMG}
+	cd bootstrap/config/manager && $(KUSTOMIZE) edit set image controller=${BOOTSTRAP_IMG}:${BOOTSTRAP_IMG_TAG}
 	$(KUSTOMIZE) build bootstrap/config/default | kubectl apply -f -
 
 # Generate manifests e.g. CRD, RBAC etc.
@@ -155,7 +182,7 @@ manifests-bootstrap: $(KUSTOMIZE) $(CONTROLLER_GEN)
 	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=bootstrap/config/crd/bases output:rbac:dir=bootstrap/config/rbac
 
 release-bootstrap:$(RELEASE_DIR) manifests-bootstrap ## Release bootstrap
-	cd bootstrap/config/manager && $(KUSTOMIZE) edit set image controller=${BOOTSTRAP_IMG}
+	cd bootstrap/config/manager && $(KUSTOMIZE) edit set image controller=${BOOTSTRAP_IMG}:${BOOTSTRAP_IMG_TAG}
 	$(KUSTOMIZE) build bootstrap/config/default > $(RELEASE_DIR)/bootstrap-components.yaml
 
 # Generate code
@@ -164,17 +191,33 @@ generate-bootstrap: $(CONTROLLER_GEN)
 
 # Build the docker image
 docker-build-bootstrap: manager-bootstrap ## Build bootstrap
-	DOCKER_BUILDKIT=1 docker build --build-arg builder_image=$(GO_CONTAINER_IMAGE) --build-arg goproxy=$(GOPROXY) --build-arg TARGETARCH=$(ARCH) --build-arg package=./bootstrap/main.go --build-arg ldflags="$(LDFLAGS)" . -t ${BOOTSTRAP_IMG}
+	DOCKER_BUILDKIT=1 docker build --build-arg builder_image=$(GO_CONTAINER_IMAGE) --build-arg goproxy=$(GOPROXY) --build-arg TARGETARCH=$(ARCH) --build-arg package=./bootstrap/main.go --build-arg ldflags="$(LDFLAGS)" . -t ${BOOTSTRAP_IMG}:${BOOTSTRAP_IMG_TAG}
 
 # Push the docker image
 docker-push-bootstrap: ## Push bootstrap
-	docker push ${BOOTSTRAP_IMG}
+	docker push ${BOOTSTRAP_IMG}:${BOOTSTRAP_IMG_TAG}
 
 all-controlplane: manager-controlplane
 
 # Run tests
 test-controlplane: envtest generate-controlplane lint manifests-controlplane
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(TOOLS_BIN_DIR) -p path)" go test $(shell pwd)/controlplane/... -coverprofile cover.out
+
+.PHONY: docker-build-e2e
+docker-build-e2e: ## Run docker-build-* targets for all the images with settings to be used for the e2e tests
+    # please ensure the generated image name matches image names used in the E2E_CONF_FILE
+	$(MAKE) BOOTSTRAP_IMG_TAG=dev docker-build-bootstrap
+	$(MAKE) CONTROLPLANE_IMG_TAG=dev docker-build-controlplane
+
+.PHONY: test-e2e
+test-e2e: $(GINKGO) $(KUSTOMIZE) ## Run the end-to-end tests
+	CAPI_KUSTOMIZE_PATH="$(KUSTOMIZE)" $(GINKGO) -v --trace -poll-progress-after=$(GINKGO_POLL_PROGRESS_AFTER) \
+		-poll-progress-interval=$(GINKGO_POLL_PROGRESS_INTERVAL) --tags=e2e --focus="$(GINKGO_FOCUS)" \
+		$(_SKIP_ARGS) --nodes=$(GINKGO_NODES) --timeout=$(GINKGO_TIMEOUT) --no-color=$(GINKGO_NOCOLOR) \
+		--output-dir="$(ARTIFACTS)" --junit-report="junit.e2e_suite.1.xml" $(GINKGO_ARGS) $(TEST_DIR)/e2e -- \
+	    -e2e.artifacts-folder="$(ARTIFACTS)" \
+	    -e2e.config="$(E2E_CONF_FILE)" \
+	    -e2e.skip-resource-cleanup=$(SKIP_RESOURCE_CLEANUP) -e2e.use-existing-cluster=$(USE_EXISTING_CLUSTER)
 
 # Build manager binary
 manager-controlplane: generate-controlplane lint
@@ -194,7 +237,7 @@ uninstall-controlplane: manifests-controlplane
 
 # Deploy controller in the configured Kubernetes cluster in ~/.kube/config
 deploy-controlplane: manifests-controlplane
-	cd controlplane/config/manager && $(KUSTOMIZE) edit set image controller=${CONTROLPLANE_IMG}
+	cd controlplane/config/manager && $(KUSTOMIZE) edit set image controller=${CONTROLPLANE_IMG}:$(CONTROLPLANE_IMG_TAG)
 	$(KUSTOMIZE) build controlplane/config/default | kubectl apply -f -
 
 # Generate manifests e.g. CRD, RBAC etc.
@@ -202,17 +245,17 @@ manifests-controlplane: $(KUSTOMIZE) $(CONTROLLER_GEN)
 	$(CONTROLLER_GEN) rbac:roleName=manager-role webhook crd paths="./..." output:crd:artifacts:config=controlplane/config/crd/bases output:rbac:dir=controlplane/config/rbac
 
 release-controlplane: $(RELEASE_DIR) manifests-controlplane ## Release control-plane
-	cd controlplane/config/manager && $(KUSTOMIZE) edit set image controller=${CONTROLPLANE_IMG}
+	cd controlplane/config/manager && $(KUSTOMIZE) edit set image controller=${CONTROLPLANE_IMG}:$(CONTROLPLANE_IMG_TAG)
 	$(KUSTOMIZE) build controlplane/config/default > $(RELEASE_DIR)/control-plane-components.yaml
 
 generate-controlplane: $(CONTROLLER_GEN)
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="$(shell pwd)/controlplane/..."
 
 docker-build-controlplane: manager-controlplane ## Build control-plane
-	DOCKER_BUILDKIT=1 docker build --build-arg builder_image=$(GO_CONTAINER_IMAGE) --build-arg goproxy=$(GOPROXY) --build-arg TARGETARCH=$(ARCH) --build-arg package=./controlplane/main.go --build-arg ldflags="$(LDFLAGS)" . -t ${CONTROLPLANE_IMG}
+	DOCKER_BUILDKIT=1 docker build --build-arg builder_image=$(GO_CONTAINER_IMAGE) --build-arg goproxy=$(GOPROXY) --build-arg TARGETARCH=$(ARCH) --build-arg package=./controlplane/main.go --build-arg ldflags="$(LDFLAGS)" . -t ${CONTROLPLANE_IMG}:$(CONTROLPLANE_IMG_TAG)
 
 docker-push-controlplane: ## Push control-plane
-	docker push ${CONTROLPLANE_IMG}
+	docker push ${CONTROLPLANE_IMG}:$(CONTROLPLANE_IMG_TAG)
 
 release: release-bootstrap release-controlplane
 	cp metadata.yaml $(RELEASE_DIR)/metadata.yaml
@@ -258,6 +301,9 @@ $(ENVSUBST): ## Build envsubst from tools folder.
 
 $(GOLANGCI_LINT): ## Build golangci-lint from tools folder.
 	GOBIN=$(TOOLS_BIN_DIR) $(GO_INSTALL) github.com/golangci/golangci-lint/cmd/golangci-lint $(GOLANGCI_LINT_BIN) $(GOLANGCI_LINT_VER)
+
+$(GINKGO): # Build ginkgo from tools folder.
+	GOBIN=$(TOOLS_BIN_DIR) $(GO_INSTALL) $(GINKGO_PKG) $(GINKGO_BIN) $(GINKGO_VER)
 
 ## HACK replace with $(GO_INSTALL) once https://github.com/kubernetes-sigs/kustomize/issues/947 is fixed
 $(KUSTOMIZE): ## Put kustomize into tools folder.

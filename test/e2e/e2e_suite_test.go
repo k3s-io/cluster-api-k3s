@@ -34,6 +34,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/yaml"
 
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	capi_e2e "sigs.k8s.io/cluster-api/test/e2e"
@@ -195,7 +196,11 @@ func initScheme() *runtime.Scheme {
 }
 
 func loadE2EConfig(configPath string) *clusterctl.E2EConfig {
-	config := clusterctl.LoadE2EConfig(ctx, clusterctl.LoadE2EConfigInput{ConfigPath: configPath})
+	// TODO: This is commented out as it assumes kubeadm and errors if its not there
+	// Remove localLoadE2EConfig and use the line below when this issue is resolved:
+	// https://github.com/kubernetes-sigs/cluster-api/issues/3983
+	//config := clusterctl.LoadE2EConfig(ctx, clusterctl.LoadE2EConfigInput{ConfigPath: configPath})
+	config := localLoadE2EConfig(configPath)
 	Expect(config).ToNot(BeNil(), "Failed to load E2E config from %s", configPath)
 
 	return config
@@ -207,7 +212,8 @@ func createClusterctlLocalRepository(config *clusterctl.E2EConfig, repositoryFol
 		RepositoryFolder: repositoryFolder,
 	}
 
-	// TODO: double confirm if CNI is needed
+	// NOTE: if wanted to test externally installed CNI we could add it here
+
 	clusterctlConfig := clusterctl.CreateRepository(ctx, createRepositoryInput)
 	Expect(clusterctlConfig).To(BeAnExistingFile(), "The clusterctl config file does not exists in the local repository %s", repositoryFolder)
 	return clusterctlConfig
@@ -297,4 +303,21 @@ func tearDown(bootstrapClusterProvider bootstrap.ClusterProvider, bootstrapClust
 	if bootstrapClusterProvider != nil {
 		bootstrapClusterProvider.Dispose(ctx)
 	}
+}
+
+func localLoadE2EConfig(configPath string) *clusterctl.E2EConfig {
+	configData, err := os.ReadFile(configPath) //nolint:gosec
+	Expect(err).ToNot(HaveOccurred(), "Failed to read the e2e test config file")
+	Expect(configData).ToNot(BeEmpty(), "The e2e test config file should not be empty")
+
+	config := &clusterctl.E2EConfig{}
+	Expect(yaml.Unmarshal(configData, config)).To(Succeed(), "Failed to convert the e2e test config file to yaml")
+
+	config.Defaults()
+	config.AbsPaths(filepath.Dir(configPath))
+
+	// TODO: this is the reason why we can't use this at present for the K3S tests
+	// Expect(config.Validate()).To(Succeed(), "The e2e test config file is not valid")
+
+	return config
 }
