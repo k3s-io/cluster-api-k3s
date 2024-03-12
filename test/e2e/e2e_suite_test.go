@@ -42,6 +42,10 @@ import (
 	"sigs.k8s.io/cluster-api/test/framework/bootstrap"
 	"sigs.k8s.io/cluster-api/test/framework/clusterctl"
 	"sigs.k8s.io/cluster-api/test/framework/ginkgoextensions"
+
+	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta1"
+	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta1"
+	dockerinfrav1 "sigs.k8s.io/cluster-api/test/infrastructure/docker/api/v1beta1"
 )
 
 // Test suite flags.
@@ -192,6 +196,9 @@ var _ = SynchronizedAfterSuite(func() {
 func initScheme() *runtime.Scheme {
 	sc := runtime.NewScheme()
 	framework.TryAddDefaultSchemes(sc)
+	Expect(controlplanev1.AddToScheme(sc)).To(Succeed())
+	Expect(bootstrapv1.AddToScheme(sc)).To(Succeed())
+	Expect(dockerinfrav1.AddToScheme(sc)).To(Succeed())
 	return sc
 }
 
@@ -254,6 +261,8 @@ func initBootstrapCluster(bootstrapClusterProxy framework.ClusterProxy, config *
 		IPAMProviders:             config.IPAMProviders(),
 		RuntimeExtensionProviders: config.RuntimeExtensionProviders(),
 		AddonProviders:            config.AddonProviders(),
+		BootstrapProviders:        []string{"k3s"},
+		ControlPlaneProviders:     []string{"k3s"},
 		LogFolder:                 filepath.Join(artifactFolder, "clusters", bootstrapClusterProxy.GetName()),
 	}, config.GetIntervals(bootstrapClusterProxy.GetName(), "wait-controllers")...)
 }
