@@ -206,6 +206,7 @@ test-controlplane: envtest generate-controlplane lint manifests-controlplane
 .PHONY: docker-build-e2e
 docker-build-e2e: ## Run docker-build-* targets for all the images with settings to be used for the e2e tests
     # please ensure the generated image name matches image names used in the E2E_CONF_FILE
+    # and it also match the image tags in bootstrap/config/default and controlplane/config/default
 	$(MAKE) BOOTSTRAP_IMG_TAG=dev docker-build-bootstrap
 	$(MAKE) CONTROLPLANE_IMG_TAG=dev docker-build-controlplane
 
