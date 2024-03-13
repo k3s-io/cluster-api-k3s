@@ -40,8 +40,10 @@ import (
 	expv1 "sigs.k8s.io/cluster-api/exp/api/v1beta1"
 )
 
-// NOTE: the code in this file is largely copied from the cluster-api test framework with
-// modifications so that KThrees Control Plane isn't used.
+// NOTE: the code in this file is largely copied from the cluster-api test framework.
+// For many functions in the original framework, they assume the underlying
+// controlplane is a KubeadmControlPlane, which does not fit KThreesControlPlane.
+// Therefore, we need to copy the functions and modify them to fit KThreesControlPlane.
 // Source: sigs.k8s.io/cluster-api/test/framework/*
 
 const (

@@ -31,7 +31,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/utils/pointer"
 
-	capi_e2e "sigs.k8s.io/cluster-api/test/e2e"
 	"sigs.k8s.io/cluster-api/test/framework/clusterctl"
 	"sigs.k8s.io/cluster-api/util"
 )
@@ -39,7 +38,7 @@ import (
 var _ = Describe("Workload cluster creation", func() {
 	var (
 		ctx                    = context.TODO()
-		specName               = "create-workload-cluster"
+		specName               = "workload-cluster-creation"
 		namespace              *corev1.Namespace
 		cancelWatches          context.CancelFunc
 		result                 *ApplyClusterTemplateAndWaitResult
@@ -54,7 +53,7 @@ var _ = Describe("Workload cluster creation", func() {
 		Expect(bootstrapClusterProxy).ToNot(BeNil(), "Invalid argument. bootstrapClusterProxy can't be nil when calling %s spec", specName)
 		Expect(os.MkdirAll(artifactFolder, 0755)).To(Succeed(), "Invalid argument. artifactFolder can't be created for %s spec", specName)
 
-		Expect(e2eConfig.Variables).To(HaveKey(capi_e2e.KubernetesVersion))
+		Expect(e2eConfig.Variables).To(HaveKey(KubernetesVersion))
 
 		clusterName = fmt.Sprintf("capik3s-e2e-%s", util.RandomString(6))
 		infrastructureProvider = "docker"
@@ -82,9 +81,30 @@ var _ = Describe("Workload cluster creation", func() {
 		dumpSpecResourcesAndCleanup(ctx, cleanInput)
 	})
 
-	Context("Creating a single control-plane cluster", func() {
-		It("Should create a cluster with 1 worker node and can be scaled", func() {
-			By("Initializes with 1 worker node")
+	Context("Creating a cluster", func() {
+		It("Should create a simple workload cluster with 1 controlplane node and 3 worker nodes", func() {
+			ApplyClusterTemplateAndWait(ctx, ApplyClusterTemplateAndWaitInput{
+				ClusterProxy: bootstrapClusterProxy,
+				ConfigCluster: clusterctl.ConfigClusterInput{
+					LogFolder:                clusterctlLogFolder,
+					ClusterctlConfigPath:     clusterctlConfigPath,
+					KubeconfigPath:           bootstrapClusterProxy.GetKubeconfigPath(),
+					InfrastructureProvider:   infrastructureProvider,
+					Namespace:                namespace.Name,
+					ClusterName:              clusterName,
+					KubernetesVersion:        e2eConfig.GetVariable(KubernetesVersion),
+					ControlPlaneMachineCount: pointer.Int64Ptr(1),
+					WorkerMachineCount:       pointer.Int64Ptr(3),
+				},
+				WaitForClusterIntervals:      e2eConfig.GetIntervals(specName, "wait-cluster"),
+				WaitForControlPlaneIntervals: e2eConfig.GetIntervals(specName, "wait-control-plane"),
+				WaitForMachineDeployments:    e2eConfig.GetIntervals(specName, "wait-worker-nodes"),
+			}, result)
+		})
+	})
+
+	Context("Scaling a cluster", func() {
+		It("Should create a workload cluster with 1 worker node and scale", func() {
 			ApplyClusterTemplateAndWait(ctx, ApplyClusterTemplateAndWaitInput{
 				ClusterProxy: bootstrapClusterProxy,
 				ConfigCluster: clusterctl.ConfigClusterInput{
@@ -143,7 +163,7 @@ var _ = Describe("Workload cluster creation", func() {
 				WaitForMachineDeployments:    e2eConfig.GetIntervals(specName, "wait-worker-nodes"),
 			}, result)
 
-			By("Scaling worker nodes to 1")
+			By("Scaling down worker nodes to 1")
 
 			ApplyClusterTemplateAndWait(ctx, ApplyClusterTemplateAndWaitInput{
 				ClusterProxy: bootstrapClusterProxy,
@@ -155,7 +175,7 @@ var _ = Describe("Workload cluster creation", func() {
 					Namespace:                namespace.Name,
 					ClusterName:              clusterName,
 					KubernetesVersion:        e2eConfig.GetVariable(KubernetesVersion),
-					ControlPlaneMachineCount: pointer.Int64Ptr(3), //TODO: change this back to 1 when scaling is supported
+					ControlPlaneMachineCount: pointer.Int64Ptr(3),
 					WorkerMachineCount:       pointer.Int64Ptr(1),
 				},
 				WaitForClusterIntervals:      e2eConfig.GetIntervals(specName, "wait-cluster"),
