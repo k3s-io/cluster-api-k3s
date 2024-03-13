@@ -34,10 +34,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/yaml"
 
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
-	capi_e2e "sigs.k8s.io/cluster-api/test/e2e"
 	"sigs.k8s.io/cluster-api/test/framework"
 	"sigs.k8s.io/cluster-api/test/framework/bootstrap"
 	"sigs.k8s.io/cluster-api/test/framework/clusterctl"
@@ -136,14 +134,14 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	By("Initializing a runtime.Scheme with all the GVK relevant for this test")
 	scheme := initScheme()
 
-	capi_e2e.Byf("Loading the e2e test configuration from %q", configPath)
+	Byf("Loading the e2e test configuration from %q", configPath)
 	e2eConfig = loadE2EConfig(configPath)
 
 	if clusterctlConfig == "" {
-		capi_e2e.Byf("Creating a clusterctl local repository into %q", artifactFolder)
+		Byf("Creating a clusterctl local repository into %q", artifactFolder)
 		clusterctlConfigPath = createClusterctlLocalRepository(e2eConfig, filepath.Join(artifactFolder, "repository"))
 	} else {
-		capi_e2e.Byf("Using existing clusterctl config %q", clusterctlConfig)
+		Byf("Using existing clusterctl config %q", clusterctlConfig)
 		clusterctlConfigPath = clusterctlConfig
 	}
 
@@ -233,10 +231,10 @@ func setupBootstrapCluster(config *clusterctl.E2EConfig, scheme *runtime.Scheme,
 		By("Creating the bootstrap cluster")
 		clusterProvider = bootstrap.CreateKindBootstrapClusterAndLoadImages(ctx, bootstrap.CreateKindBootstrapClusterAndLoadImagesInput{
 			Name:               config.ManagementClusterName,
-			KubernetesVersion:  config.GetVariable(capi_e2e.KubernetesVersionManagement),
+			KubernetesVersion:  config.GetVariable(KubernetesVersionManagement),
 			RequiresDockerSock: config.HasDockerProvider(),
 			Images:             config.Images,
-			IPFamily:           config.GetVariable(capi_e2e.IPFamily),
+			IPFamily:           config.GetVariable(IPFamily),
 			LogFolder:          filepath.Join(artifactFolder, "kind"),
 		})
 		Expect(clusterProvider).ToNot(BeNil(), "Failed to create a bootstrap cluster")
@@ -312,21 +310,4 @@ func tearDown(bootstrapClusterProvider bootstrap.ClusterProvider, bootstrapClust
 	if bootstrapClusterProvider != nil {
 		bootstrapClusterProvider.Dispose(ctx)
 	}
-}
-
-func localLoadE2EConfig(configPath string) *clusterctl.E2EConfig {
-	configData, err := os.ReadFile(configPath) //nolint:gosec
-	Expect(err).ToNot(HaveOccurred(), "Failed to read the e2e test config file")
-	Expect(configData).ToNot(BeEmpty(), "The e2e test config file should not be empty")
-
-	config := &clusterctl.E2EConfig{}
-	Expect(yaml.Unmarshal(configData, config)).To(Succeed(), "Failed to convert the e2e test config file to yaml")
-
-	config.Defaults()
-	config.AbsPaths(filepath.Dir(configPath))
-
-	// TODO: this is the reason why we can't use this at present for the K3S tests
-	// Expect(config.Validate()).To(Succeed(), "The e2e test config file is not valid")
-
-	return config
 }
