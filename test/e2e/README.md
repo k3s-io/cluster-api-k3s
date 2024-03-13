@@ -12,5 +12,6 @@ To run a specific e2e test, you can use the `GINKGO_FOCUS` environment variable 
 ```shell
 make test-e2e GINKGO_FOCUS="Creating a cluster"
 ```
-Also it is quite useful to run the e2e test with [tilt](https://cluster-api.sigs.k8s.io/developer/tilt).
+Also it is quite useful to run the e2e test with [tilt](https://cluster-api.sigs.k8s.io/developer/tilt), so that you will not need to rebuild docker image with makefile everytime.
 ## Develop an e2e test
+You could refer to [Developing E2E tests](https://cluster-api.sigs.k8s.io/developer/e2e) for a complete guide for developing e2e tests.
