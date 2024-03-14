@@ -28,8 +28,17 @@ providers:
   - name: docker
     type: InfrastructureProvider
     versions:
-      - name: v1.6.2
+      - name: v1.6.2  # used during e2e-test
         value: https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.6.2/infrastructure-components-development.yaml
+        type: url
+        files:
+          - sourcePath: "../data/shared/v1beta1/metadata.yaml"
+        replacements:
+          - old: "imagePullPolicy: Always"
+            new: "imagePullPolicy: IfNotPresent"
+      - name: v1.7.99 # next; use manifest from source files
+                      # added to support tilt
+        value: https://github.com/kubernetes-sigs/cluster-api/releases/latest/download/infrastructure-components-development.yaml
         type: url
         files:
           - sourcePath: "../data/shared/v1beta1/metadata.yaml"
