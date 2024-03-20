@@ -26,7 +26,7 @@ spec:
       - command:
         - /manager
         args:
-        - --leader-elect
+        - --enable-leader-election
         image: controller:latest
         name: manager
       terminationGracePeriodSeconds: 10
