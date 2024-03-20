@@ -4,8 +4,6 @@
 # - bootstrap k3s
 # - control-plane k3s
 # - docker
-managementClusterName: k3s-e2e
-
 images:
   # Use local dev images built source tree;
   - name: ghcr.io/k3s-io/cluster-api-k3s/controlplane-controller:dev
@@ -28,7 +26,9 @@ providers:
   - name: docker
     type: InfrastructureProvider
     versions:
-      - name: v1.6.2  # used during e2e-test
+      # By default, will use the latest version defined in ../data/shared/v1beta1/metadata.yaml
+      # to init the management cluster
+      - name: v1.6.2 # used during e2e-test
         value: https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.6.2/infrastructure-components-development.yaml
         type: url
         files:
@@ -36,8 +36,13 @@ providers:
         replacements:
           - old: "imagePullPolicy: Always"
             new: "imagePullPolicy: IfNotPresent"
+      
+      # Add v1.7.99 to support tilt (not presented in ../data/shared/v1beta1/metadata.yaml)
+      # when bootstrapping with tilt, it will use
+      # the defaultProviderVersion in https://github.com/kubernetes-sigs/cluster-api/blob/main/hack/tools/internal/tilt-prepare/main.go as 
+      # default version for docker infrastructure provider
+      # name here should match defaultProviderVersion
       - name: v1.7.99 # next; use manifest from source files
-                      # added to support tilt
         value: https://github.com/kubernetes-sigs/cluster-api/releases/latest/download/infrastructure-components-development.yaml
         type: url
         files:
@@ -50,6 +55,11 @@ providers:
   - name: k3s
     type: BootstrapProvider
     versions:
+      # Could add older release version for upgrading test, but
+      # by default, will only use the latest version defined in
+      # ${ProjectRoot}/metadata.yaml to init the management cluster
+      # this version should be updated when ${ProjectRoot}/metadata.yaml
+      # is modified
       - name: v0.1.99 # next; use manifest from source files
         value: "../../../bootstrap/config/default"
     files:
@@ -64,14 +74,13 @@ providers:
       - sourcePath: "../../../metadata.yaml"
         targetName: "metadata.yaml"
 
-
 variables:
   KUBERNETES_VERSION: "v1.28.6"
   KUBERNETES_VERSION_MANAGEMENT: "v1.28.6"
   IP_FAMILY: "IPv4"
 
 intervals:
-  # the array is defined as [timeout, polling interval]
+  # The array is defined as [timeout, polling interval]
   # copied from https://github.com/kubernetes-sigs/cluster-api/blob/main/test/e2e/config/docker.yaml
   default/wait-controllers: ["3m", "10s"]
   default/wait-cluster: ["5m", "10s"]

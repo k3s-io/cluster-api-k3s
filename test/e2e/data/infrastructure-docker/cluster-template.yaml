@@ -1,3 +1,6 @@
+# TODO: copied from https://github.com/k3s-io/cluster-api-k3s/pull/93/files#diff-c4a336ec56832a2ff7aed26c94d0d67ae3a0e6139d30701cc53c0f0962fe8cca
+# should be the same as samples/docker/quickstart.yaml in the future
+# for testing the quickstart scenario
 apiVersion: cluster.x-k8s.io/v1beta1
 kind: Cluster 
 metadata:

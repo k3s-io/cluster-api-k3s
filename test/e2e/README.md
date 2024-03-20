@@ -10,9 +10,9 @@ make docker-build-e2e   # should be run everytime you change the controller code
 make test-e2e   # run all e2e tests
 ```
 ### Run a specific e2e test
-To run a specific e2e test, you can use the `GINKGO_FOCUS` environment variable to specify the test you want to run. For example:
+To run a specific e2e test, such as "Scaling a cluster", use the `GINKGO_FOCUS` environment variable as shown below:
 ```shell
-make GINKGO_FOCUS="Creating a cluster" test-e2e  # only run the "Creating a cluster" e2e test
+make GINKGO_FOCUS="Scaling a cluster" test-e2e  # only run the "Scaling a cluster" e2e test
 ```
 ### Run the e2e test with tilt
 It is quite useful to run the e2e test with [tilt](https://cluster-api.sigs.k8s.io/developer/tilt), so that you will not need to rebuild docker image with `make docker-build-e2e` everytime. Also you will not need to wait a new cluster creation and setup. If you have set up your tilt cluster and made the current context points to this cluster, you could run:
@@ -22,6 +22,13 @@ make USE_EXISTING_CLUSTER=true test-e2e
 ```
 ## Develop an e2e test
 You could refer to [Developing E2E tests](https://cluster-api.sigs.k8s.io/developer/e2e) for a complete guide for developing e2e tests.
+
+A guide for developing a k3s e2e test:
+
+* Group test specs by scenarios (e.g., `create_test`, `node_scale_test`, `upgrade_test`). Create a new file under `test/e2e/` for new scenarios.
+* If a different docker cluster template is needed, create one under `test/e2e/infrastructure-docker/` and link it in `test/e2e/config/k3s-docker.yaml`.
+* Define tunable variables in the cluster template as environment variables under `variables` in `test/e2e/config/k3s-docker.yaml`. Enable necessary feature flags here as well (e.g., `EXP_CLUSTER_RESOURCE_SET: "true"`).
+* If reusing a [cluster-api test spec](https://github.com/kubernetes-sigs/cluster-api/tree/main/test/e2e), note that they assume the use of `KubeadmControlPlane`. For customization, copy code into `test/e2e/helpers.go`.
 
 ## Troubleshooting
 * [Cluster API with Docker - "too many open files".](https://cluster-api.sigs.k8s.io/user/troubleshooting.html?highlight=too%20many#cluster-api-with-docker----too-many-open-files)

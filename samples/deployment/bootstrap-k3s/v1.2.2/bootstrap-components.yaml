@@ -740,7 +740,7 @@ spec:
           name: https
       - args:
         - --metrics-addr=127.0.0.1:8080
-        - --enable-leader-election
+        - --leader-elect
         command:
         - /manager
         image: ghcr.io/zawachte/cluster-api-k3s/bootstrap-controller:v0.1.5

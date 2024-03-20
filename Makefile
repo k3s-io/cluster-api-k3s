@@ -89,7 +89,8 @@ TEST_DIR := $(shell pwd)/test
 ARTIFACTS ?= $(shell pwd)/_artifacts
 GINKGO_FOCUS ?=
 GINKGO_SKIP ?=
-GINKGO_NODES ?= 1
+GINKGO_NODES ?= 1 # GINKGO_NODES is the number of parallel nodes to run 
+                  # when running the e2e tests, 1 means no parallelism
 GINKGO_TIMEOUT ?= 2h
 GINKGO_POLL_PROGRESS_AFTER ?= 60m
 GINKGO_POLL_PROGRESS_INTERVAL ?= 5m
