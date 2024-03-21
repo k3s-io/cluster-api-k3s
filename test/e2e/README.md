@@ -10,7 +10,7 @@ make docker-build-e2e   # should be run everytime you change the controller code
 make test-e2e   # run all e2e tests
 ```
 ### Run a specific e2e test
-To run a specific e2e test, such as "PR Blocking", use the `GINKGO_FOCUS` environment variable as shown below:
+To run a specific e2e test, such as "PR-Blocking", use the `GINKGO_FOCUS` environment variable as shown below:
 ```shell
 make GINKGO_FOCUS="\\[PR-Blocking\\]" test-e2e  # only run the "PR-Blocking" e2e test
 ```
