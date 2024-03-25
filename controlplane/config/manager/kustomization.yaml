@@ -5,4 +5,5 @@ kind: Kustomization
 images:
 - name: controller
   newName: ghcr.io/k3s-io/cluster-api-k3s/controlplane-controller
-  newTag: v0.1.7
+  # WARNING: the tag "dev" is used in e2e test, change to a different value will break e2e test!
+  newTag: dev
