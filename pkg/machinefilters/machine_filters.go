@@ -26,8 +26,8 @@ import (
 	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta1"
-	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta1"
+	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
+	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
 )
 
 type Func func(machine *clusterv1.Machine) bool
@@ -229,8 +229,8 @@ func MatchesTemplateClonedFrom(infraConfigs map[string]*unstructured.Unstructure
 		}
 
 		// Check if the machine's infrastructure reference has been created from the current KCP infrastructure template.
-		if clonedFromName != kcp.Spec.InfrastructureTemplate.Name ||
-			clonedFromGroupKind != kcp.Spec.InfrastructureTemplate.GroupVersionKind().GroupKind().String() {
+		if clonedFromName != kcp.Spec.MachineTemplate.InfrastructureRef.Name ||
+			clonedFromGroupKind != kcp.Spec.MachineTemplate.InfrastructureRef.GroupVersionKind().GroupKind().String() {
 			return false
 		}
 		return true
