@@ -75,9 +75,11 @@ providers:
         targetName: "metadata.yaml"
 
 variables:
-  KUBERNETES_VERSION: "v1.28.6"
-  KUBERNETES_VERSION_MANAGEMENT: "v1.28.6"
+  KUBERNETES_VERSION_MANAGEMENT: "v1.28.0"
+  KUBERNETES_VERSION: "v1.28.6+k3s2"
+  KUBERNETES_VERSION_UPGRADE_TO: "v1.28.7+k3s1"
   IP_FAMILY: "IPv4"
+  KIND_IMAGE_VERSION: "v1.28.0"
 
 intervals:
   # The array is defined as [timeout, polling interval]
@@ -85,10 +87,10 @@ intervals:
   default/wait-controllers: ["3m", "10s"]
   default/wait-cluster: ["5m", "10s"]
   default/wait-control-plane: ["10m", "10s"]
-  default/wait-worker-nodes: ["5m", "10s"]
+  default/wait-worker-nodes: ["10m", "10s"]
   default/wait-machine-pool-nodes: ["5m", "10s"]
   default/wait-delete-cluster: ["3m", "10s"]
-  default/wait-machine-upgrade: ["20m", "10s"]
+  default/wait-machine-upgrade: ["30m", "10s"]
   default/wait-machine-pool-upgrade: ["5m", "10s"]
   default/wait-nodes-ready: ["10m", "10s"]
   default/wait-machine-remediation: ["5m", "10s"]
