@@ -18,6 +18,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/client-go/rest"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/certs"
@@ -25,6 +26,8 @@ import (
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta1"
+	"github.com/k3s-io/cluster-api-k3s/pkg/etcd"
+	etcdutil "github.com/k3s-io/cluster-api-k3s/pkg/etcd/util"
 )
 
 const (
@@ -57,7 +60,9 @@ type WorkloadCluster interface {
 type Workload struct {
 	WorkloadCluster
 
-	Client              ctrlclient.Client
+	Client           ctrlclient.Client
+	ClientRestConfig *rest.Config
+
 	CoreDNSMigrator     coreDNSMigrator
 	etcdClientGenerator etcdClientFor
 }
@@ -128,12 +133,6 @@ func (w *Workload) UpdateAgentConditions(ctx context.Context, controlPlane *Cont
 	allMachinePodConditions := []clusterv1.ConditionType{
 		controlplanev1.MachineAgentHealthyCondition,
 	}
-
-	/** TODO: figure out etcd
-	if controlPlane.IsEtcdManaged() {
-		allMachinePodConditions = append(allMachinePodConditions, controlplanev1.MachineEtcdPodHealthyCondition)
-	}
-	**/
 
 	// NOTE: this fun uses control plane nodes from the workload cluster as a source of truth for the current state.
 	controlPlaneNodes, err := w.getControlPlaneNodes(ctx)
@@ -347,7 +346,18 @@ func (w *Workload) updateManagedEtcdConditions(ctx context.Context, controlPlane
 		return
 	}
 
+	// Update conditions for etcd members on the nodes.
+	var (
+		// kcpErrors is used to store errors that can't be reported on any machine.
+		kcpErrors []string
+		// clusterID is used to store and compare the etcd's cluster id.
+		clusterID *uint64
+		// members is used to store the list of etcd members and compare with all the other nodes in the cluster.
+		members []*etcd.Member
+	)
+
 	for _, node := range controlPlaneNodes.Items {
+		// Search for the machine corresponding to the node.
 		var machine *clusterv1.Machine
 		for _, m := range controlPlane.Machines {
 			if m.Status.NodeRef != nil && m.Status.NodeRef.Name == node.Name {
@@ -361,6 +371,7 @@ func (w *Workload) updateManagedEtcdConditions(ctx context.Context, controlPlane
 			if hasProvisioningMachine(controlPlane.Machines) {
 				continue
 			}
+			kcpErrors = append(kcpErrors, fmt.Sprintf("Control plane node %s does not have a corresponding machine", node.Name))
 			continue
 		}
 
@@ -370,8 +381,143 @@ func (w *Workload) updateManagedEtcdConditions(ctx context.Context, controlPlane
 			continue
 		}
 
+		currentMembers, err := w.getCurrentEtcdMembers(ctx, machine, node.Name)
+		if err != nil {
+			continue
+		}
+
+		// Check if the list of members IDs reported is the same as all other members.
+		// NOTE: the first member reporting this information is the baseline for this information.
+		if members == nil {
+			members = currentMembers
+		}
+		if !etcdutil.MemberEqual(members, currentMembers) {
+			conditions.MarkFalse(machine, controlplanev1.MachineEtcdMemberHealthyCondition, controlplanev1.EtcdMemberUnhealthyReason, clusterv1.ConditionSeverityError, "etcd member reports the cluster is composed by members %s, but all previously seen etcd members are reporting %s", etcdutil.MemberNames(currentMembers), etcdutil.MemberNames(members))
+			continue
+		}
+
+		// Retrieve the member and check for alarms.
+		// NB. The member for this node always exists given forFirstAvailableNode(node) used above
+		member := etcdutil.MemberForName(currentMembers, node.Name)
+		if member == nil {
+			conditions.MarkFalse(machine, controlplanev1.MachineEtcdMemberHealthyCondition, controlplanev1.EtcdMemberUnhealthyReason, clusterv1.ConditionSeverityError, "etcd member reports the cluster is composed by members %s, but the member itself (%s) is not included", etcdutil.MemberNames(currentMembers), node.Name)
+			continue
+		}
+		if len(member.Alarms) > 0 {
+			alarmList := []string{}
+			for _, alarm := range member.Alarms {
+				switch alarm {
+				case etcd.AlarmOK:
+					continue
+				default:
+					alarmList = append(alarmList, etcd.AlarmTypeName[alarm])
+				}
+			}
+			if len(alarmList) > 0 {
+				conditions.MarkFalse(machine, controlplanev1.MachineEtcdMemberHealthyCondition, controlplanev1.EtcdMemberUnhealthyReason, clusterv1.ConditionSeverityError, "Etcd member reports alarms: %s", strings.Join(alarmList, ", "))
+				continue
+			}
+		}
+
+		// Check if the member belongs to the same cluster as all other members.
+		// NOTE: the first member reporting this information is the baseline for this information.
+		if clusterID == nil {
+			clusterID = &member.ClusterID
+		}
+		if *clusterID != member.ClusterID {
+			conditions.MarkFalse(machine, controlplanev1.MachineEtcdMemberHealthyCondition, controlplanev1.EtcdMemberUnhealthyReason, clusterv1.ConditionSeverityError, "etcd member has cluster ID %d, but all previously seen etcd members have cluster ID %d", member.ClusterID, *clusterID)
+			continue
+		}
+
 		conditions.MarkTrue(machine, controlplanev1.MachineEtcdMemberHealthyCondition)
 	}
+
+	// Make sure that the list of etcd members and machines is consistent.
+	kcpErrors = compareMachinesAndMembers(controlPlane, members, kcpErrors)
+
+	// Aggregate components error from machines at KCP level
+	aggregateFromMachinesToKCP(aggregateFromMachinesToKCPInput{
+		controlPlane:      controlPlane,
+		machineConditions: []clusterv1.ConditionType{controlplanev1.MachineEtcdMemberHealthyCondition},
+		kcpErrors:         kcpErrors,
+		condition:         controlplanev1.EtcdClusterHealthyCondition,
+		unhealthyReason:   controlplanev1.EtcdClusterUnhealthyReason,
+		unknownReason:     controlplanev1.EtcdClusterUnknownReason,
+		note:              "etcd member",
+	})
+}
+
+func (w *Workload) getCurrentEtcdMembers(ctx context.Context, machine *clusterv1.Machine, nodeName string) ([]*etcd.Member, error) {
+	// Create the etcd Client for the etcd Pod scheduled on the Node
+	etcdClient, err := w.etcdClientGenerator.forFirstAvailableNode(ctx, []string{nodeName})
+	if err != nil {
+		conditions.MarkUnknown(machine, controlplanev1.MachineEtcdMemberHealthyCondition, controlplanev1.EtcdMemberInspectionFailedReason, "Failed to connect to the etcd pod on the %s node: %s", nodeName, err)
+		return nil, errors.Wrapf(err, "failed to get current etcd members: failed to connect to the etcd pod on the %s node", nodeName)
+	}
+	defer etcdClient.Close()
+
+	// While creating a new client, forFirstAvailableNode retrieves the status for the endpoint; check if the endpoint has errors.
+	if len(etcdClient.Errors) > 0 {
+		conditions.MarkFalse(machine, controlplanev1.MachineEtcdMemberHealthyCondition, controlplanev1.EtcdMemberUnhealthyReason, clusterv1.ConditionSeverityError, "Etcd member status reports errors: %s", strings.Join(etcdClient.Errors, ", "))
+		return nil, errors.Errorf("failed to get current etcd members: etcd member status reports errors: %s", strings.Join(etcdClient.Errors, ", "))
+	}
+
+	// Gets the list etcd members known by this member.
+	currentMembers, err := etcdClient.Members(ctx)
+	if err != nil {
+		// NB. We should never be in here, given that we just received answer to the etcd calls included in forFirstAvailableNode;
+		// however, we are considering the calls to Members a signal of etcd not being stable.
+		conditions.MarkFalse(machine, controlplanev1.MachineEtcdMemberHealthyCondition, controlplanev1.EtcdMemberUnhealthyReason, clusterv1.ConditionSeverityError, "Failed get answer from the etcd member on the %s node", nodeName)
+		return nil, errors.Errorf("failed to get current etcd members: failed get answer from the etcd member on the %s node", nodeName)
+	}
+
+	return currentMembers, nil
+}
+
+func compareMachinesAndMembers(controlPlane *ControlPlane, members []*etcd.Member, kcpErrors []string) []string {
+	// NOTE: We run this check only if we actually know the list of members, otherwise the first for loop
+	// could generate a false negative when reporting missing etcd members.
+	if members == nil {
+		return kcpErrors
+	}
+
+	// Check Machine -> Etcd member.
+	for _, machine := range controlPlane.Machines {
+		if machine.Status.NodeRef == nil {
+			continue
+		}
+		found := false
+		for _, member := range members {
+			nodeNameFromMember := etcdutil.NodeNameFromMember(member)
+			if machine.Status.NodeRef.Name == nodeNameFromMember {
+				found = true
+				break
+			}
+		}
+		if !found {
+			conditions.MarkFalse(machine, controlplanev1.MachineEtcdMemberHealthyCondition, controlplanev1.EtcdMemberUnhealthyReason, clusterv1.ConditionSeverityError, "Missing etcd member")
+		}
+	}
+
+	// Check Etcd member -> Machine.
+	for _, member := range members {
+		found := false
+		nodeNameFromMember := etcdutil.NodeNameFromMember(member)
+		for _, machine := range controlPlane.Machines {
+			if machine.Status.NodeRef != nil && machine.Status.NodeRef.Name == nodeNameFromMember {
+				found = true
+				break
+			}
+		}
+		if !found {
+			name := nodeNameFromMember
+			if name == "" {
+				name = fmt.Sprintf("%d (Name not yet assigned)", member.ID)
+			}
+			kcpErrors = append(kcpErrors, fmt.Sprintf("etcd member %s does not have a corresponding machine", name))
+		}
+	}
+	return kcpErrors
 }
 
 func generateClientCert(caCertEncoded, caKeyEncoded []byte) (tls.Certificate, error) {

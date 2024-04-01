@@ -20,8 +20,11 @@ import (
 	"context"
 
 	"github.com/pkg/errors"
+	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	"sigs.k8s.io/cluster-api/util/patch"
+	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/k3s-io/cluster-api-k3s/pkg/etcd"
 	etcdutil "github.com/k3s-io/cluster-api-k3s/pkg/etcd/util"
@@ -33,7 +36,7 @@ type etcdClientFor interface {
 }
 
 // ReconcileEtcdMembers iterates over all etcd members and finds members that do not have corresponding nodes.
-// If there are any such members, it deletes them from etcd and removes their nodes from the kubeadm configmap so that kubeadm does not run etcd health checks on them.
+// If there are any such members, it deletes them from etcd so that k3s controlplane does not run etcd health checks on them.
 func (w *Workload) ReconcileEtcdMembers(ctx context.Context, nodeNames []string) ([]string, error) {
 	allRemovedMembers := []string{}
 	allErrs := []error{}
@@ -47,6 +50,8 @@ func (w *Workload) ReconcileEtcdMembers(ctx context.Context, nodeNames []string)
 }
 
 func (w *Workload) reconcileEtcdMember(ctx context.Context, nodeNames []string, nodeName string) ([]string, []error) {
+	log := ctrl.LoggerFrom(ctx)
+
 	// Create the etcd Client for the etcd Pod scheduled on the Node
 	etcdClient, err := w.etcdClientGenerator.forFirstAvailableNode(ctx, []string{nodeName})
 	if err != nil {
@@ -66,10 +71,6 @@ func (w *Workload) reconcileEtcdMember(ctx context.Context, nodeNames []string, 
 loopmembers:
 	for _, member := range members {
 		curNodeName := etcdutil.NodeNameFromMember(member)
-		// If this member is just added, it has a empty name until the etcd pod starts. Ignore it.
-		if curNodeName == "" {
-			continue
-		}
 
 		for _, nodeName := range nodeNames {
 			if curNodeName == nodeName {
@@ -80,6 +81,7 @@ loopmembers:
 
 		// If we're here, the node cannot be found.
 		removedMembers = append(removedMembers, curNodeName)
+		log.Info("removing etcd from nonexisting node", "node", curNodeName)
 		if err := w.removeMemberForNode(ctx, curNodeName); err != nil {
 			errs = append(errs, err)
 		}
@@ -106,13 +108,16 @@ func (w *Workload) removeMemberForNode(ctx context.Context, name string) error {
 		return ErrControlPlaneMinNodes
 	}
 
-	// Exclude node being removed from etcd client node list
 	var remainingNodes []string
+	var removingNode corev1.Node
 	for _, n := range controlPlaneNodes.Items {
-		if n.Name != name {
+		if n.Name == name {
+			removingNode = n
+		} else {
 			remainingNodes = append(remainingNodes, n.Name)
 		}
 	}
+
 	etcdClient, err := w.etcdClientGenerator.forFirstAvailableNode(ctx, remainingNodes)
 	if err != nil {
 		return errors.Wrap(err, "failed to create etcd client")
@@ -129,6 +134,24 @@ func (w *Workload) removeMemberForNode(ctx context.Context, name string) error {
 	// The member has already been removed, return immediately
 	if member == nil {
 		return nil
+	}
+
+	if removingNode.Name == name {
+		annotations := removingNode.GetAnnotations()
+		if _, ok := annotations["etcd.k3s.cattle.io/removed-node-name"]; ok {
+			return nil
+		}
+
+		patchHelper, err := patch.NewHelper(&removingNode, w.Client)
+		if err != nil {
+			return errors.Wrapf(err, "failed to create patch helper for node")
+		}
+
+		annotations["etcd.k3s.cattle.io/remove"] = "true"
+		removingNode.SetAnnotations(annotations)
+		if err := patchHelper.Patch(ctx, &removingNode); err != nil {
+			return errors.Wrapf(err, "failed patch node")
+		}
 	}
 
 	if err := etcdClient.RemoveMember(ctx, member.ID); err != nil {

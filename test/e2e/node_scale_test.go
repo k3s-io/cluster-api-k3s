@@ -136,26 +136,25 @@ var _ = Describe("Workload cluster scaling", func() {
 				WaitForMachineDeployments:    e2eConfig.GetIntervals(specName, "wait-worker-nodes"),
 			}, result)
 
-			// TODO: enable after scaling down control planes working
-			// By("Scaling down control planes to 1")
+			By("Scaling down control planes to 1")
 
-			// ApplyClusterTemplateAndWait(ctx, ApplyClusterTemplateAndWaitInput{
-			// 	ClusterProxy: bootstrapClusterProxy,
-			// 	ConfigCluster: clusterctl.ConfigClusterInput{
-			// 		LogFolder:                clusterctlLogFolder,
-			// 		ClusterctlConfigPath:     clusterctlConfigPath,
-			// 		KubeconfigPath:           bootstrapClusterProxy.GetKubeconfigPath(),
-			// 		InfrastructureProvider:   infrastructureProvider,
-			// 		Namespace:                namespace.Name,
-			// 		ClusterName:              clusterName,
-			// 		KubernetesVersion:        e2eConfig.GetVariable(KubernetesVersion),
-			// 		ControlPlaneMachineCount: pointer.Int64Ptr(1),
-			// 		WorkerMachineCount:       pointer.Int64Ptr(3),
-			// 	},
-			// 	WaitForClusterIntervals:      e2eConfig.GetIntervals(specName, "wait-cluster"),
-			// 	WaitForControlPlaneIntervals: e2eConfig.GetIntervals(specName, "wait-control-plane"),
-			// 	WaitForMachineDeployments:    e2eConfig.GetIntervals(specName, "wait-worker-nodes"),
-			// }, result)
+			ApplyClusterTemplateAndWait(ctx, ApplyClusterTemplateAndWaitInput{
+				ClusterProxy: bootstrapClusterProxy,
+				ConfigCluster: clusterctl.ConfigClusterInput{
+					LogFolder:                clusterctlLogFolder,
+					ClusterctlConfigPath:     clusterctlConfigPath,
+					KubeconfigPath:           bootstrapClusterProxy.GetKubeconfigPath(),
+					InfrastructureProvider:   infrastructureProvider,
+					Namespace:                namespace.Name,
+					ClusterName:              clusterName,
+					KubernetesVersion:        e2eConfig.GetVariable(KubernetesVersion),
+					ControlPlaneMachineCount: pointer.Int64Ptr(1),
+					WorkerMachineCount:       pointer.Int64Ptr(3),
+				},
+				WaitForClusterIntervals:      e2eConfig.GetIntervals(specName, "wait-cluster"),
+				WaitForControlPlaneIntervals: e2eConfig.GetIntervals(specName, "wait-control-plane"),
+				WaitForMachineDeployments:    e2eConfig.GetIntervals(specName, "wait-worker-nodes"),
+			}, result)
 
 			By("Scaling down worker nodes to 1")
 

@@ -177,6 +177,12 @@ func (r *KThreesControlPlaneReconciler) preflightChecks(_ context.Context, contr
 
 	// Check machine health conditions; if there are conditions with False or Unknown, then wait.
 	allMachineHealthConditions := []clusterv1.ConditionType{controlplanev1.MachineAgentHealthyCondition}
+	if controlPlane.IsEtcdManaged() {
+		allMachineHealthConditions = append(allMachineHealthConditions,
+			controlplanev1.MachineEtcdMemberHealthyCondition,
+		)
+	}
+
 	machineErrors := []error{}
 
 loopmachines:
