@@ -19,10 +19,10 @@ package controllers
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 
+	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -33,6 +33,7 @@ import (
 	"sigs.k8s.io/cluster-api/controllers/external"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/conditions"
+	"sigs.k8s.io/cluster-api/util/patch"
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta1"
@@ -132,12 +133,19 @@ func (r *KThreesControlPlaneReconciler) scaleDownControlPlane(
 			logger.Error(err, "Failed to move leadership to candidate machine", "candidate", etcdLeaderCandidate.Name)
 			return ctrl.Result{}, err
 		}
-		logger.Info("etcd move etcd leader succeeded, node to delete %s", machineToDelete.Status.NodeRef.Name)
-		if err := workloadCluster.RemoveEtcdMemberForMachine(ctx, machineToDelete); err != nil {
-			logger.Error(err, "Failed to remove etcd member for machine")
-			return ctrl.Result{}, err
+
+		patchHelper, err := patch.NewHelper(machineToDelete, r.Client)
+		if err != nil {
+			return ctrl.Result{}, errors.Wrapf(err, "failed to create patch helper for machine")
 		}
-		logger.Info("etcd remove etcd member succeeded, node to delete %s", machineToDelete.Status.NodeRef.Name)
+
+		mAnnotations := machineToDelete.GetAnnotations()
+		mAnnotations[clusterv1.PreTerminateDeleteHookAnnotationPrefix] = k3sHookName
+		machineToDelete.SetAnnotations(mAnnotations)
+
+		if err := patchHelper.Patch(ctx, machineToDelete); err != nil {
+			return ctrl.Result{}, errors.Wrapf(err, "failed patch machine for adding preTerminate hook")
+		}
 	}
 
 	logger = logger.WithValues("machine", machineToDelete)

@@ -30,4 +30,6 @@ const (
 	// dependentCertRequeueAfter is how long to wait before checking again to see if
 	// dependent certificates have been created.
 	dependentCertRequeueAfter = 30 * time.Second
+
+	k3sHookName = "k3s"
 )

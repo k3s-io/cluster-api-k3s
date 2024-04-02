@@ -171,7 +171,6 @@ func (r *KThreesControlPlaneReconciler) reconcileUnhealthyMachines(ctx context.C
 		// If the control plane is initialized, before deleting the machine:
 		// - if the machine hosts the etcd leader, forward etcd leadership to another machine.
 		// - delete the etcd member hosted on the machine being deleted.
-		// - remove the etcd member from the kubeadm config map (only for kubernetes version older than v1.22.0)
 		workloadCluster, err := r.managementCluster.GetWorkloadCluster(ctx, util.ObjectKey(controlPlane.Cluster))
 		if err != nil {
 			log.Error(err, "Failed to create client to workload cluster")
@@ -192,10 +191,18 @@ func (r *KThreesControlPlaneReconciler) reconcileUnhealthyMachines(ctx context.C
 				conditions.MarkFalse(machineToBeRemediated, clusterv1.MachineOwnerRemediatedCondition, clusterv1.RemediationFailedReason, clusterv1.ConditionSeverityError, err.Error())
 				return ctrl.Result{}, err
 			}
-			if err := workloadCluster.RemoveEtcdMemberForMachine(ctx, machineToBeRemediated); err != nil {
-				log.Error(err, "Failed to remove etcd member for machine")
-				conditions.MarkFalse(machineToBeRemediated, clusterv1.MachineOwnerRemediatedCondition, clusterv1.RemediationFailedReason, clusterv1.ConditionSeverityError, err.Error())
-				return ctrl.Result{}, err
+
+			patchHelper, err := patch.NewHelper(machineToBeRemediated, r.Client)
+			if err != nil {
+				return ctrl.Result{}, errors.Wrapf(err, "failed to create patch helper for machine")
+			}
+
+			mAnnotations := machineToBeRemediated.GetAnnotations()
+			mAnnotations[clusterv1.PreTerminateDeleteHookAnnotationPrefix] = k3sHookName
+			machineToBeRemediated.SetAnnotations(mAnnotations)
+
+			if err := patchHelper.Patch(ctx, machineToBeRemediated); err != nil {
+				return ctrl.Result{}, errors.Wrapf(err, "failed patch machine for adding preTerminate hook")
 			}
 		}
 	}

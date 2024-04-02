@@ -18,6 +18,7 @@ package k3s
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
@@ -28,6 +29,11 @@ import (
 
 	"github.com/k3s-io/cluster-api-k3s/pkg/etcd"
 	etcdutil "github.com/k3s-io/cluster-api-k3s/pkg/etcd/util"
+)
+
+const (
+	EtcdRemoveAnnotation      = "etcd.k3s.cattle.io/remove"
+	EtcdRemovedNodeAnnotation = "etcd.k3s.cattle.io/removed-node-name"
 )
 
 type etcdClientFor interface {
@@ -82,7 +88,7 @@ loopmembers:
 		// If we're here, the node cannot be found.
 		removedMembers = append(removedMembers, curNodeName)
 		log.Info("removing etcd from nonexisting node", "node", curNodeName)
-		if err := w.removeMemberForNode(ctx, curNodeName); err != nil {
+		if err := w.removeMemberForNonExistingNode(ctx, curNodeName); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -91,15 +97,15 @@ loopmembers:
 
 // RemoveEtcdMemberForMachine removes the etcd member from the target cluster's etcd cluster.
 // Removing the last remaining member of the cluster is not supported.
-func (w *Workload) RemoveEtcdMemberForMachine(ctx context.Context, machine *clusterv1.Machine) error {
+func (w *Workload) RemoveEtcdMemberForMachine(ctx context.Context, machine *clusterv1.Machine) (bool, error) {
 	if machine == nil || machine.Status.NodeRef == nil {
 		// Nothing to do, no node for Machine
-		return nil
+		return true, nil
 	}
 	return w.removeMemberForNode(ctx, machine.Status.NodeRef.Name)
 }
 
-func (w *Workload) removeMemberForNode(ctx context.Context, name string) error {
+func (w *Workload) removeMemberForNonExistingNode(ctx context.Context, name string) error {
 	controlPlaneNodes, err := w.getControlPlaneNodes(ctx)
 	if err != nil {
 		return err
@@ -109,11 +115,8 @@ func (w *Workload) removeMemberForNode(ctx context.Context, name string) error {
 	}
 
 	var remainingNodes []string
-	var removingNode corev1.Node
 	for _, n := range controlPlaneNodes.Items {
-		if n.Name == name {
-			removingNode = n
-		} else {
+		if n.Name != name {
 			remainingNodes = append(remainingNodes, n.Name)
 		}
 	}
@@ -136,29 +139,50 @@ func (w *Workload) removeMemberForNode(ctx context.Context, name string) error {
 		return nil
 	}
 
-	if removingNode.Name == name {
-		annotations := removingNode.GetAnnotations()
-		if _, ok := annotations["etcd.k3s.cattle.io/removed-node-name"]; ok {
-			return nil
-		}
-
-		patchHelper, err := patch.NewHelper(&removingNode, w.Client)
-		if err != nil {
-			return errors.Wrapf(err, "failed to create patch helper for node")
-		}
-
-		annotations["etcd.k3s.cattle.io/remove"] = "true"
-		removingNode.SetAnnotations(annotations)
-		if err := patchHelper.Patch(ctx, &removingNode); err != nil {
-			return errors.Wrapf(err, "failed patch node")
-		}
-	}
-
 	if err := etcdClient.RemoveMember(ctx, member.ID); err != nil {
 		return errors.Wrap(err, "failed to remove member from etcd")
 	}
 
 	return nil
+}
+
+func (w *Workload) removeMemberForNode(ctx context.Context, name string) (bool, error) {
+	controlPlaneNodes, err := w.getControlPlaneNodes(ctx)
+	if err != nil {
+		return false, err
+	}
+	if len(controlPlaneNodes.Items) < 2 {
+		return false, ErrControlPlaneMinNodes
+	}
+
+	var removingNode corev1.Node
+	for _, n := range controlPlaneNodes.Items {
+		if n.Name == name {
+			removingNode = n
+		}
+	}
+
+	if removingNode.Name != name {
+		return false, errors.New(fmt.Sprintf("node %s not found", name))
+	}
+
+	annotations := removingNode.GetAnnotations()
+	if _, ok := annotations[EtcdRemovedNodeAnnotation]; ok {
+		return true, nil
+	}
+
+	patchHelper, err := patch.NewHelper(&removingNode, w.Client)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to create patch helper for node")
+	}
+
+	annotations[EtcdRemoveAnnotation] = "true"
+	removingNode.SetAnnotations(annotations)
+	if err := patchHelper.Patch(ctx, &removingNode); err != nil {
+		return false, errors.Wrapf(err, "failed patch node")
+	}
+
+	return false, nil
 }
 
 // ForwardEtcdLeadership forwards etcd leadership to the first follower.

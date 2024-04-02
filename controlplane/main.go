@@ -110,6 +110,18 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "KThreesControlPlane")
 		os.Exit(1)
 	}
+
+	ctrMachineLogger := ctrl.Log.WithName("controllers").WithName("Machine")
+	if err = (&controllers.MachineReconciler{
+		Client:          mgr.GetClient(),
+		Log:             ctrMachineLogger,
+		Scheme:          mgr.GetScheme(),
+		EtcdDialTimeout: etcdDialTimeout,
+		EtcdCallTimeout: etcdCallTimeout,
+	}).SetupWithManager(ctx, mgr, &ctrMachineLogger); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "Machine")
+		os.Exit(1)
+	}
 	// +kubebuilder:scaffold:builder
 
 	setupLog.Info("starting manager")

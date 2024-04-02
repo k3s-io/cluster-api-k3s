@@ -49,7 +49,7 @@ type WorkloadCluster interface {
 	UpdateEtcdConditions(ctx context.Context, controlPlane *ControlPlane)
 
 	// Etcd tasks
-	RemoveEtcdMemberForMachine(ctx context.Context, machine *clusterv1.Machine) error
+	RemoveEtcdMemberForMachine(ctx context.Context, machine *clusterv1.Machine) (bool, error)
 	ForwardEtcdLeadership(ctx context.Context, machine *clusterv1.Machine, leaderCandidate *clusterv1.Machine) error
 	ReconcileEtcdMembers(ctx context.Context, nodeNames []string) ([]string, error)
 

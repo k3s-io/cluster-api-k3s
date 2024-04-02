@@ -12,7 +12,7 @@ make test-e2e   # run all e2e tests
 ### Run a specific e2e test
 To run a specific e2e test, such as "PR-Blocking", use the `GINKGO_FOCUS` environment variable as shown below:
 ```shell
-make GINKGO_FOCUS="\\[PR-Blocking\\]" test-e2e  # only run the "PR-Blocking" e2e test
+make GINKGO_FOCUS="Workload cluster scaling" test-e2e  # only run the "PR-Blocking" e2e test
 ```
 ### Run the e2e test with tilt
 It is quite useful to run the e2e test with [tilt](https://cluster-api.sigs.k8s.io/developer/tilt), so that you will not need to rebuild docker image with `make docker-build-e2e` everytime. Also you will not need to wait a new cluster creation and setup. If you have set up your tilt cluster and made the current context points to this cluster, you could run:
