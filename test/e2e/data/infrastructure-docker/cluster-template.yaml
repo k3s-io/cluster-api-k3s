@@ -1,4 +1,4 @@
-# TODO: copied from https://github.com/k3s-io/cluster-api-k3s/pull/93/files#diff-c4a336ec56832a2ff7aed26c94d0d67ae3a0e6139d30701cc53c0f0962fe8cca
+# TODO: copied and modified from https://github.com/k3s-io/cluster-api-k3s/pull/93/files#diff-c4a336ec56832a2ff7aed26c94d0d67ae3a0e6139d30701cc53c0f0962fe8cca
 # should be the same as samples/docker/quickstart.yaml in the future
 # for testing the quickstart scenario
 apiVersion: cluster.x-k8s.io/v1beta1
@@ -40,7 +40,7 @@ spec:
     kind: DockerMachineTemplate
     name: ${CLUSTER_NAME}-control-plane
   replicas: ${CONTROL_PLANE_MACHINE_COUNT}
-  version: ${KUBERNETES_VERSION}+k3s2
+  version: ${KUBERNETES_VERSION}
   kthreesConfigSpec:
     serverConfig:
       tlsSan:
@@ -53,7 +53,7 @@ metadata:
 spec:
   template:
     spec:
-      customImage: kindest/node:${KUBERNETES_VERSION}
+      customImage: kindest/node:${KIND_IMAGE_VERSION}
 ---
 apiVersion: cluster.x-k8s.io/v1beta1
 kind: MachineDeployment
@@ -65,7 +65,15 @@ spec:
   selector:
     matchLabels:
       cluster.x-k8s.io/cluster-name: ${CLUSTER_NAME}
+
+      # This label will be needed for upgrade test
+      # it will be used as a selector for only selecting
+      # machines belonging to this machine deployment
+      cluster.x-k8s.io/deployment-name: worker-md-0
   template:
+    metadata:
+      labels:
+        cluster.x-k8s.io/deployment-name: worker-md-0
     spec:
       version: ${KUBERNETES_VERSION}
       clusterName: ${CLUSTER_NAME}
@@ -86,7 +94,7 @@ metadata:
 spec:
   template:
     spec:
-      customImage: kindest/node:${KUBERNETES_VERSION}
+      customImage: kindest/node:${KIND_IMAGE_VERSION}
 ---
 apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
 kind: KThreesConfigTemplate
@@ -95,4 +103,3 @@ metadata:
 spec:
   template:
     spec:
-      version: ${KUBERNETES_VERSION}+k3s2

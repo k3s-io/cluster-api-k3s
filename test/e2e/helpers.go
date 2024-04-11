@@ -31,6 +31,7 @@ import (
 
 	"sigs.k8s.io/cluster-api/test/framework"
 	"sigs.k8s.io/cluster-api/test/framework/clusterctl"
+	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta1"
@@ -547,6 +548,44 @@ func WaitForControlPlaneAndMachinesReady(ctx context.Context, input WaitForContr
 		Lister:  input.GetLister,
 		Cluster: input.Cluster,
 	})
+}
+
+// UpgradeControlPlaneAndWaitForUpgradeInput is the input type for UpgradeControlPlaneAndWaitForUpgrade.
+type UpgradeControlPlaneAndWaitForUpgradeInput struct {
+	ClusterProxy                framework.ClusterProxy
+	Cluster                     *clusterv1.Cluster
+	ControlPlane                *controlplanev1.KThreesControlPlane
+	KubernetesUpgradeVersion    string
+	WaitForMachinesToBeUpgraded []interface{}
+}
+
+// UpgradeControlPlaneAndWaitForUpgrade upgrades a KubeadmControlPlane and waits for it to be upgraded.
+func UpgradeControlPlaneAndWaitForUpgrade(ctx context.Context, input UpgradeControlPlaneAndWaitForUpgradeInput) {
+	Expect(ctx).NotTo(BeNil(), "ctx is required for UpgradeControlPlaneAndWaitForUpgrade")
+	Expect(input.ClusterProxy).ToNot(BeNil(), "Invalid argument. input.ClusterProxy can't be nil when calling UpgradeControlPlaneAndWaitForUpgrade")
+	Expect(input.Cluster).ToNot(BeNil(), "Invalid argument. input.Cluster can't be nil when calling UpgradeControlPlaneAndWaitForUpgrade")
+	Expect(input.ControlPlane).ToNot(BeNil(), "Invalid argument. input.ControlPlane can't be nil when calling UpgradeControlPlaneAndWaitForUpgrade")
+	Expect(input.KubernetesUpgradeVersion).ToNot(BeNil(), "Invalid argument. input.KubernetesUpgradeVersion can't be empty when calling UpgradeControlPlaneAndWaitForUpgrade")
+
+	mgmtClient := input.ClusterProxy.GetClient()
+
+	Byf("Patching the new kubernetes version to KCP")
+	patchHelper, err := patch.NewHelper(input.ControlPlane, mgmtClient)
+	Expect(err).ToNot(HaveOccurred())
+
+	input.ControlPlane.Spec.Version = input.KubernetesUpgradeVersion
+
+	Eventually(func() error {
+		return patchHelper.Patch(ctx, input.ControlPlane)
+	}, retryableOperationTimeout, retryableOperationInterval).Should(Succeed(), "Failed to patch the new kubernetes version to KCP %s", klog.KObj(input.ControlPlane))
+
+	Byf("Waiting for control-plane machines to have the upgraded kubernetes version")
+	framework.WaitForControlPlaneMachinesToBeUpgraded(ctx, framework.WaitForControlPlaneMachinesToBeUpgradedInput{
+		Lister:                   mgmtClient,
+		Cluster:                  input.Cluster,
+		MachineCount:             int(*input.ControlPlane.Spec.Replicas),
+		KubernetesUpgradeVersion: input.KubernetesUpgradeVersion,
+	}, input.WaitForMachinesToBeUpgraded...)
 }
 
 // byClusterOptions returns a set of ListOptions that allows to identify all the objects belonging to a Cluster.
