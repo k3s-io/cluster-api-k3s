@@ -27,7 +27,7 @@ const (
 {{template "files" .WriteFiles}}
 runcmd:
 {{- template "commands" .PreK3sCommands }}
-  - 'curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=%s sh -s - server && mkdir -p /run/cluster-api && echo success > /run/cluster-api/bootstrap-success.complete'
+  - {{ if .AirGapped }} INSTALL_K3S_SKIP_DOWNLOAD=true INSTALL_K3S_EXEC='server' sh /opt/install.sh {{ else }} curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=%s sh -s - server {{ end }} && {{ .SentinelFileCommand }}
 {{- template "commands" .PostK3sCommands }}
 `
 )
@@ -44,6 +44,7 @@ func NewInitControlPlane(input *ControlPlaneInput) ([]byte, error) {
 	input.WriteFiles = input.Certificates.AsFiles()
 	input.WriteFiles = append(input.WriteFiles, input.AdditionalFiles...)
 	input.WriteFiles = append(input.WriteFiles, input.ConfigFile)
+	input.SentinelFileCommand = sentinelFileCommand
 
 	controlPlaneCloudJoinWithVersion := fmt.Sprintf(controlPlaneCloudInit, input.K3sVersion)
 	userData, err := generate("InitControlplane", controlPlaneCloudJoinWithVersion, input)

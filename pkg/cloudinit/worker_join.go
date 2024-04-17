@@ -23,7 +23,7 @@ const (
 {{template "files" .WriteFiles}}
 runcmd:
 {{- template "commands" .PreK3sCommands }}
-  - 'curl -sfL https://get.k3s.io |  INSTALL_K3S_VERSION=%s sh -s - agent && mkdir -p /run/cluster-api && echo success > /run/cluster-api/bootstrap-success.complete'
+  - {{ if .AirGapped }} INSTALL_K3S_SKIP_DOWNLOAD=true INSTALL_K3S_EXEC='agent' sh /opt/install.sh {{ else }} curl -sfL https://get.k3s.io |  INSTALL_K3S_VERSION=%s sh -s - agent {{ end }} && {{ .SentinelFileCommand }}
 {{- template "commands" .PostK3sCommands }}
 `
 )
@@ -38,6 +38,7 @@ func NewWorker(input *WorkerInput) ([]byte, error) {
 	input.Header = cloudConfigHeader
 	input.WriteFiles = append(input.WriteFiles, input.AdditionalFiles...)
 	input.WriteFiles = append(input.WriteFiles, input.ConfigFile)
+	input.SentinelFileCommand = sentinelFileCommand
 
 	workerCloudInitWithVersion := fmt.Sprintf(workerCloudInit, input.K3sVersion)
 	userData, err := generate("Worker", workerCloudInitWithVersion, input)

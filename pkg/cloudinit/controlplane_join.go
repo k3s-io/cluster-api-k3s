@@ -18,23 +18,15 @@ package cloudinit
 
 import "fmt"
 
-const (
-	controlPlaneCloudJoin = `{{.Header}}
-{{template "files" .WriteFiles}}
-runcmd:
-{{- template "commands" .PreK3sCommands }}
-  - 'curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=%s sh -s - server && mkdir -p /run/cluster-api && echo success > /run/cluster-api/bootstrap-success.complete'
-{{- template "commands" .PostK3sCommands }}
-`
-)
-
 // NewInitControlPlane returns the user data string to be used on a controlplane instance.
 func NewJoinControlPlane(input *ControlPlaneInput) ([]byte, error) {
 	input.Header = cloudConfigHeader
 	input.WriteFiles = append(input.WriteFiles, input.AdditionalFiles...)
 	input.WriteFiles = append(input.WriteFiles, input.ConfigFile)
+	input.SentinelFileCommand = sentinelFileCommand
 
-	controlPlaneCloudJoinWithVersion := fmt.Sprintf(controlPlaneCloudJoin, input.K3sVersion)
+	// As controlPlaneCloudJoin template is the same as the controlPlaneCloudInit template, will reuse the controlPlaneCloudInit template
+	controlPlaneCloudJoinWithVersion := fmt.Sprintf(controlPlaneCloudInit, input.K3sVersion)
 	userData, err := generate("JoinControlplane", controlPlaneCloudJoinWithVersion, input)
 	if err != nil {
 		return nil, err

@@ -140,6 +140,13 @@ type KThreesAgentConfig struct {
 	// NodeName Name of the Node
 	// +optional
 	NodeName string `json:"nodeName,omitempty"`
+
+	// AirGapped is a boolean value to define if the bootstrapping should be air-gapped,
+	// basically supposing that online container registries and k3s install scripts are not reachable.
+	// User should prepare docker image, k3s binary, and put the install script in `/opt/install.sh`
+	// on all nodes in the air-gap environment.
+	// +optional
+	AirGapped bool `json:"airGapped,omitempty"`
 }
 
 // KThreesConfigStatus defines the observed state of KThreesConfig.

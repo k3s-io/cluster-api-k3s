@@ -51,3 +51,33 @@ func TestControlPlaneInit(t *testing.T) {
 	g.Expect(err).NotTo(HaveOccurred())
 	t.Log(string(out))
 }
+
+func TestControlPlaneInitAirGapped(t *testing.T) {
+	g := NewWithT(t)
+
+	cpinput := &ControlPlaneInput{
+		BaseUserData: BaseUserData{
+			PreK3sCommands:  nil,
+			PostK3sCommands: nil,
+			AdditionalFiles: []infrav1.File{
+				{
+					Path:     "/tmp/my-path",
+					Encoding: infrav1.Base64,
+					Content:  "aGk=",
+				},
+				{
+					Path:    "/tmp/my-other-path",
+					Content: "hi",
+				},
+			},
+			AirGapped: true,
+		},
+		Certificates: secret.Certificates{},
+	}
+
+	out, err := NewInitControlPlane(cpinput)
+	g.Expect(err).NotTo(HaveOccurred())
+	result := string(out)
+	g.Expect(result).To(ContainSubstring("sh /opt/install.sh"))
+	g.Expect(result).NotTo(ContainSubstring("get.k3s.io"))
+}

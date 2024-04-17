@@ -269,6 +269,7 @@ func (r *KThreesConfigReconciler) joinControlplane(ctx context.Context, scope *S
 			AdditionalFiles: files,
 			ConfigFile:      workerConfigFile,
 			K3sVersion:      scope.Config.Spec.Version,
+			AirGapped:       scope.Config.Spec.AgentConfig.AirGapped,
 		},
 	}
 
@@ -328,6 +329,7 @@ func (r *KThreesConfigReconciler) joinWorker(ctx context.Context, scope *Scope) 
 			AdditionalFiles: files,
 			ConfigFile:      workerConfigFile,
 			K3sVersion:      scope.Config.Spec.Version,
+			AirGapped:       scope.Config.Spec.AgentConfig.AirGapped,
 		},
 	}
 
@@ -483,6 +485,7 @@ func (r *KThreesConfigReconciler) handleClusterNotInitialized(ctx context.Contex
 			AdditionalFiles: files,
 			ConfigFile:      initConfigFile,
 			K3sVersion:      scope.Config.Spec.Version,
+			AirGapped:       scope.Config.Spec.AgentConfig.AirGapped,
 		},
 		Certificates: certificates,
 	}

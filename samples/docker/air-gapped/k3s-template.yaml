@@ -1,0 +1,95 @@
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster 
+metadata:
+  name: ${CLUSTER_NAME} 
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks:
+      - 10.45.0.0/16
+    services:
+      cidrBlocks:
+      - 10.46.0.0/16
+    serviceDomain: cluster.local
+  controlPlaneRef:
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    kind: KThreesControlPlane
+    name: ${CLUSTER_NAME}-control-plane
+  infrastructureRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+    kind: DockerCluster
+    name: ${CLUSTER_NAME}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: DockerCluster
+metadata:
+  name: ${CLUSTER_NAME}
+spec: {}
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+kind: KThreesControlPlane
+metadata:
+  name: ${CLUSTER_NAME}-control-plane
+  namespace: default
+spec:
+  infrastructureTemplate:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+    kind: DockerMachineTemplate
+    name: ${CLUSTER_NAME}-control-plane
+  kthreesConfigSpec:
+    agentConfig:
+      airGapped: true
+  replicas: ${CONTROL_PLANE_MACHINE_COUNT}
+  version: ${KUBERNETES_VERSION}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: DockerMachineTemplate
+metadata:
+  name: ${CLUSTER_NAME}-control-plane
+spec:
+  template:
+    spec:
+      customImage: ${AIRGAPPED_KIND_IMAGE}
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: MachineDeployment
+metadata:
+  name: worker-md-0
+spec:
+  clusterName: ${CLUSTER_NAME}
+  replicas: ${WORKER_MACHINE_COUNT}
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/cluster-name: ${CLUSTER_NAME}
+  template:
+    spec:
+      version: ${KUBERNETES_VERSION}
+      clusterName: ${CLUSTER_NAME}
+      bootstrap:
+        configRef:
+          apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+          kind: KThreesConfigTemplate
+          name: ${CLUSTER_NAME}-md-0
+      infrastructureRef:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        kind: DockerMachineTemplate
+        name: ${CLUSTER_NAME}-md-0
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: DockerMachineTemplate
+metadata:
+  name: ${CLUSTER_NAME}-md-0
+spec:
+  template:
+    spec:
+      customImage: ${AIRGAPPED_KIND_IMAGE}
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+kind: KThreesConfigTemplate
+metadata:
+  name: ${CLUSTER_NAME}-md-0
+spec:
+  template:
+    spec:
+      agentConfig:
+        airGapped: true
