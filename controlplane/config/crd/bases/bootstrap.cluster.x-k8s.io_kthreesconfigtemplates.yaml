@@ -50,6 +50,13 @@ spec:
                         description: AgentConfig specifies configuration for the agent
                           nodes
                         properties:
+                          airGapped:
+                            description: |-
+                              AirGapped is a boolean value to define if the bootstrapping should be air-gapped,
+                              basically supposing that online container registries and k3s install scripts are not reachable.
+                              User should prepare docker image, k3s binary, and put the install script in `/opt/install.sh`
+                              on all nodes in the air-gap environment.
+                            type: boolean
                           kubeProxyArgs:
                             description: KubeProxyArgs Customized flag for kube-proxy
                               process

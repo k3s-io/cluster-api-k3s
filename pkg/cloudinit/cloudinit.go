@@ -69,17 +69,20 @@ write_files:{{ range . }}
 {{- end -}}
 {{- end -}}
 `
+	sentinelFileCommand = "mkdir -p /run/cluster-api && echo success > /run/cluster-api/bootstrap-success.complete"
 )
 
 // BaseUserData is shared across all the various types of files written to disk.
 type BaseUserData struct {
-	Header          string
-	PreK3sCommands  []string
-	PostK3sCommands []string
-	AdditionalFiles []bootstrapv1.File
-	WriteFiles      []bootstrapv1.File
-	ConfigFile      bootstrapv1.File
-	K3sVersion      string
+	Header              string
+	PreK3sCommands      []string
+	PostK3sCommands     []string
+	AdditionalFiles     []bootstrapv1.File
+	WriteFiles          []bootstrapv1.File
+	ConfigFile          bootstrapv1.File
+	K3sVersion          string
+	AirGapped           bool
+	SentinelFileCommand string
 }
 
 func generate(kind string, tpl string, data interface{}) ([]byte, error) {
