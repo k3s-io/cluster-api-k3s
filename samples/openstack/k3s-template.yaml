@@ -23,7 +23,7 @@ spec:
     kind: KThreesControlPlane
     name: ${CLUSTER_NAME}-control-plane
   infrastructureRef:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha5
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
     kind: OpenStackCluster
     name: ${CLUSTER_NAME}
 ---
@@ -47,7 +47,7 @@ spec:
       clusterName: ${CLUSTER_NAME}
       failureDomain: ${OPENSTACK_FAILURE_DOMAIN}
       infrastructureRef:
-        apiVersion: infrastructure.cluster.x-k8s.io/v1alpha5
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
         kind: OpenStackMachineTemplate
         name: ${CLUSTER_NAME}-md-0
       version: ${KUBERNETES_VERSION}
@@ -59,30 +59,31 @@ metadata:
   namespace: default
 spec:
   infrastructureTemplate:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha5
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
     kind: OpenStackMachineTemplate
     name: ${CLUSTER_NAME}-control-plane
   replicas: 1
   version: ${KUBERNETES_VERSION}
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha5
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: OpenStackCluster
 metadata:
   name: ${CLUSTER_NAME}
   namespace: default
 spec:
-  cloudName: ${OPENSTACK_CLOUD}
-  dnsNameservers:
-  - ${OPENSTACK_DNS_NAMESERVERS}
-  externalNetworkId: ${OPENSTACK_EXTERNAL_NETWORK_ID}
+  externalNetwork:
+    id: ${OPENSTACK_EXTERNAL_NETWORK_ID}
   identityRef:
-    kind: Secret
+    cloudName: ${OPENSTACK_CLOUD}
     name: k3s-cloud-config
-  managedSecurityGroups: false
+  managedSecurityGroups: {}
   disablePortSecurity: true
-  nodeCidr: 10.6.0.0/24
+  managedSubnets:
+  - cidr: 10.6.0.0/24
+    dnsNameservers:
+    - ${OPENSTACK_DNS_NAMESERVERS}
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha6
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: OpenStackMachineTemplate
 metadata:
   name: ${CLUSTER_NAME}-control-plane
@@ -90,15 +91,13 @@ metadata:
 spec:
   template:
     spec:
-      cloudName: ${OPENSTACK_CLOUD}
       flavor: ${OPENSTACK_CONTROL_PLANE_MACHINE_FLAVOR}
-      identityRef:
-        kind: Secret
-        name: k3s-cloud-config
-      image: ${OPENSTACK_IMAGE_NAME}
+      image:
+        filter:
+          name: ${OPENSTACK_IMAGE_NAME}
       sshKeyName: ${OPENSTACK_SSH_KEY_NAME}
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha5
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: OpenStackMachineTemplate
 metadata:
   name: ${CLUSTER_NAME}-md-0
@@ -106,10 +105,8 @@ metadata:
 spec:
   template:
     spec:
-      cloudName: ${OPENSTACK_CLOUD}
       flavor: ${OPENSTACK_NODE_MACHINE_FLAVOR}
-      identityRef:
-        kind: Secret
-        name: k3s-cloud-config
-      image: ${OPENSTACK_IMAGE_NAME}
+      image:
+        filter:
+          name: ${OPENSTACK_IMAGE_NAME}
       sshKeyName: ${OPENSTACK_SSH_KEY_NAME}
