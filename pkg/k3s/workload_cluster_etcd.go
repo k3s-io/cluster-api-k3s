@@ -18,7 +18,6 @@ package k3s
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
@@ -167,7 +166,8 @@ func (w *Workload) removeMemberForNode(ctx context.Context, name string) (bool, 
 	}
 
 	if removingNode.Name != name {
-		return false, errors.New(fmt.Sprintf("node %s not found", name))
+		// If the node is already removed, treat it as the etcd member is removed.
+		return true, nil
 	}
 
 	annotations := removingNode.GetAnnotations()
@@ -235,4 +235,39 @@ func (w *Workload) ForwardEtcdLeadership(ctx context.Context, machine *clusterv1
 		return errors.Wrapf(err, "failed to move leader")
 	}
 	return nil
+}
+
+// EtcdMembers returns the current set of members in an etcd cluster.
+// It will convert the etcd members to a list of node names,
+// and return a list of node names.
+//
+// NOTE: This methods uses control plane machines/nodes only to get in contact with etcd,
+// but then it relies on etcd as ultimate source of truth for the list of members.
+// This is intended to allow informed decisions on actions impacting etcd quorum.
+func (w *Workload) EtcdMembers(ctx context.Context) ([]string, error) {
+	nodes, err := w.getControlPlaneNodes(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list control plane nodes")
+	}
+	nodeNames := make([]string, 0, len(nodes.Items))
+	for _, node := range nodes.Items {
+		nodeNames = append(nodeNames, node.Name)
+	}
+	etcdClient, err := w.etcdClientGenerator.forLeader(ctx, nodeNames)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create etcd client")
+	}
+	defer etcdClient.Close()
+
+	members, err := etcdClient.Members(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list etcd members using etcd client")
+	}
+
+	names := []string{}
+	for _, member := range members {
+		// Convert etcd member to node name
+		names = append(names, etcdutil.NodeNameFromMember(member))
+	}
+	return names, nil
 }

@@ -45,7 +45,6 @@ import (
 	"github.com/k3s-io/cluster-api-k3s/pkg/cloudinit"
 	"github.com/k3s-io/cluster-api-k3s/pkg/etcd"
 	"github.com/k3s-io/cluster-api-k3s/pkg/k3s"
-	"github.com/k3s-io/cluster-api-k3s/pkg/kubeconfig"
 	"github.com/k3s-io/cluster-api-k3s/pkg/locking"
 	"github.com/k3s-io/cluster-api-k3s/pkg/secret"
 	"github.com/k3s-io/cluster-api-k3s/pkg/token"
@@ -177,9 +176,6 @@ func (r *KThreesConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		log.Info("Cluster infrastructure is not ready, waiting")
 		conditions.MarkFalse(config, bootstrapv1.DataSecretAvailableCondition, bootstrapv1.WaitingForClusterInfrastructureReason, clusterv1.ConditionSeverityInfo, "")
 		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
-	// Migrate plaintext data to secret.
-	case config.Status.BootstrapData != nil && config.Status.DataSecretName == nil:
-		return ctrl.Result{}, r.storeBootstrapData(ctx, scope, config.Status.BootstrapData)
 	// Reconcile status for machines that already have a secret reference, but our status isn't up to date.
 	// This case solves the pivoting scenario (or a backup restore) which doesn't preserve the status subresource on objects.
 	case configOwner.DataSecretName() != nil && (!config.Status.Ready || config.Status.DataSecretName == nil):
@@ -500,13 +496,12 @@ func (r *KThreesConfigReconciler) handleClusterNotInitialized(ctx context.Contex
 		return ctrl.Result{}, err
 	}
 
-	// TODO: move to controlplane provider
-	return r.reconcileKubeconfig(ctx, scope)
+	return ctrl.Result{}, nil
 }
 
 func (r *KThreesConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if r.KThreesInitLock == nil {
-		r.KThreesInitLock = locking.NewControlPlaneInitMutex(ctrl.Log.WithName("init-locker"), mgr.GetClient())
+		r.KThreesInitLock = locking.NewControlPlaneInitMutex(mgr.GetClient())
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
@@ -556,26 +551,6 @@ func (r *KThreesConfigReconciler) storeBootstrapData(ctx context.Context, scope 
 	scope.Config.Status.Ready = true
 	conditions.MarkTrue(scope.Config, bootstrapv1.DataSecretAvailableCondition)
 	return nil
-}
-
-func (r *KThreesConfigReconciler) reconcileKubeconfig(ctx context.Context, scope *Scope) (ctrl.Result, error) {
-	logger := r.Log.WithValues("cluster", scope.Cluster.Name, "namespace", scope.Cluster.Namespace)
-
-	_, err := secret.Get(ctx, r.Client, util.ObjectKey(scope.Cluster), secret.Kubeconfig)
-	switch {
-	case apierrors.IsNotFound(err):
-		if err := kubeconfig.CreateSecret(ctx, r.Client, scope.Cluster); err != nil {
-			if errors.Is(err, kubeconfig.ErrDependentCertificateNotFound) {
-				logger.Info("could not find secret for cluster, requeuing", "secret", secret.ClusterCA)
-				return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
-			}
-			return ctrl.Result{}, err
-		}
-	case err != nil:
-		return ctrl.Result{}, fmt.Errorf("failed to retrieve Kubeconfig Secret for Cluster %q in namespace %q: %w", scope.Cluster.Name, scope.Cluster.Namespace, err)
-	}
-
-	return ctrl.Result{}, nil
 }
 
 func (r *KThreesConfigReconciler) reconcileTopLevelObjectSettings(_ *clusterv1.Cluster, machine *clusterv1.Machine, config *bootstrapv1.KThreesConfig) {

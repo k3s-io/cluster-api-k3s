@@ -124,9 +124,7 @@ func (r *KThreesControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 		// because the main defer may take too much time to get cluster status
 		// Patch ObservedGeneration only if the reconciliation completed successfully
 		patchOpts := []patch.Option{}
-		if err == nil {
-			patchOpts = append(patchOpts, patch.WithStatusObservedGeneration{})
-		}
+		patchOpts = append(patchOpts, patch.WithStatusObservedGeneration{})
 		if err := patchHelper.Patch(ctx, kcp, patchOpts...); err != nil {
 			logger.Error(err, "Failed to patch KThreesControlPlane to add finalizer")
 			return reconcile.Result{}, err
@@ -401,6 +399,35 @@ func (r *KThreesControlPlaneReconciler) updateStatus(ctx context.Context, kcp *c
 		kcp.Status.Ready = true
 		kcp.Status.Initialized = true
 		conditions.MarkTrue(kcp, controlplanev1.AvailableCondition)
+	}
+
+	// Surface lastRemediation data in status.
+	// LastRemediation is the remediation currently in progress, in any, or the
+	// most recent of the remediation we are keeping track on machines.
+	var lastRemediation *RemediationData
+
+	if v, ok := controlPlane.KCP.Annotations[controlplanev1.RemediationInProgressAnnotation]; ok {
+		remediationData, err := RemediationDataFromAnnotation(v)
+		if err != nil {
+			return err
+		}
+		lastRemediation = remediationData
+	} else {
+		for _, m := range controlPlane.Machines.UnsortedList() {
+			if v, ok := m.Annotations[controlplanev1.RemediationForAnnotation]; ok {
+				remediationData, err := RemediationDataFromAnnotation(v)
+				if err != nil {
+					return err
+				}
+				if lastRemediation == nil || lastRemediation.Timestamp.Time.Before(remediationData.Timestamp.Time) {
+					lastRemediation = remediationData
+				}
+			}
+		}
+	}
+
+	if lastRemediation != nil {
+		controlPlane.KCP.Status.LastRemediation = lastRemediation.ToStatus()
 	}
 
 	return nil

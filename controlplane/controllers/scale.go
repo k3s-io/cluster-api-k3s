@@ -377,16 +377,31 @@ func (r *KThreesControlPlaneReconciler) generateMachine(ctx context.Context, kcp
 		},
 	}
 
+	annotations := map[string]string{}
+
 	// Machine's bootstrap config may be missing ClusterConfiguration if it is not the first machine in the control plane.
 	// We store ClusterConfiguration as annotation here to detect any changes in KCP ClusterConfiguration and rollout the machine if any.
 	serverConfig, err := json.Marshal(kcp.Spec.KThreesConfigSpec.ServerConfig)
 	if err != nil {
 		return fmt.Errorf("failed to marshal cluster configuration: %w", err)
 	}
-	machine.SetAnnotations(map[string]string{controlplanev1.KThreesServerConfigurationAnnotation: string(serverConfig)})
+	annotations[controlplanev1.KThreesServerConfigurationAnnotation] = string(serverConfig)
+
+	// In case this machine is being created as a consequence of a remediation, then add an annotation
+	// tracking remediating data.
+	// NOTE: This is required in order to track remediation retries.
+	if remediationData, ok := kcp.Annotations[controlplanev1.RemediationInProgressAnnotation]; ok {
+		annotations[controlplanev1.RemediationForAnnotation] = remediationData
+	}
+
+	machine.SetAnnotations(annotations)
 
 	if err := r.Client.Create(ctx, machine); err != nil {
 		return fmt.Errorf("failed to create machine: %w", err)
 	}
+
+	// Remove the annotation tracking that a remediation is in progress (the remediation completed when
+	// the replacement machine has been created above).
+	delete(kcp.Annotations, controlplanev1.RemediationInProgressAnnotation)
 	return nil
 }
