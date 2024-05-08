@@ -1,0 +1,404 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.14.0
+  name: kthreescontrolplanetemplates.controlplane.cluster.x-k8s.io
+spec:
+  group: controlplane.cluster.x-k8s.io
+  names:
+    kind: KThreesControlPlaneTemplate
+    listKind: KThreesControlPlaneTemplateList
+    plural: kthreescontrolplanetemplates
+    singular: kthreescontrolplanetemplate
+  scope: Namespaced
+  versions:
+  - name: v1beta2
+    schema:
+      openAPIV3Schema:
+        description: KThreesControlPlaneTemplate is the Schema for the kthreescontrolplanetemplate
+          API.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: KThreesControlPlaneTemplateSpec defines the desired state
+              of KThreesControlPlaneTemplateSpec.
+            properties:
+              template:
+                properties:
+                  metadata:
+                    description: |-
+                      Standard object's metadata.
+                      More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
+                    type: object
+                  spec:
+                    properties:
+                      kthreesConfigSpec:
+                        description: |-
+                          KThreesConfigSpec is a KThreesConfigSpec
+                          to use for initializing and joining machines to the control plane.
+                        properties:
+                          agentConfig:
+                            description: AgentConfig specifies configuration for the
+                              agent nodes
+                            properties:
+                              airGapped:
+                                description: |-
+                                  AirGapped is a boolean value to define if the bootstrapping should be air-gapped,
+                                  basically supposing that online container registries and k3s install scripts are not reachable.
+                                  User should prepare docker image, k3s binary, and put the install script in `/opt/install.sh`
+                                  on all nodes in the air-gap environment.
+                                type: boolean
+                              kubeProxyArgs:
+                                description: KubeProxyArgs Customized flag for kube-proxy
+                                  process
+                                items:
+                                  type: string
+                                type: array
+                              kubeletArgs:
+                                description: KubeletArgs Customized flag for kubelet
+                                  process
+                                items:
+                                  type: string
+                                type: array
+                              nodeLabels:
+                                description: NodeLabels  Registering and starting
+                                  kubelet with set of labels
+                                items:
+                                  type: string
+                                type: array
+                              nodeName:
+                                description: NodeName Name of the Node
+                                type: string
+                              nodeTaints:
+                                description: NodeTaints Registering kubelet with set
+                                  of taints
+                                items:
+                                  type: string
+                                type: array
+                              privateRegistry:
+                                description: |-
+                                  TODO: take in a object or secret and write to file. this is not useful
+                                  PrivateRegistry  registry configuration file (default: "/etc/rancher/k3s/registries.yaml")
+                                type: string
+                            type: object
+                          files:
+                            description: Files specifies extra files to be passed
+                              to user_data upon creation.
+                            items:
+                              description: File defines the input for generating write_files
+                                in cloud-init.
+                              properties:
+                                content:
+                                  description: Content is the actual content of the
+                                    file.
+                                  type: string
+                                contentFrom:
+                                  description: ContentFrom is a referenced source
+                                    of content to populate the file.
+                                  properties:
+                                    secret:
+                                      description: Secret represents a secret that
+                                        should populate this file.
+                                      properties:
+                                        key:
+                                          description: Key is the key in the secret's
+                                            data map for this value.
+                                          type: string
+                                        name:
+                                          description: Name of the secret in the KThreesBootstrapConfig's
+                                            namespace to use.
+                                          type: string
+                                      required:
+                                      - key
+                                      - name
+                                      type: object
+                                  required:
+                                  - secret
+                                  type: object
+                                encoding:
+                                  description: Encoding specifies the encoding of
+                                    the file contents.
+                                  enum:
+                                  - base64
+                                  - gzip
+                                  - gzip+base64
+                                  type: string
+                                owner:
+                                  description: Owner specifies the ownership of the
+                                    file, e.g. "root:root".
+                                  type: string
+                                path:
+                                  description: Path specifies the full path on disk
+                                    where to store the file.
+                                  type: string
+                                permissions:
+                                  description: Permissions specifies the permissions
+                                    to assign to the file, e.g. "0640".
+                                  type: string
+                              required:
+                              - path
+                              type: object
+                            type: array
+                          postK3sCommands:
+                            description: PostK3sCommands specifies extra commands
+                              to run after k3s setup runs
+                            items:
+                              type: string
+                            type: array
+                          preK3sCommands:
+                            description: PreK3sCommands specifies extra commands to
+                              run before k3s setup runs
+                            items:
+                              type: string
+                            type: array
+                          serverConfig:
+                            description: ServerConfig specifies configuration for
+                              the agent nodes
+                            properties:
+                              advertiseAddress:
+                                description: 'AdvertiseAddress IP address that apiserver
+                                  uses to advertise to members of the cluster (default:
+                                  node-external-ip/node-ip)'
+                                type: string
+                              advertisePort:
+                                description: 'AdvertisePort Port that apiserver uses
+                                  to advertise to members of the cluster (default:
+                                  listen-port) (default: 0)'
+                                type: string
+                              bindAddress:
+                                description: 'BindAddress k3s bind address (default:
+                                  0.0.0.0)'
+                                type: string
+                              clusterCidr:
+                                description: 'ClusterCidr  Network CIDR to use for
+                                  pod IPs (default: "10.42.0.0/16")'
+                                type: string
+                              clusterDNS:
+                                description: 'ClusterDNS  Cluster IP for coredns service.
+                                  Should be in your service-cidr range (default: 10.43.0.10)'
+                                type: string
+                              clusterDomain:
+                                description: 'ClusterDomain Cluster Domain (default:
+                                  "cluster.local")'
+                                type: string
+                              disableComponents:
+                                description: DisableComponents  specifies extra commands
+                                  to run before k3s setup runs
+                                items:
+                                  type: string
+                                type: array
+                              disableExternalCloudProvider:
+                                description: 'DisableExternalCloudProvider suppresses
+                                  the ''cloud-provider=external'' kubelet argument.
+                                  (default: false)'
+                                type: boolean
+                              httpsListenPort:
+                                description: 'HTTPSListenPort HTTPS listen port (default:
+                                  6443)'
+                                type: string
+                              kubeAPIServerArg:
+                                description: KubeAPIServerArgs is a customized flag
+                                  for kube-apiserver process
+                                items:
+                                  type: string
+                                type: array
+                              kubeControllerManagerArgs:
+                                description: KubeControllerManagerArgs is a customized
+                                  flag for kube-controller-manager process
+                                items:
+                                  type: string
+                                type: array
+                              kubeSchedulerArgs:
+                                description: KubeSchedulerArgs is a customized flag
+                                  for kube-scheduler process
+                                items:
+                                  type: string
+                                type: array
+                              serviceCidr:
+                                description: 'ServiceCidr Network CIDR to use for
+                                  services IPs (default: "10.43.0.0/16")'
+                                type: string
+                              tlsSan:
+                                description: TLSSan Add additional hostname or IP
+                                  as a Subject Alternative Name in the TLS cert
+                                items:
+                                  type: string
+                                type: array
+                            type: object
+                          version:
+                            description: Version specifies the k3s version
+                            type: string
+                        type: object
+                      machineTemplate:
+                        description: |-
+                          MachineTemplate contains information about how machines should be shaped
+                          when creating or updating a control plane.
+                        properties:
+                          infrastructureRef:
+                            description: |-
+                              InfrastructureRef is a required reference to a custom resource
+                              offered by an infrastructure provider.
+                            properties:
+                              apiVersion:
+                                description: API version of the referent.
+                                type: string
+                              fieldPath:
+                                description: |-
+                                  If referring to a piece of an object instead of an entire object, this string
+                                  should contain a valid JSON/Go field access statement, such as desiredState.manifest.containers[2].
+                                  For example, if the object reference is to a container within a pod, this would take on a value like:
+                                  "spec.containers{name}" (where "name" refers to the name of the container that triggered
+                                  the event) or if no container name is specified "spec.containers[2]" (container with
+                                  index 2 in this pod). This syntax is chosen only to have some well-defined way of
+                                  referencing a part of an object.
+                                  TODO: this design is not final and this field is subject to change in the future.
+                                type: string
+                              kind:
+                                description: |-
+                                  Kind of the referent.
+                                  More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+                                type: string
+                              name:
+                                description: |-
+                                  Name of the referent.
+                                  More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                type: string
+                              namespace:
+                                description: |-
+                                  Namespace of the referent.
+                                  More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/
+                                type: string
+                              resourceVersion:
+                                description: |-
+                                  Specific resourceVersion to which this reference is made, if any.
+                                  More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#concurrency-control-and-consistency
+                                type: string
+                              uid:
+                                description: |-
+                                  UID of the referent.
+                                  More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#uids
+                                type: string
+                            type: object
+                            x-kubernetes-map-type: atomic
+                          metadata:
+                            description: |-
+                              Standard object's metadata.
+                              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
+                            properties:
+                              annotations:
+                                additionalProperties:
+                                  type: string
+                                description: |-
+                                  Annotations is an unstructured key value map stored with a resource that may be
+                                  set by external tools to store and retrieve arbitrary metadata. They are not
+                                  queryable and should be preserved when modifying objects.
+                                  More info: http://kubernetes.io/docs/user-guide/annotations
+                                type: object
+                              labels:
+                                additionalProperties:
+                                  type: string
+                                description: |-
+                                  Map of string keys and values that can be used to organize and categorize
+                                  (scope and select) objects. May match selectors of replication controllers
+                                  and services.
+                                  More info: http://kubernetes.io/docs/user-guide/labels
+                                type: object
+                            type: object
+                          nodeDrainTimeout:
+                            description: |-
+                              NodeDrainTimeout is the total amount of time that the controller will spend on draining a controlplane node
+                              The default value is 0, meaning that the node can be drained without any time limitations.
+                              NOTE: NodeDrainTimeout is different from `kubectl drain --timeout`
+                            type: string
+                        required:
+                        - infrastructureRef
+                        type: object
+                      remediationStrategy:
+                        description: The RemediationStrategy that controls how control
+                          plane machine remediation happens.
+                        properties:
+                          maxRetry:
+                            description: "MaxRetry is the Max number of retries while
+                              attempting to remediate an unhealthy machine.\nA retry
+                              happens when a machine that was created as a replacement
+                              for an unhealthy machine also fails.\nFor example, given
+                              a control plane with three machines M1, M2, M3:\n\n\n\tM1
+                              become unhealthy; remediation happens, and M1-1 is created
+                              as a replacement.\n\tIf M1-1 (replacement of M1) has
+                              problems while bootstrapping it will become unhealthy,
+                              and then be\n\tremediated; such operation is considered
+                              a retry, remediation-retry #1.\n\tIf M1-2 (replacement
+                              of M1-1) becomes unhealthy, remediation-retry #2 will
+                              happen, etc.\n\n\nA retry could happen only after RetryPeriod
+                              from the previous retry.\nIf a machine is marked as
+                              unhealthy after MinHealthyPeriod from the previous remediation
+                              expired,\nthis is not considered a retry anymore because
+                              the new issue is assumed unrelated from the previous
+                              one.\n\n\nIf not set, the remedation will be retried
+                              infinitely."
+                            format: int32
+                            type: integer
+                          minHealthyPeriod:
+                            description: "MinHealthyPeriod defines the duration after
+                              which KCP will consider any failure to a machine unrelated\nfrom
+                              the previous one. In this case the remediation is not
+                              considered a retry anymore, and thus the retry\ncounter
+                              restarts from 0. For example, assuming MinHealthyPeriod
+                              is set to 1h (default)\n\n\n\tM1 become unhealthy; remediation
+                              happens, and M1-1 is created as a replacement.\n\tIf
+                              M1-1 (replacement of M1) has problems within the 1hr
+                              after the creation, also\n\tthis machine will be remediated
+                              and this operation is considered a retry - a problem
+                              related\n\tto the original issue happened to M1 -.\n\n\n\tIf
+                              instead the problem on M1-1 is happening after MinHealthyPeriod
+                              expired, e.g. four days after\n\tm1-1 has been created
+                              as a remediation of M1, the problem on M1-1 is considered
+                              unrelated to\n\tthe original issue happened to M1.\n\n\nIf
+                              not set, this value is defaulted to 1h."
+                            type: string
+                          retryPeriod:
+                            description: |-
+                              RetryPeriod is the duration that KCP should wait before remediating a machine being created as a replacement
+                              for an unhealthy machine (a retry).
+
+
+                              If not set, a retry will happen immediately.
+                            type: string
+                        type: object
+                      upgradeAfter:
+                        description: |-
+                          UpgradeAfter is a field to indicate an upgrade should be performed
+                          after the specified time even if no changes have been made to the
+                          KThreesControlPlane
+                        format: date-time
+                        type: string
+                    type: object
+                required:
+                - spec
+                type: object
+            required:
+            - template
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
