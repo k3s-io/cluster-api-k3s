@@ -5,6 +5,12 @@ resources:
   kind: KThreesConfig
   version: v1beta1
 - group: bootstrap
+  kind: KThreesConfig
+  version: v1beta2
+- group: bootstrap
   kind: KThreesConfigTemplate
   version: v1beta1
+- group: bootstrap
+  kind: KThreesConfigTemplate
+  version: v1beta2
 version: "2"

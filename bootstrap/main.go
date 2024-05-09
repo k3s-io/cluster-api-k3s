@@ -33,6 +33,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	bootstrapv1beta1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta1"
+	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
 	"github.com/k3s-io/cluster-api-k3s/bootstrap/controllers"
 )
 
@@ -46,6 +47,7 @@ func init() {
 	_ = clusterv1beta1.AddToScheme(scheme)
 	_ = expv1beta1.AddToScheme(scheme)
 	_ = bootstrapv1beta1.AddToScheme(scheme)
+	_ = bootstrapv1.AddToScheme(scheme)
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -92,6 +94,17 @@ func main() {
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "KThreesConfig")
 		os.Exit(1)
+	}
+
+	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
+		if err = (&bootstrapv1.KThreesConfig{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "KThreesConfig")
+			os.Exit(1)
+		}
+		if err = (&bootstrapv1.KThreesConfigTemplate{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "KThreesConfigTemplate")
+			os.Exit(1)
+		}
 	}
 	// +kubebuilder:scaffold:builder
 

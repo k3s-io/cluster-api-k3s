@@ -22,7 +22,7 @@ import (
 	"strings"
 	"text/template"
 
-	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta1"
+	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
 )
 
 var (
