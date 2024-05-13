@@ -17,9 +17,10 @@ limitations under the License.
 package v1beta2
 
 import (
+	"context"
+
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -33,24 +34,25 @@ func (c *KThreesConfigTemplate) SetupWebhookWithManager(mgr ctrl.Manager) error 
 // +kubebuilder:webhook:verbs=create;update,path=/validate-controlplane-cluster-x-k8s-io-v1beta2-kthreesconfigtemplate,mutating=false,failurePolicy=fail,matchPolicy=Equivalent,groups=bootstrap.cluster.x-k8s.io,resources=kthreesconfigtemplate,versions=v1beta2,name=validation.kthreesconfigtemplate.bootstrap.cluster.x-k8s.io,sideEffects=None,admissionReviewVersions=v1;v1beta2
 // +kubebuilder:webhook:verbs=create;update,path=/mutate-controlplane-cluster-x-k8s-io-v1beta2-kthreesconfigtemplate,mutating=true,failurePolicy=fail,matchPolicy=Equivalent,groups=bootstrap.cluster.x-k8s.io,resources=kthreesconfigtemplate,versions=v1beta2,name=default.kthreesconfigtemplate.bootstrap.cluster.x-k8s.io,sideEffects=None,admissionReviewVersions=v1;v1beta2
 
-var _ webhook.Defaulter = &KThreesConfigTemplate{}
-var _ webhook.Validator = &KThreesConfigTemplate{}
+var _ admission.CustomDefaulter = &KThreesConfigTemplate{}
+var _ admission.CustomValidator = &KThreesConfigTemplate{}
 
 // ValidateCreate will do any extra validation when creating a KThreesControlPlane.
-func (c *KThreesConfigTemplate) ValidateCreate() (admission.Warnings, error) {
+func (c *KThreesConfigTemplate) ValidateCreate(_ context.Context, _ runtime.Object) (admission.Warnings, error) {
 	return []string{}, nil
 }
 
 // ValidateUpdate will do any extra validation when updating a KThreesControlPlane.
-func (c *KThreesConfigTemplate) ValidateUpdate(runtime.Object) (admission.Warnings, error) {
+func (c *KThreesConfigTemplate) ValidateUpdate(_ context.Context, _, _ runtime.Object) (admission.Warnings, error) {
 	return []string{}, nil
 }
 
 // ValidateDelete allows you to add any extra validation when deleting.
-func (c *KThreesConfigTemplate) ValidateDelete() (admission.Warnings, error) {
+func (c *KThreesConfigTemplate) ValidateDelete(_ context.Context, _ runtime.Object) (admission.Warnings, error) {
 	return []string{}, nil
 }
 
 // Default will set default values for the KThreesControlPlane.
-func (c *KThreesConfigTemplate) Default() {
+func (c *KThreesConfigTemplate) Default(_ context.Context, _ runtime.Object) error {
+	return nil
 }
