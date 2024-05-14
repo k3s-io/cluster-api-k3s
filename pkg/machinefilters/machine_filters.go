@@ -114,6 +114,9 @@ func MatchesKThreesBootstrapConfig(machineConfigs map[string]*bootstrapv1.KThree
 		// we are cleaning up from the reflect.DeepEqual comparison.
 		kcpConfig.ServerConfig = bootstrapv1.KThreesServerConfig{}
 		machineConfig.Spec.ServerConfig = bootstrapv1.KThreesServerConfig{}
+		// KCP version check is handled elsewhere
+		kcpConfig.Version = ""
+		machineConfig.Spec.Version = ""
 
 		return reflect.DeepEqual(&machineConfig.Spec, kcpConfig)
 	}
