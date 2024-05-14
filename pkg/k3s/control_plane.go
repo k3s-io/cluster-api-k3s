@@ -267,6 +267,11 @@ func (c *ControlPlane) NeedsReplacementNode() bool {
 	return len(c.Machines)+1 == int(*c.KCP.Spec.Replicas)
 }
 
+// HasHealthyMachineStillProvisioning returns true if any healthy machine in the control plane is still in the process of being provisioned.
+func (c *ControlPlane) HasHealthyMachineStillProvisioning() bool {
+	return len(c.HealthyMachines().Filter(collections.Not(collections.HasNode()))) > 0
+}
+
 // HasDeletingMachine returns true if any machine in the control plane is in the process of being deleted.
 func (c *ControlPlane) HasDeletingMachine() bool {
 	return len(c.Machines.Filter(collections.HasDeletionTimestamp)) > 0

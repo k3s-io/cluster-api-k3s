@@ -77,10 +77,10 @@ func (r *MachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, nil
 	}
 
-	// if machine registered PreTerminate hook, wait for capi to drain and deattach volume, then remove etcd member
+	// if machine registered PreTerminate hook, wait for capi asks to resolve PreTerminateDeleteHook
 	if annotations.HasWithPrefix(clusterv1.PreTerminateDeleteHookAnnotationPrefix, m.ObjectMeta.Annotations) &&
 		m.ObjectMeta.Annotations[clusterv1.PreTerminateDeleteHookAnnotationPrefix] == k3sHookName {
-		if !conditions.IsTrue(m, clusterv1.DrainingSucceededCondition) || !conditions.IsTrue(m, clusterv1.VolumeDetachSucceededCondition) {
+		if !conditions.IsFalse(m, clusterv1.PreTerminateDeleteHookSucceededCondition) {
 			logger.Info("wait for machine drain and detech volume operation complete.")
 			return ctrl.Result{}, nil
 		}
@@ -106,7 +106,9 @@ func (r *MachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			logger.Info("wait k3s embedded etcd controller to remove etcd")
 			return ctrl.Result{Requeue: true}, err
 		}
-		logger.Info("etcd remove etcd member succeeded", "node", m.Status.NodeRef.Name)
+
+		// It is possible that the machine has no machine ref yet, will record the machine name in log
+		logger.Info("etcd remove etcd member succeeded", "machine name", m.Name)
 
 		patchHelper, err := patch.NewHelper(m, r.Client)
 		if err != nil {
