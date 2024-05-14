@@ -18,14 +18,15 @@ import (
 	unsafe "unsafe"
 
 	"k8s.io/apimachinery/pkg/conversion"
+	utilconversion "sigs.k8s.io/cluster-api/util/conversion"
 	ctrlconversion "sigs.k8s.io/controller-runtime/pkg/conversion"
 
 	bootstrapv1beta1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta1"
 	bootstrapv1beta2 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
-	cabp3v1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
+	controlplanev1beta2 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
 )
 
-func Convert_v1beta1_KThreesControlPlaneSpec_To_v1beta2_KThreesControlPlaneSpec(in *KThreesControlPlaneSpec, out *cabp3v1.KThreesControlPlaneSpec, s conversion.Scope) error { //nolint: stylecheck
+func Convert_v1beta1_KThreesControlPlaneSpec_To_v1beta2_KThreesControlPlaneSpec(in *KThreesControlPlaneSpec, out *controlplanev1beta2.KThreesControlPlaneSpec, s conversion.Scope) error { //nolint: stylecheck
 	out.Replicas = in.Replicas
 	out.Version = in.Version
 	if err := Convert_v1beta1_KThreesConfigSpec_To_v1beta2_KThreesConfigSpec(&in.KThreesConfigSpec, &out.KThreesConfigSpec, s); err != nil {
@@ -37,11 +38,11 @@ func Convert_v1beta1_KThreesControlPlaneSpec_To_v1beta2_KThreesControlPlaneSpec(
 	}
 	out.MachineTemplate.NodeDrainTimeout = in.NodeDrainTimeout
 	out.MachineTemplate.InfrastructureRef = in.InfrastructureTemplate
-	out.RemediationStrategy = (*cabp3v1.RemediationStrategy)(unsafe.Pointer(in.RemediationStrategy))
+	out.RemediationStrategy = (*controlplanev1beta2.RemediationStrategy)(unsafe.Pointer(in.RemediationStrategy))
 	return nil
 }
 
-func Convert_v1beta2_KThreesControlPlaneSpec_To_v1beta1_KThreesControlPlaneSpec(in *cabp3v1.KThreesControlPlaneSpec, out *KThreesControlPlaneSpec, s conversion.Scope) error { //nolint: stylecheck
+func Convert_v1beta2_KThreesControlPlaneSpec_To_v1beta1_KThreesControlPlaneSpec(in *controlplanev1beta2.KThreesControlPlaneSpec, out *KThreesControlPlaneSpec, s conversion.Scope) error { //nolint: stylecheck
 	out.Replicas = in.Replicas
 	out.Version = in.Version
 	out.InfrastructureTemplate = in.MachineTemplate.InfrastructureRef
@@ -57,7 +58,7 @@ func Convert_v1beta2_KThreesControlPlaneSpec_To_v1beta1_KThreesControlPlaneSpec(
 	return nil
 }
 
-func Convert_v1beta2_KThreesControlPlaneMachineTemplate_To_v1beta1_KThreesControlPlaneMachineTemplate(in *cabp3v1.KThreesControlPlaneMachineTemplate, out *KThreesControlPlaneMachineTemplate, s conversion.Scope) error { //nolint: stylecheck
+func Convert_v1beta2_KThreesControlPlaneMachineTemplate_To_v1beta1_KThreesControlPlaneMachineTemplate(in *controlplanev1beta2.KThreesControlPlaneMachineTemplate, out *KThreesControlPlaneMachineTemplate, s conversion.Scope) error { //nolint: stylecheck
 	out.ObjectMeta = in.ObjectMeta
 	return nil
 }
@@ -72,25 +73,41 @@ func Convert_v1beta2_KThreesConfigSpec_To_v1beta1_KThreesConfigSpec(in *bootstra
 
 // ConvertTo converts the v1beta1 KThreesControlPlane receiver to a v1beta2 KThreesControlPlane.
 func (in *KThreesControlPlane) ConvertTo(dstRaw ctrlconversion.Hub) error {
-	dst := dstRaw.(*cabp3v1.KThreesControlPlane)
+	dst := dstRaw.(*controlplanev1beta2.KThreesControlPlane)
 	if err := Convert_v1beta1_KThreesControlPlane_To_v1beta2_KThreesControlPlane(in, dst, nil); err != nil {
 		return fmt.Errorf("converting KThreesControlPlane v1beta1 to v1beta2: %w", err)
 	}
+
+	restored := &controlplanev1beta2.KThreesControlPlane{}
+	if ok, err := utilconversion.UnmarshalData(in, restored); err != nil {
+		return fmt.Errorf("unmarshalling stored conversion data: %w", err)
+	} else if !ok {
+		// No stored data.
+		return nil
+	}
+
+	dst.Spec.KThreesConfigSpec.ServerConfig.CloudProviderName = restored.Spec.KThreesConfigSpec.ServerConfig.CloudProviderName
+	dst.Spec.KThreesConfigSpec.ServerConfig.DeprecatedDisableExternalCloudProvider = restored.Spec.KThreesConfigSpec.ServerConfig.DeprecatedDisableExternalCloudProvider
+	dst.Spec.KThreesConfigSpec.ServerConfig.DisableCloudController = restored.Spec.KThreesConfigSpec.ServerConfig.DisableCloudController
 	return nil
 }
 
 // ConvertFrom converts the v1beta1 KThreesControlPlane receiver from a v1beta2 KThreesControlPlane.
 func (in *KThreesControlPlane) ConvertFrom(srcRaw ctrlconversion.Hub) error {
-	src := srcRaw.(*cabp3v1.KThreesControlPlane)
+	src := srcRaw.(*controlplanev1beta2.KThreesControlPlane)
 	if err := Convert_v1beta2_KThreesControlPlane_To_v1beta1_KThreesControlPlane(src, in, nil); err != nil {
 		return fmt.Errorf("converting KThreesControlPlane v1beta1 from v1beta2: %w", err)
+	}
+
+	if err := utilconversion.MarshalData(src, in); err != nil {
+		return fmt.Errorf("storing conversion data: %w", err)
 	}
 	return nil
 }
 
 // ConvertTo converts the v1beta1 KThreesControlPlaneList receiver to a v1beta2 KThreesControlPlaneList.
 func (in *KThreesControlPlaneList) ConvertTo(dstRaw ctrlconversion.Hub) error {
-	dst := dstRaw.(*cabp3v1.KThreesControlPlaneList)
+	dst := dstRaw.(*controlplanev1beta2.KThreesControlPlaneList)
 	if err := Convert_v1beta1_KThreesControlPlaneList_To_v1beta2_KThreesControlPlaneList(in, dst, nil); err != nil {
 		return fmt.Errorf("converting KThreesControlPlaneList v1beta1 to v1beta2: %w", err)
 	}
@@ -99,7 +116,7 @@ func (in *KThreesControlPlaneList) ConvertTo(dstRaw ctrlconversion.Hub) error {
 
 // ConvertFrom converts the v1beta1 KThreesControlPlaneList receiver from a v1beta2 KThreesControlPlaneList.
 func (in *KThreesControlPlaneList) ConvertFrom(srcRaw ctrlconversion.Hub) error {
-	src := srcRaw.(*cabp3v1.KThreesControlPlaneList)
+	src := srcRaw.(*controlplanev1beta2.KThreesControlPlaneList)
 	if err := Convert_v1beta2_KThreesControlPlaneList_To_v1beta1_KThreesControlPlaneList(src, in, nil); err != nil {
 		return fmt.Errorf("converting KThreesControlPlaneList v1beta1 from v1beta2: %w", err)
 	}

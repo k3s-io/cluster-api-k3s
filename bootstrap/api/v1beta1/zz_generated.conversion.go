@@ -146,16 +146,6 @@ func RegisterConversions(s *runtime.Scheme) error {
 	}); err != nil {
 		return err
 	}
-	if err := s.AddGeneratedConversionFunc((*KThreesServerConfig)(nil), (*v1beta2.KThreesServerConfig)(nil), func(a, b interface{}, scope conversion.Scope) error {
-		return Convert_v1beta1_KThreesServerConfig_To_v1beta2_KThreesServerConfig(a.(*KThreesServerConfig), b.(*v1beta2.KThreesServerConfig), scope)
-	}); err != nil {
-		return err
-	}
-	if err := s.AddGeneratedConversionFunc((*v1beta2.KThreesServerConfig)(nil), (*KThreesServerConfig)(nil), func(a, b interface{}, scope conversion.Scope) error {
-		return Convert_v1beta2_KThreesServerConfig_To_v1beta1_KThreesServerConfig(a.(*v1beta2.KThreesServerConfig), b.(*KThreesServerConfig), scope)
-	}); err != nil {
-		return err
-	}
 	if err := s.AddGeneratedConversionFunc((*SecretFileSource)(nil), (*v1beta2.SecretFileSource)(nil), func(a, b interface{}, scope conversion.Scope) error {
 		return Convert_v1beta1_SecretFileSource_To_v1beta2_SecretFileSource(a.(*SecretFileSource), b.(*v1beta2.SecretFileSource), scope)
 	}); err != nil {
@@ -163,6 +153,16 @@ func RegisterConversions(s *runtime.Scheme) error {
 	}
 	if err := s.AddGeneratedConversionFunc((*v1beta2.SecretFileSource)(nil), (*SecretFileSource)(nil), func(a, b interface{}, scope conversion.Scope) error {
 		return Convert_v1beta2_SecretFileSource_To_v1beta1_SecretFileSource(a.(*v1beta2.SecretFileSource), b.(*SecretFileSource), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddConversionFunc((*KThreesServerConfig)(nil), (*v1beta2.KThreesServerConfig)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_v1beta1_KThreesServerConfig_To_v1beta2_KThreesServerConfig(a.(*KThreesServerConfig), b.(*v1beta2.KThreesServerConfig), scope)
+	}); err != nil {
+		return err
+	}
+	if err := s.AddConversionFunc((*v1beta2.KThreesServerConfig)(nil), (*KThreesServerConfig)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_v1beta2_KThreesServerConfig_To_v1beta1_KThreesServerConfig(a.(*v1beta2.KThreesServerConfig), b.(*KThreesServerConfig), scope)
 	}); err != nil {
 		return err
 	}
@@ -289,7 +289,17 @@ func Convert_v1beta2_KThreesConfig_To_v1beta1_KThreesConfig(in *v1beta2.KThreesC
 
 func autoConvert_v1beta1_KThreesConfigList_To_v1beta2_KThreesConfigList(in *KThreesConfigList, out *v1beta2.KThreesConfigList, s conversion.Scope) error {
 	out.ListMeta = in.ListMeta
-	out.Items = *(*[]v1beta2.KThreesConfig)(unsafe.Pointer(&in.Items))
+	if in.Items != nil {
+		in, out := &in.Items, &out.Items
+		*out = make([]v1beta2.KThreesConfig, len(*in))
+		for i := range *in {
+			if err := Convert_v1beta1_KThreesConfig_To_v1beta2_KThreesConfig(&(*in)[i], &(*out)[i], s); err != nil {
+				return err
+			}
+		}
+	} else {
+		out.Items = nil
+	}
 	return nil
 }
 
@@ -300,7 +310,17 @@ func Convert_v1beta1_KThreesConfigList_To_v1beta2_KThreesConfigList(in *KThreesC
 
 func autoConvert_v1beta2_KThreesConfigList_To_v1beta1_KThreesConfigList(in *v1beta2.KThreesConfigList, out *KThreesConfigList, s conversion.Scope) error {
 	out.ListMeta = in.ListMeta
-	out.Items = *(*[]KThreesConfig)(unsafe.Pointer(&in.Items))
+	if in.Items != nil {
+		in, out := &in.Items, &out.Items
+		*out = make([]KThreesConfig, len(*in))
+		for i := range *in {
+			if err := Convert_v1beta2_KThreesConfig_To_v1beta1_KThreesConfig(&(*in)[i], &(*out)[i], s); err != nil {
+				return err
+			}
+		}
+	} else {
+		out.Items = nil
+	}
 	return nil
 }
 
@@ -407,7 +427,17 @@ func Convert_v1beta2_KThreesConfigTemplate_To_v1beta1_KThreesConfigTemplate(in *
 
 func autoConvert_v1beta1_KThreesConfigTemplateList_To_v1beta2_KThreesConfigTemplateList(in *KThreesConfigTemplateList, out *v1beta2.KThreesConfigTemplateList, s conversion.Scope) error {
 	out.ListMeta = in.ListMeta
-	out.Items = *(*[]v1beta2.KThreesConfigTemplate)(unsafe.Pointer(&in.Items))
+	if in.Items != nil {
+		in, out := &in.Items, &out.Items
+		*out = make([]v1beta2.KThreesConfigTemplate, len(*in))
+		for i := range *in {
+			if err := Convert_v1beta1_KThreesConfigTemplate_To_v1beta2_KThreesConfigTemplate(&(*in)[i], &(*out)[i], s); err != nil {
+				return err
+			}
+		}
+	} else {
+		out.Items = nil
+	}
 	return nil
 }
 
@@ -418,7 +448,17 @@ func Convert_v1beta1_KThreesConfigTemplateList_To_v1beta2_KThreesConfigTemplateL
 
 func autoConvert_v1beta2_KThreesConfigTemplateList_To_v1beta1_KThreesConfigTemplateList(in *v1beta2.KThreesConfigTemplateList, out *KThreesConfigTemplateList, s conversion.Scope) error {
 	out.ListMeta = in.ListMeta
-	out.Items = *(*[]KThreesConfigTemplate)(unsafe.Pointer(&in.Items))
+	if in.Items != nil {
+		in, out := &in.Items, &out.Items
+		*out = make([]KThreesConfigTemplate, len(*in))
+		for i := range *in {
+			if err := Convert_v1beta2_KThreesConfigTemplate_To_v1beta1_KThreesConfigTemplate(&(*in)[i], &(*out)[i], s); err != nil {
+				return err
+			}
+		}
+	} else {
+		out.Items = nil
+	}
 	return nil
 }
 
@@ -489,13 +529,8 @@ func autoConvert_v1beta1_KThreesServerConfig_To_v1beta2_KThreesServerConfig(in *
 	out.ClusterDNS = in.ClusterDNS
 	out.ClusterDomain = in.ClusterDomain
 	out.DisableComponents = *(*[]string)(unsafe.Pointer(&in.DisableComponents))
-	out.DisableExternalCloudProvider = in.DisableExternalCloudProvider
+	// WARNING: in.DisableExternalCloudProvider requires manual conversion: does not exist in peer-type
 	return nil
-}
-
-// Convert_v1beta1_KThreesServerConfig_To_v1beta2_KThreesServerConfig is an autogenerated conversion function.
-func Convert_v1beta1_KThreesServerConfig_To_v1beta2_KThreesServerConfig(in *KThreesServerConfig, out *v1beta2.KThreesServerConfig, s conversion.Scope) error {
-	return autoConvert_v1beta1_KThreesServerConfig_To_v1beta2_KThreesServerConfig(in, out, s)
 }
 
 func autoConvert_v1beta2_KThreesServerConfig_To_v1beta1_KThreesServerConfig(in *v1beta2.KThreesServerConfig, out *KThreesServerConfig, s conversion.Scope) error {
@@ -512,13 +547,10 @@ func autoConvert_v1beta2_KThreesServerConfig_To_v1beta1_KThreesServerConfig(in *
 	out.ClusterDNS = in.ClusterDNS
 	out.ClusterDomain = in.ClusterDomain
 	out.DisableComponents = *(*[]string)(unsafe.Pointer(&in.DisableComponents))
-	out.DisableExternalCloudProvider = in.DisableExternalCloudProvider
+	// WARNING: in.DeprecatedDisableExternalCloudProvider requires manual conversion: does not exist in peer-type
+	// WARNING: in.DisableCloudController requires manual conversion: does not exist in peer-type
+	// WARNING: in.CloudProviderName requires manual conversion: does not exist in peer-type
 	return nil
-}
-
-// Convert_v1beta2_KThreesServerConfig_To_v1beta1_KThreesServerConfig is an autogenerated conversion function.
-func Convert_v1beta2_KThreesServerConfig_To_v1beta1_KThreesServerConfig(in *v1beta2.KThreesServerConfig, out *KThreesServerConfig, s conversion.Scope) error {
-	return autoConvert_v1beta2_KThreesServerConfig_To_v1beta1_KThreesServerConfig(in, out, s)
 }
 
 func autoConvert_v1beta1_SecretFileSource_To_v1beta2_SecretFileSource(in *SecretFileSource, out *v1beta2.SecretFileSource, s conversion.Scope) error {
