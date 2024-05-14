@@ -102,7 +102,20 @@ func MatchesKThreesBootstrapConfig(machineConfigs map[string]*bootstrapv1.KThree
 			return true
 		}
 
-		return true
+		machineConfig, found := machineConfigs[machine.Name]
+		if !found {
+			// Return true here because failing to get KThreesConfig should not be considered as unmatching.
+			// This is a safety precaution to avoid rolling out machines if the client or the api-server is misbehaving.
+			return true
+		}
+
+		kcpConfig := kcp.Spec.KThreesConfigSpec.DeepCopy()
+		// KCP bootstrapv1.KThreesServerConfig will only be compared with a machine's ServerConfig annotation, so
+		// we are cleaning up from the reflect.DeepEqual comparison.
+		kcpConfig.ServerConfig = bootstrapv1.KThreesServerConfig{}
+		machineConfig.Spec.ServerConfig = bootstrapv1.KThreesServerConfig{}
+
+		return reflect.DeepEqual(&machineConfig.Spec, kcpConfig)
 	}
 }
 
@@ -132,7 +145,7 @@ func matchKThreesServerConfig(kcp *controlplanev1.KThreesControlPlane, machine *
 		kThreesServerConfig = &bootstrapv1.KThreesServerConfig{}
 	}
 
-	kcpLocalKThreesServerConfig := kcp.Spec.KThreesConfigSpec.ServerConfig
+	kcpLocalKThreesServerConfig := &kcp.Spec.KThreesConfigSpec.ServerConfig
 
 	// Compare and return.
 	return reflect.DeepEqual(kThreesServerConfig, kcpLocalKThreesServerConfig)
