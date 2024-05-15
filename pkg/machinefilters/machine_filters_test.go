@@ -13,7 +13,7 @@ import (
 	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
 )
 
-func TestMatchesKubeadmBootstrapConfig(t *testing.T) {
+func TestMatchesKThreesBootstrapConfig(t *testing.T) {
 	t.Run("returns true if ClusterConfiguration is equal", func(t *testing.T) {
 		g := NewWithT(t)
 		kcp := &controlplanev1.KThreesControlPlane{
