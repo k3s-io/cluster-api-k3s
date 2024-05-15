@@ -393,9 +393,9 @@ spec:
                               If not set, a retry will happen immediately.
                             type: string
                         type: object
-                      upgradeAfter:
+                      rolloutAfter:
                         description: |-
-                          UpgradeAfter is a field to indicate an upgrade should be performed
+                          RolloutAfter is a field to indicate an rollout should be performed
                           after the specified time even if no changes have been made to the
                           KThreesControlPlane
                         format: date-time
