@@ -25,6 +25,7 @@ import (
 	"sigs.k8s.io/cluster-api/util/collections"
 	"sigs.k8s.io/cluster-api/util/conditions"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
 	"github.com/k3s-io/cluster-api-k3s/pkg/etcd"
@@ -34,6 +35,7 @@ import (
 const (
 	kubeProxyKey              = "kube-proxy"
 	labelNodeRoleControlPlane = "node-role.kubernetes.io/master"
+	k3sServingSecretKey       = "k3s-serving"
 )
 
 var (
@@ -74,6 +76,8 @@ type ClusterStatus struct {
 	Nodes int32
 	// ReadyNodes are the count of nodes that are reporting ready
 	ReadyNodes int32
+	// HasK3sServingSecret will be true if the k3s-serving secret has been uploaded, false otherwise.
+	HasK3sServingSecret bool
 }
 
 func (w *Workload) getControlPlaneNodes(ctx context.Context) (*corev1.NodeList, error) {
@@ -104,6 +108,28 @@ func (w *Workload) ClusterStatus(ctx context.Context) (ClusterStatus, error) {
 			status.ReadyNodes++
 		}
 	}
+
+	// Get the 'k3s-serving' secret in the 'kube-system' namespace.
+	//
+	// The resource we fetch has no particular importance,
+	// this is just to verify that the Control Plane has been initialized,
+	// by fetching any resource that has been uploaded.
+	// Since the `k3s-serving` secret contains the cluster certificate,
+	// this secret is guaranteed to exist in any k3s deployment,
+	// therefore it can be reliably used for this test.
+	key := ctrlclient.ObjectKey{
+		Name:      k3sServingSecretKey,
+		Namespace: metav1.NamespaceSystem,
+	}
+
+	err = w.Client.Get(ctx, key, &corev1.Secret{})
+	// In case of error we do assume the control plane is not initialized yet.
+	if err != nil {
+		logger := log.FromContext(ctx)
+		logger.Info("Control Plane does not seem to be initialized yet.", "reason", err.Error())
+	}
+
+	status.HasK3sServingSecret = err == nil
 
 	return status, nil
 }
