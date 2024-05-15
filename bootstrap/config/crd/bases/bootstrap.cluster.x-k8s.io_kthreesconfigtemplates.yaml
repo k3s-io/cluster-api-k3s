@@ -402,6 +402,11 @@ spec:
                           bindAddress:
                             description: 'BindAddress k3s bind address (default: 0.0.0.0)'
                             type: string
+                          cloudProviderName:
+                            default: external
+                            description: 'CloudProviderName defines the --cloud-provider=
+                              kubelet extra arg. (default: "external")'
+                            type: string
                           clusterCidr:
                             description: 'ClusterCidr  Network CIDR to use for pod
                               IPs (default: "10.42.0.0/16")'
@@ -413,6 +418,11 @@ spec:
                           clusterDomain:
                             description: 'ClusterDomain Cluster Domain (default: "cluster.local")'
                             type: string
+                          disableCloudController:
+                            default: true
+                            description: 'DisableCloudController disables k3s default
+                              cloud controller manager. (default: true)'
+                            type: boolean
                           disableComponents:
                             description: DisableComponents  specifies extra commands
                               to run before k3s setup runs
@@ -420,7 +430,7 @@ spec:
                               type: string
                             type: array
                           disableExternalCloudProvider:
-                            description: 'DisableExternalCloudProvider suppresses
+                            description: 'DeprecatedDisableExternalCloudProvider suppresses
                               the ''cloud-provider=external'' kubelet argument. (default:
                               false)'
                             type: boolean

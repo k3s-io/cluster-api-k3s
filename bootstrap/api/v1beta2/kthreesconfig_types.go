@@ -109,9 +109,19 @@ type KThreesServerConfig struct {
 	// +optional
 	DisableComponents []string `json:"disableComponents,omitempty"`
 
-	// DisableExternalCloudProvider suppresses the 'cloud-provider=external' kubelet argument. (default: false)
+	// DeprecatedDisableExternalCloudProvider suppresses the 'cloud-provider=external' kubelet argument. (default: false)
 	// +optional
-	DisableExternalCloudProvider bool `json:"disableExternalCloudProvider,omitempty"`
+	DeprecatedDisableExternalCloudProvider bool `json:"disableExternalCloudProvider,omitempty"`
+
+	// DisableCloudController disables k3s default cloud controller manager. (default: true)
+	// +optional
+	// +kubebuilder:default=true
+	DisableCloudController bool `json:"disableCloudController,omitempty"`
+
+	// CloudProviderName defines the --cloud-provider= kubelet extra arg. (default: "external")
+	// +optional
+	// +kubebuilder:default=external
+	CloudProviderName string `json:"cloudProviderName,omitempty"`
 }
 
 type KThreesAgentConfig struct {

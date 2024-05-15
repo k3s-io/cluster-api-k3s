@@ -21,18 +21,18 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	utilconversion "sigs.k8s.io/cluster-api/util/conversion"
 
-	cabp3v1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
+	bootstrapv1beta2 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
 )
 
 func TestFuzzyConversion(t *testing.T) {
 	g := NewWithT(t)
 	scheme := runtime.NewScheme()
 	g.Expect(AddToScheme(scheme)).To(Succeed())
-	g.Expect(cabp3v1.AddToScheme(scheme)).To(Succeed())
+	g.Expect(bootstrapv1beta2.AddToScheme(scheme)).To(Succeed())
 
 	t.Run("for KThreesControlPlane", utilconversion.FuzzTestFunc(utilconversion.FuzzTestFuncInput{
 		Scheme:      scheme,
-		Hub:         &cabp3v1.KThreesControlPlane{},
+		Hub:         &bootstrapv1beta2.KThreesControlPlane{},
 		Spoke:       &KThreesControlPlane{},
 		FuzzerFuncs: []fuzzer.FuzzerFuncs{},
 	}))
