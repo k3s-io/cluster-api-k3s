@@ -116,8 +116,8 @@ func (in *KThreesControlPlaneSpec) DeepCopyInto(out *KThreesControlPlaneSpec) {
 		**out = **in
 	}
 	in.KThreesConfigSpec.DeepCopyInto(&out.KThreesConfigSpec)
-	if in.UpgradeAfter != nil {
-		in, out := &in.UpgradeAfter, &out.UpgradeAfter
+	if in.RolloutAfter != nil {
+		in, out := &in.RolloutAfter, &out.RolloutAfter
 		*out = (*in).DeepCopy()
 	}
 	in.MachineTemplate.DeepCopyInto(&out.MachineTemplate)
@@ -249,8 +249,8 @@ func (in *KThreesControlPlaneTemplateResource) DeepCopy() *KThreesControlPlaneTe
 func (in *KThreesControlPlaneTemplateResourceSpec) DeepCopyInto(out *KThreesControlPlaneTemplateResourceSpec) {
 	*out = *in
 	in.KThreesConfigSpec.DeepCopyInto(&out.KThreesConfigSpec)
-	if in.UpgradeAfter != nil {
-		in, out := &in.UpgradeAfter, &out.UpgradeAfter
+	if in.RolloutAfter != nil {
+		in, out := &in.RolloutAfter, &out.RolloutAfter
 		*out = (*in).DeepCopy()
 	}
 	in.MachineTemplate.DeepCopyInto(&out.MachineTemplate)

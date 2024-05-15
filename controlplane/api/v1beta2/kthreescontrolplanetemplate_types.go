@@ -45,7 +45,7 @@ type KThreesControlPlaneTemplateResourceSpec struct {
 	// after the specified time even if no changes have been made to the
 	// KThreesControlPlane
 	// +optional
-	UpgradeAfter *metav1.Time `json:"upgradeAfter,omitempty"`
+	RolloutAfter *metav1.Time `json:"upgradeAfter,omitempty"`
 
 	// MachineTemplate contains information about how machines should be shaped
 	// when creating or updating a control plane.

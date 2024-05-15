@@ -284,8 +284,8 @@ func (c *ControlPlane) MachinesNeedingRollout() collections.Machines {
 
 	// Return machines if they are scheduled for rollout or if with an outdated configuration.
 	return machines.AnyFilter(
-		// Machines that are scheduled for rollout (KCP.Spec.UpgradeAfter set, the UpgradeAfter deadline is expired, and the machine was created before the deadline).
-		collections.ShouldRolloutAfter(&c.reconciliationTime, c.KCP.Spec.UpgradeAfter),
+		// Machines that are scheduled for rollout (KCP.Spec.RolloutAfter set, the RolloutAfter deadline is expired, and the machine was created before the deadline).
+		collections.ShouldRolloutAfter(&c.reconciliationTime, c.KCP.Spec.RolloutAfter),
 		// Machines that do not match with KCP config.
 		collections.Not(machinefilters.MatchesKCPConfiguration(c.infraResources, c.kthreesConfigs, c.KCP)),
 	)

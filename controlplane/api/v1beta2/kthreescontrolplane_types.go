@@ -71,11 +71,11 @@ type KThreesControlPlaneSpec struct {
 	// +optional
 	KThreesConfigSpec bootstrapv1beta2.KThreesConfigSpec `json:"kthreesConfigSpec,omitempty"`
 
-	// UpgradeAfter is a field to indicate an upgrade should be performed
+	// RolloutAfter is a field to indicate a rollout should be performed
 	// after the specified time even if no changes have been made to the
 	// KThreesControlPlane
 	// +optional
-	UpgradeAfter *metav1.Time `json:"upgradeAfter,omitempty"`
+	RolloutAfter *metav1.Time `json:"rolloutAfter,omitempty"`
 
 	// MachineTemplate contains information about how machines should be shaped
 	// when creating or updating a control plane.
