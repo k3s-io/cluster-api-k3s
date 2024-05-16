@@ -6,12 +6,12 @@ metadata:
 webhooks:
 - admissionReviewVersions:
   - v1
-  - v1beta2
+  - v1beta1
   clientConfig:
     service:
       name: webhook-service
       namespace: system
-      path: /mutate-controlplane-cluster-x-k8s-io-v1beta2-kthreesconfig
+      path: /mutate-bootstrap-cluster-x-k8s-io-v1beta2-kthreesconfig
   failurePolicy: Fail
   matchPolicy: Equivalent
   name: default.kthreesconfig.bootstrap.cluster.x-k8s.io
@@ -24,16 +24,16 @@ webhooks:
     - CREATE
     - UPDATE
     resources:
-    - kthreesconfig
+    - kthreesconfigs
   sideEffects: None
 - admissionReviewVersions:
   - v1
-  - v1beta2
+  - v1beta1
   clientConfig:
     service:
       name: webhook-service
       namespace: system
-      path: /mutate-controlplane-cluster-x-k8s-io-v1beta2-kthreesconfigtemplate
+      path: /mutate-bootstrap-cluster-x-k8s-io-v1beta2-kthreesconfigtemplate
   failurePolicy: Fail
   matchPolicy: Equivalent
   name: default.kthreesconfigtemplate.bootstrap.cluster.x-k8s.io
@@ -46,7 +46,7 @@ webhooks:
     - CREATE
     - UPDATE
     resources:
-    - kthreesconfigtemplate
+    - kthreesconfigtemplates
   sideEffects: None
 ---
 apiVersion: admissionregistration.k8s.io/v1
@@ -56,12 +56,12 @@ metadata:
 webhooks:
 - admissionReviewVersions:
   - v1
-  - v1beta2
+  - v1beta1
   clientConfig:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-controlplane-cluster-x-k8s-io-v1beta2-kthreesconfig
+      path: /validate-bootstrap-cluster-x-k8s-io-v1beta2-kthreesconfig
   failurePolicy: Fail
   matchPolicy: Equivalent
   name: validation.kthreesconfig.bootstrap.cluster.x-k8s.io
@@ -74,16 +74,16 @@ webhooks:
     - CREATE
     - UPDATE
     resources:
-    - kthreesconfig
+    - kthreesconfigs
   sideEffects: None
 - admissionReviewVersions:
   - v1
-  - v1beta2
+  - v1beta1
   clientConfig:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-controlplane-cluster-x-k8s-io-v1beta2-kthreesconfigtemplate
+      path: /validate-bootstrap-cluster-x-k8s-io-v1beta2-kthreesconfigtemplate
   failurePolicy: Fail
   matchPolicy: Equivalent
   name: validation.kthreesconfigtemplate.bootstrap.cluster.x-k8s.io
@@ -96,5 +96,5 @@ webhooks:
     - CREATE
     - UPDATE
     resources:
-    - kthreesconfigtemplate
+    - kthreesconfigtemplates
   sideEffects: None
