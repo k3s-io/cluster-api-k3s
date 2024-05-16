@@ -395,9 +395,12 @@ func (r *KThreesControlPlaneReconciler) updateStatus(ctx context.Context, kcp *c
 	kcp.Status.ReadyReplicas = status.ReadyNodes
 	kcp.Status.UnavailableReplicas = replicas - status.ReadyNodes
 
+	if status.HasK3sServingSecret {
+		kcp.Status.Initialized = true
+	}
+
 	if kcp.Status.ReadyReplicas > 0 {
 		kcp.Status.Ready = true
-		kcp.Status.Initialized = true
 		conditions.MarkTrue(kcp, controlplanev1.AvailableCondition)
 	}
 
