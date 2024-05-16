@@ -50,14 +50,41 @@ func TestMatchesKThreesBootstrapConfig(t *testing.T) {
 			},
 		}
 		m := &clusterv1.Machine{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "KThreesConfig",
+				APIVersion: clusterv1.GroupVersion.String(),
+			},
 			ObjectMeta: metav1.ObjectMeta{
-				Annotations: map[string]string{
-					controlplanev1.KThreesServerConfigurationAnnotation: "{\n  \"clusterDomain\": \"bar\"\n}",
+				Namespace: "default",
+				Name:      "test",
+			},
+			Spec: clusterv1.MachineSpec{
+				Bootstrap: clusterv1.Bootstrap{
+					ConfigRef: &corev1.ObjectReference{
+						Kind:       "KThreesConfig",
+						Namespace:  "default",
+						Name:       "test",
+						APIVersion: bootstrapv1.GroupVersion.String(),
+					},
 				},
 			},
 		}
 		machineConfigs := map[string]*bootstrapv1.KThreesConfig{
-			m.Name: {},
+			m.Name: {
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "KThreesConfig",
+					APIVersion: bootstrapv1.GroupVersion.String(),
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      "test",
+				},
+				Spec: bootstrapv1.KThreesConfigSpec{
+					ServerConfig: bootstrapv1.KThreesServerConfig{
+						ClusterDomain: "bar",
+					},
+				},
+			},
 		}
 		match := MatchesKThreesBootstrapConfig(machineConfigs, kcp)(m)
 		g.Expect(match).To(BeFalse())

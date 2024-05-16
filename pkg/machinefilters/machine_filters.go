@@ -17,7 +17,6 @@ limitations under the License.
 package machinefilters
 
 import (
-	"encoding/json"
 	"reflect"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -90,11 +89,6 @@ func MatchesKThreesBootstrapConfig(machineConfigs map[string]*bootstrapv1.KThree
 			return false
 		}
 
-		// Check if KCP and machine KThreesServerConfig matches, if not return
-		if !matchKThreesServerConfig(kcp, machine) {
-			return false
-		}
-
 		bootstrapRef := machine.Spec.Bootstrap.ConfigRef
 		if bootstrapRef == nil {
 			// Missing bootstrap reference should not be considered as unmatching.
@@ -110,46 +104,11 @@ func MatchesKThreesBootstrapConfig(machineConfigs map[string]*bootstrapv1.KThree
 		}
 
 		kcpConfig := kcp.Spec.KThreesConfigSpec.DeepCopy()
-		// KCP bootstrapv1.KThreesServerConfig will only be compared with a machine's ServerConfig annotation, so
-		// we are cleaning up from the reflect.DeepEqual comparison.
-		kcpConfig.ServerConfig = bootstrapv1.KThreesServerConfig{}
-		machineConfig.Spec.ServerConfig = bootstrapv1.KThreesServerConfig{}
+
 		// KCP version check is handled elsewhere
 		kcpConfig.Version = ""
 		machineConfig.Spec.Version = ""
 
 		return reflect.DeepEqual(&machineConfig.Spec, kcpConfig)
 	}
-}
-
-// matchKThreesServerConfig verifies if KCP and machine ClusterConfiguration matches.
-// NOTE: Machines that have KThreesServerConfigurationAnnotation will have to match with KCP KThreesServerConfig.
-// If the annotation is not present (machine is either old or adopted), we won't roll out on any possible changes
-// made in KCP's KThreesServerConfig given that we don't have enough information to make a decision.
-// Users should use KCP.Spec.RolloutAfter field to force a rollout in this case.
-func matchKThreesServerConfig(kcp *controlplanev1.KThreesControlPlane, machine *clusterv1.Machine) bool {
-	kThreesServerConfigStr, ok := machine.GetAnnotations()[controlplanev1.KThreesServerConfigurationAnnotation]
-	if !ok {
-		// We don't have enough information to make a decision; don't' trigger a roll out.
-		return true
-	}
-
-	kThreesServerConfig := &bootstrapv1.KThreesServerConfig{}
-
-	// ClusterConfiguration annotation is not correct, only solution is to rollout.
-	// The call to json.Unmarshal has to take a pointer to the pointer struct defined above,
-	// otherwise we won't be able to handle a nil ClusterConfiguration (that is serialized into "null").
-	if err := json.Unmarshal([]byte(kThreesServerConfigStr), &kThreesServerConfig); err != nil {
-		return false
-	}
-
-	// If any of the compared values are nil, treat them the same as an empty KThreesServerConfig.
-	if kThreesServerConfig == nil {
-		kThreesServerConfig = &bootstrapv1.KThreesServerConfig{}
-	}
-
-	kcpLocalKThreesServerConfig := &kcp.Spec.KThreesConfigSpec.ServerConfig
-
-	// Compare and return.
-	return reflect.DeepEqual(kThreesServerConfig, kcpLocalKThreesServerConfig)
 }
