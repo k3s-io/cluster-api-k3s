@@ -17,6 +17,8 @@ limitations under the License.
 package machinefilters
 
 import (
+	"reflect"
+
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/util/collections"
@@ -83,6 +85,30 @@ func MatchesKubernetesVersion(kubernetesVersion string) Func {
 // MatchesKThreesBootstrapConfig checks if machine's KThreesConfigSpec is equivalent with KCP's KThreesConfigSpec.
 func MatchesKThreesBootstrapConfig(machineConfigs map[string]*bootstrapv1.KThreesConfig, kcp *controlplanev1.KThreesControlPlane) Func {
 	return func(machine *clusterv1.Machine) bool {
-		return true
+		if machine == nil {
+			return false
+		}
+
+		bootstrapRef := machine.Spec.Bootstrap.ConfigRef
+		if bootstrapRef == nil {
+			// Missing bootstrap reference should not be considered as unmatching.
+			// This is a safety precaution to avoid selecting machines that are broken, which in the future should be remediated separately.
+			return true
+		}
+
+		machineConfig, found := machineConfigs[machine.Name]
+		if !found {
+			// Return true here because failing to get KThreesConfig should not be considered as unmatching.
+			// This is a safety precaution to avoid rolling out machines if the client or the api-server is misbehaving.
+			return true
+		}
+
+		kcpConfig := kcp.Spec.KThreesConfigSpec.DeepCopy()
+
+		// KCP version check is handled elsewhere
+		kcpConfig.Version = ""
+		machineConfig.Spec.Version = ""
+
+		return reflect.DeepEqual(&machineConfig.Spec, kcpConfig)
 	}
 }
