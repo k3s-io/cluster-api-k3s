@@ -372,8 +372,10 @@ func (r *KThreesControlPlaneReconciler) generateMachine(ctx context.Context, kcp
 			Bootstrap: clusterv1.Bootstrap{
 				ConfigRef: bootstrapRef,
 			},
-			FailureDomain:    failureDomain,
-			NodeDrainTimeout: kcp.Spec.MachineTemplate.NodeDrainTimeout,
+			FailureDomain:           failureDomain,
+			NodeDrainTimeout:        kcp.Spec.MachineTemplate.NodeDrainTimeout,
+			NodeVolumeDetachTimeout: kcp.Spec.MachineTemplate.NodeVolumeDetachTimeout,
+			NodeDeletionTimeout:     kcp.Spec.MachineTemplate.NodeDeletionTimeout,
 		},
 	}
 
