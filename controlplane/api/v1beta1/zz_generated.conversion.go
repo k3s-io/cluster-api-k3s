@@ -221,7 +221,7 @@ func autoConvert_v1beta1_KThreesControlPlaneSpec_To_v1beta2_KThreesControlPlaneS
 	if err := Convert_v1beta1_KThreesConfigSpec_To_v1beta2_KThreesConfigSpec(&in.KThreesConfigSpec, &out.KThreesConfigSpec, s); err != nil {
 		return err
 	}
-	out.UpgradeAfter = (*v1.Time)(unsafe.Pointer(in.UpgradeAfter))
+	// WARNING: in.UpgradeAfter requires manual conversion: does not exist in peer-type
 	// WARNING: in.NodeDrainTimeout requires manual conversion: does not exist in peer-type
 	if err := Convert_v1beta1_KThreesControlPlaneMachineTemplate_To_v1beta2_KThreesControlPlaneMachineTemplate(&in.MachineTemplate, &out.MachineTemplate, s); err != nil {
 		return err
@@ -236,7 +236,7 @@ func autoConvert_v1beta2_KThreesControlPlaneSpec_To_v1beta1_KThreesControlPlaneS
 	if err := Convert_v1beta2_KThreesConfigSpec_To_v1beta1_KThreesConfigSpec(&in.KThreesConfigSpec, &out.KThreesConfigSpec, s); err != nil {
 		return err
 	}
-	out.UpgradeAfter = (*v1.Time)(unsafe.Pointer(in.UpgradeAfter))
+	// WARNING: in.RolloutAfter requires manual conversion: does not exist in peer-type
 	if err := Convert_v1beta2_KThreesControlPlaneMachineTemplate_To_v1beta1_KThreesControlPlaneMachineTemplate(&in.MachineTemplate, &out.MachineTemplate, s); err != nil {
 		return err
 	}
