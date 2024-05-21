@@ -211,6 +211,8 @@ func autoConvert_v1beta2_KThreesControlPlaneMachineTemplate_To_v1beta1_KThreesCo
 	out.ObjectMeta = in.ObjectMeta
 	// WARNING: in.InfrastructureRef requires manual conversion: does not exist in peer-type
 	// WARNING: in.NodeDrainTimeout requires manual conversion: does not exist in peer-type
+	// WARNING: in.NodeVolumeDetachTimeout requires manual conversion: does not exist in peer-type
+	// WARNING: in.NodeDeletionTimeout requires manual conversion: does not exist in peer-type
 	return nil
 }
 
