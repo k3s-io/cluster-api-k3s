@@ -80,7 +80,7 @@ const (
 func (m *Management) GetWorkloadCluster(ctx context.Context, clusterKey client.ObjectKey) (*Workload, error) {
 	restConfig, err := remote.RESTConfig(ctx, KThreesControlPlaneControllerName, m.Client, clusterKey)
 	if err != nil {
-		return nil, err
+		return nil, &RemoteClusterConnectionError{Name: clusterKey.String(), Err: err}
 	}
 	restConfig.Timeout = 30 * time.Second
 

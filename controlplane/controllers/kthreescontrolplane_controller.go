@@ -34,6 +34,7 @@ import (
 	"sigs.k8s.io/cluster-api/controllers/external"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/annotations"
+	"sigs.k8s.io/cluster-api/util/certs"
 	"sigs.k8s.io/cluster-api/util/collections"
 	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/patch"
@@ -640,20 +641,17 @@ func (r *KThreesControlPlaneReconciler) reconcileKubeconfig(ctx context.Context,
 		return reconcile.Result{}, nil
 	}
 
-	/**
-	// TODO rotation
 	needsRotation, err := kubeconfig.NeedsClientCertRotation(configSecret, certs.ClientCertificateRenewalDuration)
 	if err != nil {
-		return err
+		return ctrl.Result{}, err
 	}
 
 	if needsRotation {
 		r.Log.Info("rotating kubeconfig secret")
 		if err := kubeconfig.RegenerateSecret(ctx, r.Client, configSecret); err != nil {
-			return fmt.Errorf("failed to regenerate kubeconfig")
+			return ctrl.Result{}, errors.Wrap(err, "failed to regenerate kubeconfig")
 		}
 	}
-	**/
 
 	return reconcile.Result{}, nil
 }
