@@ -22,6 +22,7 @@ import (
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
@@ -60,7 +61,7 @@ func (in *KThreesControlPlane) ValidateDelete(_ context.Context, _ runtime.Objec
 func (in *KThreesControlPlane) Default(_ context.Context, obj runtime.Object) error {
 	c, ok := obj.(*KThreesControlPlane)
 	if !ok {
-		return apierrors.NewBadRequest(fmt.Sprintf("expected a KubeadmConfig but got a %T", obj))
+		return apierrors.NewBadRequest(fmt.Sprintf("expected a KThreesControlPlane but got a %T", obj))
 	}
 
 	defaultKThreesControlPlaneSpec(&c.Spec, c.Namespace)
@@ -75,5 +76,13 @@ func defaultKThreesControlPlaneSpec(s *KThreesControlPlaneSpec, namespace string
 
 	if s.MachineTemplate.InfrastructureRef.Namespace == "" {
 		s.MachineTemplate.InfrastructureRef.Namespace = namespace
+	}
+
+	if s.KThreesConfigSpec.ServerConfig.DisableCloudController == nil {
+		s.KThreesConfigSpec.ServerConfig.DisableCloudController = ptr.To(true)
+	}
+
+	if s.KThreesConfigSpec.ServerConfig.CloudProviderName == nil {
+		s.KThreesConfigSpec.ServerConfig.CloudProviderName = ptr.To("external")
 	}
 }

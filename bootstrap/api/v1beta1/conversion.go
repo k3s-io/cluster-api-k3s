@@ -17,6 +17,7 @@ import (
 	"fmt"
 
 	"k8s.io/apimachinery/pkg/conversion"
+	"k8s.io/utils/ptr"
 	utilconversion "sigs.k8s.io/cluster-api/util/conversion"
 	ctrlconversion "sigs.k8s.io/controller-runtime/pkg/conversion"
 
@@ -136,11 +137,11 @@ func Convert_v1beta1_KThreesServerConfig_To_v1beta2_KThreesServerConfig(in *KThr
 	out.DeprecatedDisableExternalCloudProvider = in.DisableExternalCloudProvider
 
 	if !in.DisableExternalCloudProvider {
-		out.CloudProviderName = "external"
-		out.DisableCloudController = true
+		out.CloudProviderName = ptr.To("external")
+		out.DisableCloudController = ptr.To(true)
 	} else {
-		out.CloudProviderName = ""
-		out.DisableCloudController = false
+		out.CloudProviderName = ptr.To("")
+		out.DisableCloudController = ptr.To(false)
 	}
 
 	return nil

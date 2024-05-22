@@ -442,7 +442,6 @@ spec:
                     description: 'BindAddress k3s bind address (default: 0.0.0.0)'
                     type: string
                   cloudProviderName:
-                    default: external
                     description: 'CloudProviderName defines the --cloud-provider=
                       kubelet extra arg. (default: "external")'
                     type: string
@@ -458,7 +457,6 @@ spec:
                     description: 'ClusterDomain Cluster Domain (default: "cluster.local")'
                     type: string
                   disableCloudController:
-                    default: true
                     description: 'DisableCloudController disables k3s default cloud
                       controller manager. (default: true)'
                     type: boolean
