@@ -18,8 +18,11 @@ package v1beta2
 
 import (
 	"context"
+	"fmt"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
@@ -55,6 +58,18 @@ func (c *KThreesConfig) ValidateDelete(_ context.Context, _ runtime.Object) (adm
 }
 
 // Default will set default values for the KThreesConfig.
-func (c *KThreesConfig) Default(_ context.Context, _ runtime.Object) error {
+func (c *KThreesConfig) Default(_ context.Context, obj runtime.Object) error {
+	c, ok := obj.(*KThreesConfig)
+	if !ok {
+		return apierrors.NewBadRequest(fmt.Sprintf("expected a KThreesConfig but got a %T", obj))
+	}
+
+	if c.Spec.ServerConfig.DisableCloudController == nil {
+		c.Spec.ServerConfig.DisableCloudController = ptr.To(true)
+	}
+
+	if c.Spec.ServerConfig.CloudProviderName == nil {
+		c.Spec.ServerConfig.CloudProviderName = ptr.To("external")
+	}
 	return nil
 }
