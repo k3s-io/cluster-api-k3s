@@ -1,0 +1,157 @@
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: ClusterClass
+metadata:
+  name: k3s
+spec:
+  controlPlane:
+    ref:
+      apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+      kind: KThreesControlPlaneTemplate
+      name: k3s-control-plane
+    machineInfrastructure:
+      ref:
+        kind: DockerMachineTemplate
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        name: k3s-control-plane
+    machineHealthCheck:
+      maxUnhealthy: 100%
+      unhealthyConditions:
+        - type: e2e.remediation.condition
+          status: "False"
+          timeout: 20s
+  infrastructure:
+    ref:
+      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+      kind: DockerClusterTemplate
+      name: k3s-cluster
+  workers:
+    machineDeployments:
+      - class: k3s-default-worker
+        template:
+          bootstrap:
+            ref:
+              apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+              kind: KThreesConfigTemplate
+              name: k3s-default-worker-bootstrap
+          infrastructure:
+            ref:
+              apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+              kind: DockerMachineTemplate
+              name: k3s-default-worker-machinetemplate
+        machineHealthCheck:
+            maxUnhealthy: 100%
+            # We are intentionally not setting the 'unhealthyConditions' here to test that the field is optional.
+    machinePools:
+    - class: k3s-default-worker
+      template:
+        bootstrap:
+            ref:
+              apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+              kind: KThreesConfigTemplate
+              name: k3s-default-worker-bootstrap
+        infrastructure:
+          ref:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+            kind: DockerMachinePoolTemplate
+            name: k3s-default-worker-machinepooltemplate
+  variables:
+    - name: kindImageVersion
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: string
+          default: "v1.28.0"
+  patches:
+    - name: customImage
+      description: "Sets the container image that is used for running dockerMachines for the controlPlane and default-worker machineDeployments."
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+            kind: DockerMachineTemplate
+            matchResources:
+              machineDeploymentClass:
+                names:
+                - k3s-default-worker
+          jsonPatches:
+            - op: add
+              path: "/spec/template/spec/customImage"
+              valueFrom:
+                template: |
+                  kindest/node:{{ .kindImageVersion }}
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+            kind: DockerMachinePoolTemplate
+            matchResources:
+              machinePoolClass:
+                names:
+                - k3s-default-worker
+          jsonPatches:
+            - op: add
+              path: "/spec/template/spec/template/customImage"
+              valueFrom:
+                template: |
+                  kindest/node:{{ .kindImageVersion }}
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+            kind: DockerMachineTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: add
+              path: "/spec/template/spec/customImage"
+              valueFrom:
+                template: |
+                  kindest/node:{{ .kindImageVersion }}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: DockerClusterTemplate
+metadata:
+  name: k3s-cluster
+spec:
+  template:
+    spec: {}
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+kind: KThreesControlPlaneTemplate
+metadata:
+  name: k3s-control-plane
+spec:
+  template:
+    spec:
+      kthreesConfigSpec:
+        serverConfig:
+          tlsSan:
+            - 0.0.0.0
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: DockerMachineTemplate
+metadata:
+  name: k3s-control-plane
+spec:
+  template:
+    spec: {}
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+kind: KThreesConfigTemplate
+metadata:
+  name: k3s-default-worker-bootstrap
+spec:
+  template:
+    spec: {}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: DockerMachineTemplate
+metadata:
+  name: k3s-default-worker-machinetemplate
+spec:
+  template:
+    spec: {}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: DockerMachinePoolTemplate
+metadata:
+  name: k3s-default-worker-machinepooltemplate
+spec:
+  template:
+    spec:
+      template: {}

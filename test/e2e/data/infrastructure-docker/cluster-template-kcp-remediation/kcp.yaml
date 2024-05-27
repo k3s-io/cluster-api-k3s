@@ -1,0 +1,42 @@
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+kind: KThreesControlPlane
+metadata:
+  name: ${CLUSTER_NAME}-control-plane
+  namespace: ${NAMESPACE}
+spec:
+  kthreesConfigSpec:
+    files:
+    - path: /wait-signal.sh
+      content: |
+        #!/bin/bash
+  
+        set -o errexit
+        set -o pipefail
+        
+        echo "Waiting for signal..."
+        
+        TOKEN=$1
+        SERVER=$2
+        NAMESPACE=$3
+        
+        while true;
+        do
+          sleep 1s
+  
+          signal=$(curl -k -s --header "Authorization: Bearer $TOKEN" $SERVER/api/v1/namespaces/$NAMESPACE/configmaps/mhc-test | jq -r .data.signal?)
+          echo "signal $signal"
+  
+          if [ "$signal" == "pass" ]; then
+             curl -k -s --header "Authorization: Bearer $TOKEN" -XPATCH -H "Content-Type: application/strategic-merge-patch+json" --data '{"data": {"signal": "ack-pass"}}' $SERVER/api/v1/namespaces/$NAMESPACE/configmaps/mhc-test
+             exit 0
+          fi
+        done
+      permissions: "0777"
+    preK3sCommands:
+    - ./wait-signal.sh "${TOKEN}" "${SERVER}" "${NAMESPACE}"
+    serverConfig:
+      tlsSan:
+        - localhost
+        - 127.0.0.1
+        - 0.0.0.0
+        - host.docker.internal
