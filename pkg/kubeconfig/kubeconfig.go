@@ -4,9 +4,10 @@ import (
 	"context"
 	"crypto"
 	"crypto/x509"
-	"errors"
 	"fmt"
+	"time"
 
+	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -45,33 +46,33 @@ func generateKubeconfig(ctx context.Context, c client.Client, clusterName client
 
 	clientCACert, err := certs.DecodeCertPEM(clientClusterCA.Data[secret.TLSCrtDataName])
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode CA Cert: %w", err)
+		return nil, errors.Wrap(err, "failed to decode CA Cert")
 	} else if clientCACert == nil {
 		return nil, ErrCertNotInKubeconfig
 	}
 
 	clientCAKey, err := certs.DecodePrivateKeyPEM(clientClusterCA.Data[secret.TLSKeyDataName])
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode private key: %w", err)
+		return nil, errors.Wrap(err, "failed to decode private key")
 	} else if clientCAKey == nil {
 		return nil, ErrCAPrivateKeyNotFound
 	}
 
 	serverCACert, err := certs.DecodeCertPEM(clusterCA.Data[secret.TLSCrtDataName])
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode CA Cert: %w", err)
+		return nil, errors.Wrap(err, "failed to decode CA Cert")
 	} else if serverCACert == nil {
 		return nil, ErrCertNotInKubeconfig
 	}
 
 	cfg, err := New(clusterName.Name, endpoint, clientCACert, clientCAKey, serverCACert)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate a kubeconfig: %w", err)
+		return nil, errors.Wrap(err, "failed to generate a kubeconfig")
 	}
 
 	out, err := clientcmd.Write(*cfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to serialize config to yaml: %w", err)
+		return nil, errors.Wrap(err, "failed to serialize config to yaml")
 	}
 	return out, nil
 }
@@ -86,12 +87,12 @@ func New(clusterName, endpoint string, clientCACert *x509.Certificate, clientCAK
 
 	clientKey, err := certs.NewPrivateKey()
 	if err != nil {
-		return nil, fmt.Errorf("unable to create private key: %w", err)
+		return nil, errors.Wrap(err, "unable to create private key")
 	}
 
 	clientCert, err := cfg.NewSignedCert(clientKey, clientCACert, clientCAKey)
 	if err != nil {
-		return nil, fmt.Errorf("unable to sign certificate: %w", err)
+		return nil, errors.Wrap(err, "unable to sign certificate")
 	}
 
 	userName := fmt.Sprintf("%s-admin", clusterName)
@@ -170,4 +171,64 @@ func GenerateSecretWithOwner(clusterName client.ObjectKey, data []byte, owner me
 			secret.KubeconfigDataName: data,
 		},
 	}
+}
+
+// NeedsClientCertRotation returns whether any of the Kubeconfig secret's client certificates will expire before the given threshold.
+func NeedsClientCertRotation(configSecret *corev1.Secret, threshold time.Duration) (bool, error) {
+	now := time.Now()
+
+	data, err := toKubeconfigBytes(configSecret)
+	if err != nil {
+		return false, err
+	}
+
+	config, err := clientcmd.Load(data)
+	if err != nil {
+		return false, errors.Wrap(err, "failed to convert kubeconfig Secret into a clientcmdapi.Config")
+	}
+
+	for _, authInfo := range config.AuthInfos {
+		cert, err := certs.DecodeCertPEM(authInfo.ClientCertificateData)
+		if err != nil {
+			return false, errors.Wrap(err, "failed to decode kubeconfig client certificate")
+		}
+		if cert.NotAfter.Sub(now) < threshold {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+// RegenerateSecret creates and stores a new Kubeconfig in the given secret.
+func RegenerateSecret(ctx context.Context, c client.Client, configSecret *corev1.Secret) error {
+	clusterName, _, err := secret.ParseSecretName(configSecret.Name)
+	if err != nil {
+		return errors.Wrap(err, "failed to parse secret name")
+	}
+	data, err := toKubeconfigBytes(configSecret)
+	if err != nil {
+		return err
+	}
+
+	config, err := clientcmd.Load(data)
+	if err != nil {
+		return errors.Wrap(err, "failed to convert kubeconfig Secret into a clientcmdapi.Config")
+	}
+	endpoint := config.Clusters[clusterName].Server
+	key := client.ObjectKey{Name: clusterName, Namespace: configSecret.Namespace}
+	out, err := generateKubeconfig(ctx, c, key, endpoint)
+	if err != nil {
+		return err
+	}
+	configSecret.Data[secret.KubeconfigDataName] = out
+	return c.Update(ctx, configSecret)
+}
+
+func toKubeconfigBytes(out *corev1.Secret) ([]byte, error) {
+	data, ok := out.Data[secret.KubeconfigDataName]
+	if !ok {
+		return nil, errors.Errorf("missing key %q in secret data", secret.KubeconfigDataName)
+	}
+	return data, nil
 }
