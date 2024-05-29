@@ -1111,6 +1111,11 @@ spec:
                   that have the desired template spec.
                 format: int32
                 type: integer
+              version:
+                description: |-
+                  Version represents the minimum Kubernetes version for the control plane machines
+                  in the cluster.
+                type: string
             type: object
         type: object
     served: true
