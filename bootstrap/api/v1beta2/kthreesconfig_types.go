@@ -115,13 +115,11 @@ type KThreesServerConfig struct {
 
 	// DisableCloudController disables k3s default cloud controller manager. (default: true)
 	// +optional
-	// +kubebuilder:default=true
-	DisableCloudController bool `json:"disableCloudController,omitempty"`
+	DisableCloudController *bool `json:"disableCloudController,omitempty"`
 
 	// CloudProviderName defines the --cloud-provider= kubelet extra arg. (default: "external")
 	// +optional
-	// +kubebuilder:default=external
-	CloudProviderName string `json:"cloudProviderName,omitempty"`
+	CloudProviderName *string `json:"cloudProviderName,omitempty"`
 }
 
 type KThreesAgentConfig struct {

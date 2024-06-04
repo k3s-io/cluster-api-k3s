@@ -188,7 +188,6 @@ spec:
                                   0.0.0.0)'
                                 type: string
                               cloudProviderName:
-                                default: external
                                 description: 'CloudProviderName defines the --cloud-provider=
                                   kubelet extra arg. (default: "external")'
                                 type: string
@@ -205,7 +204,6 @@ spec:
                                   "cluster.local")'
                                 type: string
                               disableCloudController:
-                                default: true
                                 description: 'DisableCloudController disables k3s
                                   default cloud controller manager. (default: true)'
                                 type: boolean
