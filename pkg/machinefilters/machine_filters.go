@@ -22,6 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/util/collections"
+	"sigs.k8s.io/cluster-api/util/conditions"
 
 	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
 	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
@@ -110,5 +111,16 @@ func MatchesKThreesBootstrapConfig(machineConfigs map[string]*bootstrapv1.KThree
 		machineConfig.Spec.Version = ""
 
 		return reflect.DeepEqual(&machineConfig.Spec, kcpConfig)
+	}
+}
+
+// AgentHealthy returns a filter to find all machines that have an AgentHealthy
+// set to true.
+func AgentHealthy() Func {
+	return func(machine *clusterv1.Machine) bool {
+		if machine == nil {
+			return false
+		}
+		return conditions.IsTrue(machine, controlplanev1.MachineAgentHealthyCondition)
 	}
 }

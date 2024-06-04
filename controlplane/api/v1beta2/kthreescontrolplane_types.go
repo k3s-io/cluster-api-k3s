@@ -171,6 +171,11 @@ type KThreesControlPlaneStatus struct {
 	// +optional
 	Replicas int32 `json:"replicas,omitempty"`
 
+	// Version represents the minimum Kubernetes version for the control plane machines
+	// in the cluster.
+	// +optional
+	Version *string `json:"version,omitempty"`
+
 	// Total number of non-terminated machines targeted by this control plane
 	// that have the desired template spec.
 	// +optional
