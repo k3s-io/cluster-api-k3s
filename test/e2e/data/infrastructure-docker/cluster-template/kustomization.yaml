@@ -1,0 +1,4 @@
+# TODO: generated template should be the same as samples/docker/quickstart.yaml # in the future for testing the quickstart scenario
+resources:
+- ../bases/cluster-with-kcp.yaml
+- ../bases/md.yaml

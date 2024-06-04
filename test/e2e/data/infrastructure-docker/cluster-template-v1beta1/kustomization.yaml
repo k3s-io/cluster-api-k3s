@@ -1,0 +1,3 @@
+resources:
+- ../bases/cluster-with-kcp-v1beta1.yaml
+- ../bases/md-v1beta1.yaml

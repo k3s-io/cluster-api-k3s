@@ -89,6 +89,7 @@ Also, visit the [Cluster API documentation on Tilt][cluster_api_tilt] for more i
       # add template for fast workload cluster creation, change to a different path if needed
       # you could also add more templates
       k3s-bootstrap:
+      # please run `make generate-e2e-templates` to generate the templates first
       - ../cluster-api-k3s/test/e2e/data/infrastructure-docker
     ```
 5. Run `tilt` in the `cluster-api` directory

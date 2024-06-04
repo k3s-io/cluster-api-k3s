@@ -54,4 +54,20 @@ var _ = Describe("Workload cluster upgrade [K3s-Upgrade]", func() {
 			}
 		})
 	})
+
+	Context("Upgrading a cluster with ClusterClass [ClusterClass]", func() {
+		ClusterUpgradeSpec(ctx, func() ClusterUpgradeSpecInput {
+			return ClusterUpgradeSpecInput{
+				E2EConfig:                e2eConfig,
+				ClusterctlConfigPath:     clusterctlConfigPath,
+				BootstrapClusterProxy:    bootstrapClusterProxy,
+				ArtifactFolder:           artifactFolder,
+				SkipCleanup:              skipCleanup,
+				Flavor:                   ptr.To("topology"),
+				InfrastructureProvider:   ptr.To("docker"),
+				ControlPlaneMachineCount: ptr.To[int64](1),
+				WorkerMachineCount:       ptr.To[int64](2),
+			}
+		})
+	})
 })
