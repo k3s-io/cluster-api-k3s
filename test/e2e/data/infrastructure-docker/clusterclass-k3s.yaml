@@ -40,7 +40,10 @@ spec:
               name: k3s-default-worker-machinetemplate
         machineHealthCheck:
             maxUnhealthy: 100%
-            # We are intentionally not setting the 'unhealthyConditions' here to test that the field is optional.
+            unhealthyConditions:
+              - type: e2e.remediation.condition
+                status: "False"
+                timeout: 20s
     machinePools:
     - class: k3s-default-worker
       template:
