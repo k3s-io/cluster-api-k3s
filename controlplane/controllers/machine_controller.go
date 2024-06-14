@@ -130,7 +130,7 @@ func (r *MachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			}
 			if !etcdRemoved {
 				logger.Info("wait k3s embedded etcd controller to remove etcd")
-				return ctrl.Result{Requeue: true}, err
+				return ctrl.Result{RequeueAfter: etcdRemovalRequeueAfter}, nil
 			}
 
 			nodeName := ""

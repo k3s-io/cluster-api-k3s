@@ -97,7 +97,7 @@ func (r *KThreesControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 	}
 	if cluster == nil {
 		logger.Info("Cluster Controller has not yet set OwnerRef")
-		return ctrl.Result{Requeue: true}, nil
+		return ctrl.Result{}, nil
 	}
 	logger = logger.WithValues("cluster", cluster.Name)
 
