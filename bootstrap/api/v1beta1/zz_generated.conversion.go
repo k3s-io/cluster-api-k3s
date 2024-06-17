@@ -550,6 +550,7 @@ func autoConvert_v1beta2_KThreesServerConfig_To_v1beta1_KThreesServerConfig(in *
 	// WARNING: in.DeprecatedDisableExternalCloudProvider requires manual conversion: does not exist in peer-type
 	// WARNING: in.DisableCloudController requires manual conversion: does not exist in peer-type
 	// WARNING: in.CloudProviderName requires manual conversion: does not exist in peer-type
+	// WARNING: in.SystemDefaultRegistry requires manual conversion: does not exist in peer-type
 	return nil
 }
 
