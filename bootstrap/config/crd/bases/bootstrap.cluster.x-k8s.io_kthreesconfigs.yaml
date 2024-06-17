@@ -496,6 +496,10 @@ spec:
                     description: 'ServiceCidr Network CIDR to use for services IPs
                       (default: "10.43.0.0/16")'
                     type: string
+                  systemDefaultRegistry:
+                    description: SystemDefaultRegistry defines private registry to
+                      be used for all system images
+                    type: string
                   tlsSan:
                     description: TLSSan Add additional hostname or IP as a Subject
                       Alternative Name in the TLS cert

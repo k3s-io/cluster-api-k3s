@@ -120,6 +120,10 @@ type KThreesServerConfig struct {
 	// CloudProviderName defines the --cloud-provider= kubelet extra arg. (default: "external")
 	// +optional
 	CloudProviderName *string `json:"cloudProviderName,omitempty"`
+
+	// SystemDefaultRegistry defines private registry to be used for all system images
+	// +optional
+	SystemDefaultRegistry string `json:"systemDefaultRegistry,omitempty"`
 }
 
 type KThreesAgentConfig struct {

@@ -25,6 +25,7 @@ type K3sServerConfig struct {
 	ClusterDomain             string   `json:"cluster-domain,omitempty"`
 	DisableComponents         []string `json:"disable,omitempty"`
 	ClusterInit               bool     `json:"cluster-init,omitempty"`
+	SystemDefaultRegistry     string   `json:"system-default-registry,omitempty"`
 	K3sAgentConfig            `json:",inline"`
 }
 
@@ -57,6 +58,7 @@ func GenerateInitControlPlaneConfig(controlPlaneEndpoint string, token string, s
 		ClusterDNS:                serverConfig.ClusterDNS,
 		ClusterDomain:             serverConfig.ClusterDomain,
 		DisableComponents:         serverConfig.DisableComponents,
+		SystemDefaultRegistry:     serverConfig.SystemDefaultRegistry,
 	}
 
 	k3sServerConfig.K3sAgentConfig = K3sAgentConfig{
@@ -89,6 +91,7 @@ func GenerateJoinControlPlaneConfig(serverURL string, token string, controlplane
 		ClusterDNS:                serverConfig.ClusterDNS,
 		ClusterDomain:             serverConfig.ClusterDomain,
 		DisableComponents:         serverConfig.DisableComponents,
+		SystemDefaultRegistry:     serverConfig.SystemDefaultRegistry,
 	}
 
 	k3sServerConfig.K3sAgentConfig = K3sAgentConfig{
