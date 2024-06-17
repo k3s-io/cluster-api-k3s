@@ -42,6 +42,7 @@ func (c *KThreesConfig) ConvertTo(dstRaw ctrlconversion.Hub) error {
 	dst.Spec.ServerConfig.CloudProviderName = restored.Spec.ServerConfig.CloudProviderName
 	dst.Spec.ServerConfig.DeprecatedDisableExternalCloudProvider = restored.Spec.ServerConfig.DeprecatedDisableExternalCloudProvider
 	dst.Spec.ServerConfig.DisableCloudController = restored.Spec.ServerConfig.DisableCloudController
+	dst.Spec.ServerConfig.SystemDefaultRegistry = restored.Spec.ServerConfig.SystemDefaultRegistry
 	return nil
 }
 
@@ -94,6 +95,7 @@ func (r *KThreesConfigTemplate) ConvertTo(dstRaw ctrlconversion.Hub) error {
 	dst.Spec.Template.Spec.ServerConfig.CloudProviderName = restored.Spec.Template.Spec.ServerConfig.CloudProviderName
 	dst.Spec.Template.Spec.ServerConfig.DeprecatedDisableExternalCloudProvider = restored.Spec.Template.Spec.ServerConfig.DeprecatedDisableExternalCloudProvider
 	dst.Spec.Template.Spec.ServerConfig.DisableCloudController = restored.Spec.Template.Spec.ServerConfig.DisableCloudController
+	dst.Spec.Template.Spec.ServerConfig.SystemDefaultRegistry = restored.Spec.Template.Spec.ServerConfig.SystemDefaultRegistry
 	return nil
 }
 

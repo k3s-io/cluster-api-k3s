@@ -93,6 +93,7 @@ func (in *KThreesControlPlane) ConvertTo(dstRaw ctrlconversion.Hub) error {
 	dst.Spec.KThreesConfigSpec.ServerConfig.CloudProviderName = restored.Spec.KThreesConfigSpec.ServerConfig.CloudProviderName
 	dst.Spec.KThreesConfigSpec.ServerConfig.DeprecatedDisableExternalCloudProvider = restored.Spec.KThreesConfigSpec.ServerConfig.DeprecatedDisableExternalCloudProvider
 	dst.Spec.KThreesConfigSpec.ServerConfig.DisableCloudController = restored.Spec.KThreesConfigSpec.ServerConfig.DisableCloudController
+	dst.Spec.KThreesConfigSpec.ServerConfig.SystemDefaultRegistry = restored.Spec.KThreesConfigSpec.ServerConfig.SystemDefaultRegistry
 	dst.Spec.MachineTemplate.NodeVolumeDetachTimeout = restored.Spec.MachineTemplate.NodeVolumeDetachTimeout
 	dst.Spec.MachineTemplate.NodeDeletionTimeout = restored.Spec.MachineTemplate.NodeDeletionTimeout
 	dst.Status.Version = restored.Status.Version
