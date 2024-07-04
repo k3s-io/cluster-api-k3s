@@ -1,0 +1,50 @@
+name: E2E tests (PR Blocker)
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  e2e-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Free Disk Space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          docker-images: false
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build e2e image
+        run: make docker-build-e2e
+      - uses: actions/cache@v4.0.2
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-test-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-test-go-${{ hashFiles('**/go.sum') }}
+      - uses: engineerd/setup-kind@v0.5.0
+        with:
+          version: "v0.22.0"
+          skipClusterCreation: "true"
+      - name: Run E2E tests
+        run: make GINKGO_FOCUS="\\[PR-Blocking\\]" test-e2e
+      - name: Archive artifacts
+        if: always()
+        uses: actions/upload-artifact@v4.3.2
+        with:
+          name: e2e-artifacts
+          path: _artifacts
+          if-no-files-found: ignore
