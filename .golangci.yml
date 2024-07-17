@@ -71,6 +71,7 @@ linters-settings:
           - github.com/go-logr/logr
           - github.com/coredns/corefile-migration/migration
           - github.com/pkg/errors
+          - github.com/davecgh/go-spew/spew
           
           - k8s.io/api
           - k8s.io/apimachinery/pkg

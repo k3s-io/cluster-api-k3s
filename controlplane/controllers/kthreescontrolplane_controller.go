@@ -30,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/klog/v2"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/controllers/external"
 	"sigs.k8s.io/cluster-api/util"
@@ -53,6 +54,8 @@ import (
 	"github.com/k3s-io/cluster-api-k3s/pkg/machinefilters"
 	"github.com/k3s-io/cluster-api-k3s/pkg/secret"
 	"github.com/k3s-io/cluster-api-k3s/pkg/token"
+	"github.com/k3s-io/cluster-api-k3s/pkg/util/contract"
+	"github.com/k3s-io/cluster-api-k3s/pkg/util/ssa"
 )
 
 // KThreesControlPlaneReconciler reconciles a KThreesControlPlane object.
@@ -68,6 +71,7 @@ type KThreesControlPlaneReconciler struct {
 
 	managementCluster         k3s.ManagementCluster
 	managementClusterUncached k3s.ManagementCluster
+	ssaCache                  ssa.Cache
 }
 
 // +kubebuilder:rbac:groups=core,resources=events,verbs=get;list;watch;create;patch
@@ -302,6 +306,7 @@ func (r *KThreesControlPlaneReconciler) SetupWithManager(ctx context.Context, mg
 	r.Scheme = mgr.GetScheme()
 	r.controller = c
 	r.recorder = mgr.GetEventRecorderFor("k3s-control-plane-controller")
+	r.ssaCache = ssa.NewCache()
 
 	if r.managementCluster == nil {
 		r.managementCluster = &k3s.Management{
@@ -516,6 +521,10 @@ func (r *KThreesControlPlaneReconciler) reconcile(ctx context.Context, cluster *
 		return reconcile.Result{}, err
 	}
 
+	if err := r.syncMachines(ctx, controlPlane); err != nil {
+		return ctrl.Result{}, errors.Wrap(err, "failed to sync Machines")
+	}
+
 	// Aggregate the operational state of all the machines; while aggregating we are adding the
 	// source ref (reason@machine/name) so the problem can be easily tracked down to its source machine.
 	conditions.SetAggregate(controlPlane.KCP, controlplanev1.MachinesReadyCondition, ownedMachines.ConditionGetters(), conditions.AddSourceRef(), conditions.WithStepCounterIf(false))
@@ -671,6 +680,94 @@ func (r *KThreesControlPlaneReconciler) reconcileKubeconfig(ctx context.Context,
 	}
 
 	return reconcile.Result{}, nil
+}
+
+// syncMachines updates Machines, InfrastructureMachines and KThreesConfigs to propagate in-place mutable fields from KCP.
+// Note: It also cleans up managed fields of all Machines so that Machines that were
+// created/patched before (<= v0.2.0) the controller adopted Server-Side-Apply (SSA) can also work with SSA.
+// Note: For InfrastructureMachines and KThreesConfigs it also drops ownership of "metadata.labels" and
+// "metadata.annotations" from "manager" so that "capi-kthreescontrolplane" can own these fields and can work with SSA.
+// Otherwise, fields would be co-owned by our "old" "manager" and "capi-kthreescontrolplane" and then we would not be
+// able to e.g. drop labels and annotations.
+func (r *KThreesControlPlaneReconciler) syncMachines(ctx context.Context, controlPlane *k3s.ControlPlane) error {
+	patchHelpers := map[string]*patch.Helper{}
+	for machineName := range controlPlane.Machines {
+		m := controlPlane.Machines[machineName]
+		// If the machine is already being deleted, we don't need to update it.
+		if !m.DeletionTimestamp.IsZero() {
+			continue
+		}
+
+		// Cleanup managed fields of all Machines.
+		// We do this so that Machines that were created/patched before the controller adopted Server-Side-Apply (SSA)
+		// (<= v0.2.0) can also work with SSA. Otherwise, fields would be co-owned by our "old" "manager" and
+		// "capi-kthreescontrolplane" and then we would not be able to e.g. drop labels and annotations.
+		if err := ssa.CleanUpManagedFieldsForSSAAdoption(ctx, r.Client, m, kcpManagerName); err != nil {
+			return errors.Wrapf(err, "failed to update Machine: failed to adjust the managedFields of the Machine %s", klog.KObj(m))
+		}
+		// Update Machine to propagate in-place mutable fields from KCP.
+		updatedMachine, err := r.updateMachine(ctx, m, controlPlane.KCP, controlPlane.Cluster)
+		if err != nil {
+			return errors.Wrapf(err, "failed to update Machine: %s", klog.KObj(m))
+		}
+		controlPlane.Machines[machineName] = updatedMachine
+		// Since the machine is updated, re-create the patch helper so that any subsequent
+		// Patch calls use the correct base machine object to calculate the diffs.
+		// Example: reconcileControlPlaneConditions patches the machine objects in a subsequent call
+		// and, it should use the updated machine to calculate the diff.
+		// Note: If the patchHelpers are not re-computed based on the new updated machines, subsequent
+		// Patch calls will fail because the patch will be calculated based on an outdated machine and will error
+		// because of outdated resourceVersion.
+		// TODO: This should be cleaned-up to have a more streamline way of constructing and using patchHelpers.
+		patchHelper, err := patch.NewHelper(updatedMachine, r.Client)
+		if err != nil {
+			return err
+		}
+		patchHelpers[machineName] = patchHelper
+
+		labelsAndAnnotationsManagedFieldPaths := []contract.Path{
+			{"f:metadata", "f:annotations"},
+			{"f:metadata", "f:labels"},
+		}
+		infraMachine, infraMachineFound := controlPlane.InfraResources[machineName]
+		// Only update the InfraMachine if it is already found, otherwise just skip it.
+		// This could happen e.g. if the cache is not up-to-date yet.
+		if infraMachineFound {
+			// Cleanup managed fields of all InfrastructureMachines to drop ownership of labels and annotations
+			// from "manager". We do this so that InfrastructureMachines that are created using the Create method
+			// can also work with SSA. Otherwise, labels and annotations would be co-owned by our "old" "manager"
+			// and "capi-kthreescontrolplane" and then we would not be able to e.g. drop labels and annotations.
+			if err := ssa.DropManagedFields(ctx, r.Client, infraMachine, kcpManagerName, labelsAndAnnotationsManagedFieldPaths); err != nil {
+				return errors.Wrapf(err, "failed to clean up managedFields of InfrastructureMachine %s", klog.KObj(infraMachine))
+			}
+			// Update in-place mutating fields on InfrastructureMachine.
+			if err := r.updateExternalObject(ctx, infraMachine, controlPlane.KCP, controlPlane.Cluster); err != nil {
+				return errors.Wrapf(err, "failed to update InfrastructureMachine %s", klog.KObj(infraMachine))
+			}
+		}
+
+		kthreesConfigs, kthreesConfigsFound := controlPlane.KthreesConfigs[machineName]
+		// Only update the kthreesConfigs if it is already found, otherwise just skip it.
+		// This could happen e.g. if the cache is not up-to-date yet.
+		if kthreesConfigsFound {
+			// Note: Set the GroupVersionKind because updateExternalObject depends on it.
+			kthreesConfigs.SetGroupVersionKind(m.Spec.Bootstrap.ConfigRef.GroupVersionKind())
+			// Cleanup managed fields of all KThreesConfigs to drop ownership of labels and annotations
+			// from "manager". We do this so that KThreesConfigs that are created using the Create method
+			// can also work with SSA. Otherwise, labels and annotations would be co-owned by our "old" "manager"
+			// and "capi-kthreescontrolplane" and then we would not be able to e.g. drop labels and annotations.
+			if err := ssa.DropManagedFields(ctx, r.Client, kthreesConfigs, kcpManagerName, labelsAndAnnotationsManagedFieldPaths); err != nil {
+				return errors.Wrapf(err, "failed to clean up managedFields of kthreesConfigs %s", klog.KObj(kthreesConfigs))
+			}
+			// Update in-place mutating fields on BootstrapConfig.
+			if err := r.updateExternalObject(ctx, kthreesConfigs, controlPlane.KCP, controlPlane.Cluster); err != nil {
+				return errors.Wrapf(err, "failed to update KThreesConfigs %s", klog.KObj(kthreesConfigs))
+			}
+		}
+	}
+	// Update the patch helpers.
+	controlPlane.SetPatchHelpers(patchHelpers)
+	return nil
 }
 
 // reconcileControlPlaneConditions is responsible of reconciling conditions reporting the status of static pods and

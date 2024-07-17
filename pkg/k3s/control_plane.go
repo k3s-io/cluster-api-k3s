@@ -64,8 +64,8 @@ type ControlPlane struct {
 
 	// TODO: we should see if we can combine these with the Machine objects so we don't have all these separate lookups
 	// See discussion on https://github.com/kubernetes-sigs/cluster-api/pull/3405
-	kthreesConfigs map[string]*bootstrapv1.KThreesConfig
-	infraResources map[string]*unstructured.Unstructured
+	KthreesConfigs map[string]*bootstrapv1.KThreesConfig
+	InfraResources map[string]*unstructured.Unstructured
 }
 
 // NewControlPlane returns an instantiated ControlPlane.
@@ -106,8 +106,8 @@ func NewControlPlane(ctx context.Context, client client.Client, cluster *cluster
 		Machines:             ownedMachines,
 		machinesPatchHelpers: patchHelpers,
 		hasEtcdCA:            hasEtcdCA,
-		kthreesConfigs:       kthreesConfigs,
-		infraResources:       infraObjects,
+		KthreesConfigs:       kthreesConfigs,
+		InfraResources:       infraObjects,
 		reconciliationTime:   metav1.Now(),
 	}, nil
 }
@@ -287,7 +287,7 @@ func (c *ControlPlane) MachinesNeedingRollout() collections.Machines {
 		// Machines that are scheduled for rollout (KCP.Spec.RolloutAfter set, the RolloutAfter deadline is expired, and the machine was created before the deadline).
 		collections.ShouldRolloutAfter(&c.reconciliationTime, c.KCP.Spec.RolloutAfter),
 		// Machines that do not match with KCP config.
-		collections.Not(machinefilters.MatchesKCPConfiguration(c.infraResources, c.kthreesConfigs, c.KCP)),
+		collections.Not(machinefilters.MatchesKCPConfiguration(c.InfraResources, c.KthreesConfigs, c.KCP)),
 	)
 }
 
@@ -370,4 +370,14 @@ func (c *ControlPlane) PatchMachines(ctx context.Context) error {
 	}
 
 	return kerrors.NewAggregate(errList)
+}
+
+// SetPatchHelpers updates the patch helpers.
+func (c *ControlPlane) SetPatchHelpers(patchHelpers map[string]*patch.Helper) {
+	if c.machinesPatchHelpers == nil {
+		c.machinesPatchHelpers = map[string]*patch.Helper{}
+	}
+	for machineName, patchHelper := range patchHelpers {
+		c.machinesPatchHelpers[machineName] = patchHelper
+	}
 }

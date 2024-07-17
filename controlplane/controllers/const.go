@@ -36,4 +36,6 @@ const (
 	etcdRemovalRequeueAfter = 30 * time.Second
 
 	k3sHookName = "k3s"
+
+	kcpManagerName = "capi-kthreescontrolplane"
 )
