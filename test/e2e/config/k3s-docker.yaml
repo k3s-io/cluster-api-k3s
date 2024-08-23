@@ -65,7 +65,7 @@ providers:
       # ${ProjectRoot}/metadata.yaml to init the management cluster
       # this version should be updated when ${ProjectRoot}/metadata.yaml
       # is modified
-      - name: v0.1.99 # next; use manifest from source files
+      - name: v0.2.99 # next; use manifest from source files
         value: "../../../bootstrap/config/default"
     files:
       - sourcePath: "../../../metadata.yaml"
@@ -73,7 +73,7 @@ providers:
   - name: k3s
     type: ControlPlaneProvider
     versions:
-      - name: v0.1.99 # next; use manifest from source files
+      - name: v0.2.99 # next; use manifest from source files
         value: "../../../controlplane/config/default"
     files:
       - sourcePath: "../../../metadata.yaml"
