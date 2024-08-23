@@ -16,6 +16,14 @@ spec:
     class: k3s
     version: ${KUBERNETES_VERSION}
     controlPlane:
+      metadata:
+        # These labels are used by clusterctl_upgrade_test to test
+        # labels added previous to supporting SSA could be modified
+        # or deleted.
+        labels:
+          Cluster.topology.controlPlane.oldLabel: "Cluster.topology.controlPlane.oldLabelValue"
+        annotations:
+          Cluster.topology.controlPlane.oldAnnotation: "Cluster.topology.controlPlane.oldAnnotationValue"
       nodeDeletionTimeout: "30s"
       nodeVolumeDetachTimeout: "5m"
       replicas: ${CONTROL_PLANE_MACHINE_COUNT}

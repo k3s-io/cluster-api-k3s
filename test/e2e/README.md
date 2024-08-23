@@ -14,12 +14,6 @@ To run a specific e2e test, such as `[PR-Blocking]`, use the `GINKGO_FOCUS` envi
 ```shell
 make GINKGO_FOCUS="\\[PR-Blocking\\]" test-e2e  # only run e2e test with `[PR-Blocking]` in its spec name
 ```
-### Run the e2e test with tilt
-It is quite useful to run the e2e test with [tilt](https://cluster-api.sigs.k8s.io/developer/tilt), so that you will not need to rebuild docker image with `make docker-build-e2e` everytime. Also you will not need to wait a new cluster creation and setup. If you have set up your tilt cluster and made the current context points to this cluster, you could run:
-```shell
-# running e2e for the cluster pointed by the current context
-make USE_EXISTING_CLUSTER=true test-e2e
-```
 ## Develop an e2e test
 You could refer to [Developing E2E tests](https://cluster-api.sigs.k8s.io/developer/e2e) for a complete guide for developing e2e tests.
 
@@ -32,3 +26,5 @@ A guide for developing a k3s e2e test:
 
 ## Troubleshooting
 * [Cluster API with Docker - "too many open files".](https://cluster-api.sigs.k8s.io/user/troubleshooting.html?highlight=too%20many#cluster-api-with-docker----too-many-open-files)
+* invalid provider metadata
+    * If you see the error `invalid provider metadata: version v1.8.99 for the provider capd-system/infrastructure-docker does not match any release series`, it might be that the artifact you are using is outdated. Please remove the `_artifacts` folder and try again.
