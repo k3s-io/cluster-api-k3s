@@ -16,6 +16,7 @@ import (
 	"sigs.k8s.io/cluster-api/util/collections"
 	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/patch"
+	"sigs.k8s.io/cluster-api/util/predicates"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -45,6 +46,7 @@ type MachineReconciler struct {
 func (r *MachineReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, log *logr.Logger) error {
 	_, err := ctrl.NewControllerManagedBy(mgr).
 		For(&clusterv1.Machine{}).
+		WithEventFilter(predicates.ResourceNotPaused(r.Log)).
 		Build(r)
 
 	if r.managementCluster == nil {

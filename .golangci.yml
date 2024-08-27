@@ -148,9 +148,9 @@ linters-settings:
       - name: unused-parameter
         disabled: true
   staticcheck:
-    go: "1.21"
+    go: "1.22"
   stylecheck:
-    go: "1.21"
+    go: "1.22"
   tagliatelle:
     case:
       rules:
@@ -158,4 +158,4 @@ linters-settings:
         # Support string case: `camel`, `pascal`, `kebab`, `snake`, `goCamel`, `goPascal`, `goKebab`, `goSnake`, `upper`, `lower`, `header`
         json: goCamel
   unused:
-    go: "1.21"
+    go: "1.22"
