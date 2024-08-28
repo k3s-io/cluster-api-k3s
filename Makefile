@@ -20,7 +20,7 @@ SHELL:=/usr/bin/env bash
 
 .DEFAULT_GOAL:=help
 
-GO_VERSION ?= 1.21.9
+GO_VERSION ?= 1.22.5
 GO_CONTAINER_IMAGE ?= docker.io/library/golang:$(GO_VERSION)
 
 ARCH ?= $(shell go env GOARCH)
@@ -79,7 +79,7 @@ ENVSUBST_BIN := envsubst
 ENVSUBST := $(TOOLS_BIN_DIR)/$(ENVSUBST_BIN)
 
 # Bump as necessary/desired to latest that supports our version of go at https://github.com/golangci/golangci-lint/releases
-GOLANGCI_LINT_VER := v1.55.2
+GOLANGCI_LINT_VER := v1.57.2
 GOLANGCI_LINT_BIN := golangci-lint
 GOLANGCI_LINT := $(TOOLS_BIN_DIR)/$(GOLANGCI_LINT_BIN)-$(GOLANGCI_LINT_VER)
 

@@ -41,12 +41,12 @@ import (
 	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/cluster-api/util/predicates"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
 	k3s "github.com/k3s-io/cluster-api-k3s/pkg/k3s"
@@ -288,19 +288,16 @@ func (r *KThreesControlPlaneReconciler) SetupWithManager(ctx context.Context, mg
 		For(&controlplanev1.KThreesControlPlane{}).
 		Owns(&clusterv1.Machine{}).
 		//	WithOptions(options).
-		//	WithEventFilter(predicates.ResourceNotPaused(r.Log)).
-		Build(r)
+		WithEventFilter(predicates.ResourceNotPaused(r.Log)).
+		Watches(
+			&clusterv1.Cluster{},
+			handler.EnqueueRequestsFromMapFunc(r.ClusterToKThreesControlPlane(ctx, log)),
+			builder.WithPredicates(
+				predicates.ClusterUnpausedAndInfrastructureReady(r.Log),
+			),
+		).Build(r)
 	if err != nil {
 		return fmt.Errorf("failed setting up with a controller manager: %w", err)
-	}
-
-	err = c.Watch(
-		source.Kind(mgr.GetCache(), &clusterv1.Cluster{}),
-		handler.EnqueueRequestsFromMapFunc(r.ClusterToKThreesControlPlane(ctx, log)),
-		predicates.ClusterUnpausedAndInfrastructureReady(r.Log),
-	)
-	if err != nil {
-		return fmt.Errorf("failed adding Watch for Clusters to controller manager: %w", err)
 	}
 
 	r.Scheme = mgr.GetScheme()
