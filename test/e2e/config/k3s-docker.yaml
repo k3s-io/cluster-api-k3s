@@ -15,9 +15,10 @@ providers:
   - name: cluster-api
     type: CoreProvider
     versions:
-      - name: v1.7.2
-        value: https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.7.2/core-components.yaml
+      - name: v1.8.1
+        value: https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.8.1/core-components.yaml
         type: url
+        contract: v1beta1
         files:
           - sourcePath: "../data/shared/v1beta1/metadata.yaml"
         replacements:
@@ -26,25 +27,12 @@ providers:
   - name: docker
     type: InfrastructureProvider
     versions:
-      # By default, will use the latest version defined in ../data/shared/v1beta1/metadata.yaml
+      # Will use the latest version defined in ../data/shared/v1beta1/metadata.yaml
       # to init the management cluster
-      - name: v1.7.2 # used during e2e-test
-        value: https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.7.2/infrastructure-components-development.yaml
+      - name: v1.8.1 # used during e2e-test
+        value: https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.8.1/infrastructure-components-development.yaml
         type: url
-        files:
-          - sourcePath: "../data/shared/v1beta1/metadata.yaml"
-        replacements:
-          - old: "imagePullPolicy: Always"
-            new: "imagePullPolicy: IfNotPresent"
-      
-      # Add v1.8.99 to support tilt (not presented in ../data/shared/v1beta1/metadata.yaml)
-      # when bootstrapping with tilt, it will use
-      # the defaultProviderVersion in https://github.com/kubernetes-sigs/cluster-api/blob/main/hack/tools/internal/tilt-prepare/main.go as 
-      # default version for docker infrastructure provider
-      # name here should match defaultProviderVersion
-      - name: v1.8.99 # next; use manifest from source files
-        value: https://github.com/kubernetes-sigs/cluster-api/releases/latest/download/infrastructure-components-development.yaml
-        type: url
+        contract: v1beta1
         files:
           - sourcePath: "../data/shared/v1beta1/metadata.yaml"
         replacements:
@@ -60,31 +48,50 @@ providers:
   - name: k3s
     type: BootstrapProvider
     versions:
-      # Could add older release version for upgrading test, but
-      # by default, will only use the latest version defined in
-      # ${ProjectRoot}/metadata.yaml to init the management cluster
+      # Older release is added for k3s provider upgrading test (clusterctl_upgrade_test),
+      # all other tests will use the k3s build from source
+      # to init the management cluster.
+      - name: "v0.2.0"
+        value: "https://github.com/k3s-io/cluster-api-k3s/releases/download/v0.2.0/bootstrap-components.yaml"
+        type: "url"
+        contract: v1beta1
+        files:
+          - sourcePath: "../data/shared/k3s/v0.2/metadata.yaml"
+            targetName: "metadata.yaml"
+      # By default, will only use the latest version defined in
+      # ${ProjectRoot}/metadata.yaml (this one) to init the management cluster
       # this version should be updated when ${ProjectRoot}/metadata.yaml
       # is modified
       - name: v0.2.99 # next; use manifest from source files
         value: "../../../bootstrap/config/default"
-    files:
-      - sourcePath: "../../../metadata.yaml"
-        targetName: "metadata.yaml"
+        files:
+          - sourcePath: "../../../metadata.yaml"
+            targetName: "metadata.yaml"
   - name: k3s
     type: ControlPlaneProvider
     versions:
+      - name: "v0.2.0"
+        value: "https://github.com/k3s-io/cluster-api-k3s/releases/download/v0.2.0/control-plane-components.yaml"
+        type: "url"
+        contract: v1beta1
+        files:
+          - sourcePath: "../data/shared/k3s/v0.2/metadata.yaml"
+            targetName: "metadata.yaml"
       - name: v0.2.99 # next; use manifest from source files
         value: "../../../controlplane/config/default"
-    files:
-      - sourcePath: "../../../metadata.yaml"
-        targetName: "metadata.yaml"
+        files:
+          - sourcePath: "../../../metadata.yaml"
+            targetName: "metadata.yaml"
 
 variables:
-  KUBERNETES_VERSION_MANAGEMENT: "v1.28.0"
-  KUBERNETES_VERSION: "v1.28.6+k3s2"
-  KUBERNETES_VERSION_UPGRADE_TO: "v1.28.7+k3s1"
+  KUBERNETES_VERSION_MANAGEMENT: "v1.30.0"
+  KUBERNETES_VERSION: "v1.30.2+k3s2"
+  KUBERNETES_VERSION_UPGRADE_TO: "v1.30.3+k3s1"
   IP_FAMILY: "IPv4"
-  KIND_IMAGE_VERSION: "v1.28.0"
+  KIND_IMAGE_VERSION: "v1.30.0"
+  # Used during clusterctl upgrade test
+  CAPI_CORE_VERSION: "1.8.1"
+  K3S_CAPI_CURRENT_VERSION: "0.2.99"
   # Enabling the feature flags by setting the env variables.
   CLUSTER_TOPOLOGY: "true"
   EXP_MACHINE_POOL: "true"

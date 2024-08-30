@@ -49,7 +49,7 @@ import (
 // setting on ControlPlane object could be rollout to underlying machines.
 // The original test does not apply to k3s cluster as it modified controlPlane fields specific to KubeadmControlPlane.
 // Link to CAPI clusterclass_rollout test: https://github.com/kubernetes-sigs/cluster-api/blob/main/test/e2e/clusterclass_rollout.go
-var _ = Describe("Inplace mutable fields rollout test", func() {
+var _ = Describe("Inplace mutable fields rollout test [ClusterClass]", func() {
 	var (
 		ctx                    = context.TODO()
 		specName               = "inplace-rollout"
@@ -151,7 +151,7 @@ type modifyControlPlaneViaClusterAndWaitInput struct {
 }
 
 // modifyControlPlaneViaClusterAndWait modifies the ControlPlaneTopology of a Cluster topology via ModifyControlPlaneTopology.
-// It then waits until the changes are rolled out to the ControlPlane of the Cluster.
+// It then waits until the changes are rolled out to the ControlPlane and ControlPlane Machine of the Cluster.
 func modifyControlPlaneViaClusterAndWait(ctx context.Context, input modifyControlPlaneViaClusterAndWaitInput) {
 	Expect(ctx).NotTo(BeNil(), "ctx is required for modifyControlPlaneViaClusterAndWait")
 	Expect(input.ClusterProxy).ToNot(BeNil(), "Invalid argument. input.ClusterProxy can't be nil when calling modifyControlPlaneViaClusterAndWait")
@@ -167,7 +167,7 @@ func modifyControlPlaneViaClusterAndWait(ctx context.Context, input modifyContro
 	input.ModifyControlPlaneTopology(&input.Cluster.Spec.Topology.ControlPlane)
 	Expect(patchHelper.Patch(ctx, input.Cluster)).To(Succeed())
 
-	// NOTE: We only wait until the change is rolled out to the control plane object and not to the control plane machines.
+	// NOTE: We wait until the change is rolled out to the control plane object and the control plane machines.
 	Byf("Waiting for control plane rollout to complete.")
 	Eventually(func(g Gomega) {
 		// Get the ControlPlane.

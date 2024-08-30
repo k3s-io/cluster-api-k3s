@@ -43,6 +43,8 @@ const (
 	WorkersMachineTemplateUpgradeTo = "WORKERS_MACHINE_TEMPLATE_UPGRADE_TO"
 	IPFamily                        = "IP_FAMILY"
 	KindImageVersion                = "KIND_IMAGE_VERSION"
+	CapiCoreVersion                 = "CAPI_CORE_VERSION"
+	K3sCapiCurrentVersion           = "K3S_CAPI_CURRENT_VERSION"
 )
 
 func Byf(format string, a ...interface{}) {
