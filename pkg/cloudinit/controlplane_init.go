@@ -27,7 +27,7 @@ const (
 {{template "files" .WriteFiles}}
 runcmd:
 {{- template "commands" .PreK3sCommands }}
-  - {{ if .AirGapped }} INSTALL_K3S_SKIP_DOWNLOAD=true INSTALL_K3S_EXEC='server' sh /opt/install.sh {{ else }} curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=%s sh -s - server {{ end }} && {{ .SentinelFileCommand }}
+  - {{ if .AirGapped }} INSTALL_K3S_SKIP_DOWNLOAD=true INSTALL_K3S_EXEC='server' sh {{ .AirGappedInstallScriptPath }} {{ else }} curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=%s sh -s - server {{ end }} && {{ .SentinelFileCommand }}
 {{- template "commands" .PostK3sCommands }}
 `
 )
@@ -40,11 +40,8 @@ type ControlPlaneInput struct {
 
 // NewInitControlPlane returns the user data string to be used on a controlplane instance.
 func NewInitControlPlane(input *ControlPlaneInput) ([]byte, error) {
-	input.Header = cloudConfigHeader
 	input.WriteFiles = input.Certificates.AsFiles()
-	input.WriteFiles = append(input.WriteFiles, input.AdditionalFiles...)
-	input.WriteFiles = append(input.WriteFiles, input.ConfigFile)
-	input.SentinelFileCommand = sentinelFileCommand
+	input.BaseUserData.prepare()
 
 	controlPlaneCloudJoinWithVersion := fmt.Sprintf(controlPlaneCloudInit, input.K3sVersion)
 	userData, err := generate("InitControlplane", controlPlaneCloudJoinWithVersion, input)

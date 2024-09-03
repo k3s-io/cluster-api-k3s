@@ -69,20 +69,33 @@ write_files:{{ range . }}
 {{- end -}}
 {{- end -}}
 `
-	sentinelFileCommand = "mkdir -p /run/cluster-api && echo success > /run/cluster-api/bootstrap-success.complete"
+	sentinelFileCommand               = "mkdir -p /run/cluster-api && echo success > /run/cluster-api/bootstrap-success.complete"
+	defaultAirGappedInstallScriptPath = "/opt/install.sh"
 )
 
 // BaseUserData is shared across all the various types of files written to disk.
 type BaseUserData struct {
-	Header              string
-	PreK3sCommands      []string
-	PostK3sCommands     []string
-	AdditionalFiles     []bootstrapv1.File
-	WriteFiles          []bootstrapv1.File
-	ConfigFile          bootstrapv1.File
-	K3sVersion          string
-	AirGapped           bool
-	SentinelFileCommand string
+	Header                     string
+	PreK3sCommands             []string
+	PostK3sCommands            []string
+	AdditionalFiles            []bootstrapv1.File
+	WriteFiles                 []bootstrapv1.File
+	ConfigFile                 bootstrapv1.File
+	K3sVersion                 string
+	AirGapped                  bool
+	AirGappedInstallScriptPath string
+	SentinelFileCommand        string
+}
+
+func (input *BaseUserData) prepare() {
+	input.Header = cloudConfigHeader
+	input.WriteFiles = append(input.WriteFiles, input.AdditionalFiles...)
+	input.WriteFiles = append(input.WriteFiles, input.ConfigFile)
+	if input.AirGappedInstallScriptPath == "" {
+		input.AirGappedInstallScriptPath = defaultAirGappedInstallScriptPath
+	}
+
+	input.SentinelFileCommand = sentinelFileCommand
 }
 
 func generate(kind string, tpl string, data interface{}) ([]byte, error) {

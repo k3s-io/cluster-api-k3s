@@ -17,9 +17,11 @@ limitations under the License.
 package controllers
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"html/template"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -249,23 +251,24 @@ func (r *KThreesConfigReconciler) joinControlplane(ctx context.Context, scope *S
 	}
 
 	if scope.Config.Spec.IsEtcdEmbedded() {
-		etcdProxyFile := bootstrapv1.File{
-			Path:        etcd.EtcdProxyDaemonsetYamlLocation,
-			Content:     etcd.EtcdProxyDaemonsetYaml,
-			Owner:       "root:root",
-			Permissions: "0640",
+		etcdProxyFile, err := r.resolveEtcdProxyFile(scope.Config)
+		if err != nil {
+			conditions.MarkFalse(scope.Config, bootstrapv1.DataSecretAvailableCondition, bootstrapv1.DataSecretGenerationFailedReason, clusterv1.ConditionSeverityWarning, err.Error())
+			return fmt.Errorf("failed to resolve etcd proxy file: %w", err)
 		}
-		files = append(files, etcdProxyFile)
+
+		files = append(files, *etcdProxyFile)
 	}
 
 	cpInput := &cloudinit.ControlPlaneInput{
 		BaseUserData: cloudinit.BaseUserData{
-			PreK3sCommands:  scope.Config.Spec.PreK3sCommands,
-			PostK3sCommands: scope.Config.Spec.PostK3sCommands,
-			AdditionalFiles: files,
-			ConfigFile:      workerConfigFile,
-			K3sVersion:      scope.Config.Spec.Version,
-			AirGapped:       scope.Config.Spec.AgentConfig.AirGapped,
+			PreK3sCommands:             scope.Config.Spec.PreK3sCommands,
+			PostK3sCommands:            scope.Config.Spec.PostK3sCommands,
+			AdditionalFiles:            files,
+			ConfigFile:                 workerConfigFile,
+			K3sVersion:                 scope.Config.Spec.Version,
+			AirGapped:                  scope.Config.Spec.AgentConfig.AirGapped,
+			AirGappedInstallScriptPath: scope.Config.Spec.AgentConfig.AirGappedInstallScriptPath,
 		},
 	}
 
@@ -320,12 +323,13 @@ func (r *KThreesConfigReconciler) joinWorker(ctx context.Context, scope *Scope) 
 
 	winput := &cloudinit.WorkerInput{
 		BaseUserData: cloudinit.BaseUserData{
-			PreK3sCommands:  scope.Config.Spec.PreK3sCommands,
-			PostK3sCommands: scope.Config.Spec.PostK3sCommands,
-			AdditionalFiles: files,
-			ConfigFile:      workerConfigFile,
-			K3sVersion:      scope.Config.Spec.Version,
-			AirGapped:       scope.Config.Spec.AgentConfig.AirGapped,
+			PreK3sCommands:             scope.Config.Spec.PreK3sCommands,
+			PostK3sCommands:            scope.Config.Spec.PostK3sCommands,
+			AdditionalFiles:            files,
+			ConfigFile:                 workerConfigFile,
+			K3sVersion:                 scope.Config.Spec.Version,
+			AirGapped:                  scope.Config.Spec.AgentConfig.AirGapped,
+			AirGappedInstallScriptPath: scope.Config.Spec.AgentConfig.AirGappedInstallScriptPath,
 		},
 	}
 
@@ -378,6 +382,38 @@ func (r *KThreesConfigReconciler) resolveSecretFileContent(ctx context.Context, 
 		return nil, fmt.Errorf("secret references non-existent secret key %q: %w", source.ContentFrom.Secret.Key, ErrInvalidRef)
 	}
 	return data, nil
+}
+
+func (r *KThreesConfigReconciler) resolveEtcdProxyFile(cfg *bootstrapv1.KThreesConfig) (*bootstrapv1.File, error) {
+	// Parse the template
+	tpl, err := template.New("etcd-proxy").Parse(etcd.EtcdProxyDaemonsetYamlTemplate)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse etcd-proxy template: %w", err)
+	}
+
+	// If user has set the systemDefaultRegistry, will prefix the image with it.
+	systemDefaultRegistry := cfg.Spec.ServerConfig.SystemDefaultRegistry
+	if systemDefaultRegistry != "" {
+		systemDefaultRegistry = fmt.Sprintf("%s/", systemDefaultRegistry)
+	}
+
+	// Render the template, the image name will be ${EtcdProxyImage} if the user
+	// has set it, otherwise it will be ${SystemDefaultRegistry}alpine/socat
+	var buf bytes.Buffer
+	err = tpl.Execute(&buf, map[string]string{
+		"EtcdProxyImage":        cfg.Spec.ServerConfig.EtcdProxyImage,
+		"SystemDefaultRegistry": systemDefaultRegistry,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to render etcd-proxy template: %w", err)
+	}
+
+	return &bootstrapv1.File{
+		Path:        etcd.EtcdProxyDaemonsetYamlLocation,
+		Content:     buf.String(),
+		Owner:       "root:root",
+		Permissions: "0640",
+	}, nil
 }
 
 func (r *KThreesConfigReconciler) handleClusterNotInitialized(ctx context.Context, scope *Scope) (_ ctrl.Result, reterr error) {
@@ -465,23 +501,23 @@ func (r *KThreesConfigReconciler) handleClusterNotInitialized(ctx context.Contex
 	}
 
 	if scope.Config.Spec.IsEtcdEmbedded() {
-		etcdProxyFile := bootstrapv1.File{
-			Path:        etcd.EtcdProxyDaemonsetYamlLocation,
-			Content:     etcd.EtcdProxyDaemonsetYaml,
-			Owner:       "root:root",
-			Permissions: "0640",
+		etcdProxyFile, err := r.resolveEtcdProxyFile(scope.Config)
+		if err != nil {
+			conditions.MarkFalse(scope.Config, bootstrapv1.DataSecretAvailableCondition, bootstrapv1.DataSecretGenerationFailedReason, clusterv1.ConditionSeverityWarning, err.Error())
+			return ctrl.Result{}, fmt.Errorf("failed to resolve etcd proxy file: %w", err)
 		}
-		files = append(files, etcdProxyFile)
+		files = append(files, *etcdProxyFile)
 	}
 
 	cpinput := &cloudinit.ControlPlaneInput{
 		BaseUserData: cloudinit.BaseUserData{
-			PreK3sCommands:  scope.Config.Spec.PreK3sCommands,
-			PostK3sCommands: scope.Config.Spec.PostK3sCommands,
-			AdditionalFiles: files,
-			ConfigFile:      initConfigFile,
-			K3sVersion:      scope.Config.Spec.Version,
-			AirGapped:       scope.Config.Spec.AgentConfig.AirGapped,
+			PreK3sCommands:             scope.Config.Spec.PreK3sCommands,
+			PostK3sCommands:            scope.Config.Spec.PostK3sCommands,
+			AdditionalFiles:            files,
+			ConfigFile:                 initConfigFile,
+			K3sVersion:                 scope.Config.Spec.Version,
+			AirGapped:                  scope.Config.Spec.AgentConfig.AirGapped,
+			AirGappedInstallScriptPath: scope.Config.Spec.AgentConfig.AirGappedInstallScriptPath,
 		},
 		Certificates: certificates,
 	}
