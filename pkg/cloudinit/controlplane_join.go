@@ -20,11 +20,7 @@ import "fmt"
 
 // NewInitControlPlane returns the user data string to be used on a controlplane instance.
 func NewJoinControlPlane(input *ControlPlaneInput) ([]byte, error) {
-	input.Header = cloudConfigHeader
-	input.WriteFiles = append(input.WriteFiles, input.AdditionalFiles...)
-	input.WriteFiles = append(input.WriteFiles, input.ConfigFile)
-	input.SentinelFileCommand = sentinelFileCommand
-
+	input.BaseUserData.prepare()
 	// As controlPlaneCloudJoin template is the same as the controlPlaneCloudInit template, will reuse the controlPlaneCloudInit template
 	controlPlaneCloudJoinWithVersion := fmt.Sprintf(controlPlaneCloudInit, input.K3sVersion)
 	userData, err := generate("JoinControlplane", controlPlaneCloudJoinWithVersion, input)

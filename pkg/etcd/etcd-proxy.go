@@ -7,4 +7,4 @@ import (
 const EtcdProxyDaemonsetYamlLocation = "/var/lib/rancher/k3s/server/manifests/etcd-proxy.yaml"
 
 //go:embed etcd-proxy.yaml
-var EtcdProxyDaemonsetYaml string
+var EtcdProxyDaemonsetYamlTemplate string

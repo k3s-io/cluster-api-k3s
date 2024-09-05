@@ -25,7 +25,11 @@ spec:
         effect: NoSchedule
       containers:
       - name: etcd-proxy
-        image: alpine/socat
+        {{ if ne .EtcdProxyImage "" }}
+        image: {{ .EtcdProxyImage }}
+        {{ else }}
+        image: {{ .SystemDefaultRegistry }}alpine/socat:1.8.0.0
+        {{ end }}
         env:
         - name: HOSTIP
           valueFrom:
