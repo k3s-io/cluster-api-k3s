@@ -1,0 +1,32 @@
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: ${CLUSTER_NAME}
+  namespace: ${NAMESPACE}
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks:
+      - 10.45.0.0/16
+    serviceDomain: cluster.local
+    services:
+      cidrBlocks:
+      - 10.46.0.0/16
+  topology:
+    class: k3s
+    controlPlane:
+      nodeDeletionTimeout: 30s
+      nodeVolumeDetachTimeout: 5m
+      replicas: ${CONTROL_PLANE_MACHINE_COUNT}
+    variables:
+    - name: kindImageVersion
+      value: ${KIND_IMAGE_VERSION}
+    version: ${KUBERNETES_VERSION}
+    workers:
+      machineDeployments:
+      - class: k3s-default-worker
+        minReadySeconds: 5
+        name: ${CLUSTER_NAME}-md-0
+        nodeDeletionTimeout: 30s
+        nodeVolumeDetachTimeout: 5m
+        replicas: ${WORKER_MACHINE_COUNT}

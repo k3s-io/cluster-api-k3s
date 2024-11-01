@@ -3,18 +3,18 @@ kind: Cluster
 metadata:
   name: ${CLUSTER_NAME}
   namespace: default
-  labels:
-    ccm: azure
 spec:
   clusterNetwork:
     pods:
       cidrBlocks:
-      - 192.168.0.0/16
+      - 10.42.0.0/16
+    services:
+      cidrBlocks:
+      - 10.43.0.0/16
   controlPlaneRef:
-    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta2
     kind: KThreesControlPlane
     name: ${CLUSTER_NAME}-control-plane
-    namespace: default
   infrastructureRef:
     apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
     kind: AzureCluster
@@ -26,24 +26,34 @@ metadata:
   name: ${CLUSTER_NAME}
   namespace: default
 spec:
-  location: eastus
+  identityRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+    kind: AzureClusterIdentity
+    name: ${CLUSTER_IDENTITY_NAME}
+  location: ${AZURE_LOCATION}
   networkSpec:
-    vnet:
-      name: ${CLUSTER_NAME}-vnet
-  resourceGroup: ${CLUSTER_NAME}
+    subnets:
+    - name: control-plane-subnet
+      role: control-plane
+    - name: node-subnet
+      role: node
+  resourceGroup: ${AZURE_RESOURCE_GROUP:=${CLUSTER_NAME}}
   subscriptionID: ${AZURE_SUBSCRIPTION_ID}
 ---
-apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
 kind: KThreesControlPlane
 metadata:
   name: ${CLUSTER_NAME}-control-plane
   namespace: default
 spec:
-  infrastructureTemplate:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-    kind: AzureMachineTemplate
-    name: ${CLUSTER_NAME}-control-plane
   kthreesConfigSpec:
+    serverConfig:
+      kubeControllerManagerArgs:
+      # allocate-node-cidrs needs to be true to use flannel as CNI
+      - allocate-node-cidrs=true
+      - cluster-name=${CLUSTER_NAME}
+      disableCloudController: true
+      cloudProviderName: external
     files:
     - contentFrom:
         secret:
@@ -52,8 +62,17 @@ spec:
       owner: root:root
       path: /etc/kubernetes/azure.json
       permissions: "0644"
-  replicas: 1
-  version: v1.21.5+k3s2
+    agentConfig:
+      nodeName: '{{ ds.meta_data["local_hostname"] }}'
+    postK3sCommands: []
+    preK3sCommands: []
+  machineTemplate:
+    infrastructureRef:
+      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+      kind: AzureMachineTemplate
+      name: ${CLUSTER_NAME}-control-plane
+  replicas: ${CONTROL_PLANE_MACHINE_COUNT:=1}
+  version: ${KUBERNETES_VERSION:=v1.30.2+k3s2}
 ---
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: AzureMachineTemplate
@@ -65,17 +84,33 @@ spec:
     spec:
       osDisk:
         diskSizeGB: 128
-        managedDisk:
-          storageAccountType: Premium_LRS
         osType: Linux
-      sshPublicKey: ""
-      vmSize: Standard_D2s_v3
-      image:
-        marketplace:
-          publisher: Canonical
-          sku: 18.04-LTS
-          offer: UbuntuServer
-          version: latest
+      sshPublicKey: ${AZURE_SSH_PUBLIC_KEY_B64:=""}
+      vmSize: ${AZURE_CONTROL_PLANE_MACHINE_TYPE:="Standard_D2s_v3"}
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: MachineDeployment
+metadata:
+  name: ${CLUSTER_NAME}-md-0
+  namespace: default
+spec:
+  clusterName: ${CLUSTER_NAME}
+  replicas: ${WORKER_MACHINE_COUNT:=2}
+  selector:
+    matchLabels: null
+  template:
+    spec:
+      bootstrap:
+        configRef:
+          apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+          kind: KThreesConfigTemplate
+          name: ${CLUSTER_NAME}-md-0
+      clusterName: ${CLUSTER_NAME}
+      infrastructureRef:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        kind: AzureMachineTemplate
+        name: ${CLUSTER_NAME}-md-0
+      version: ${KUBERNETES_VERSION:=v1.30.2+k3s2}
 ---
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: AzureMachineTemplate
@@ -87,19 +122,11 @@ spec:
     spec:
       osDisk:
         diskSizeGB: 128
-        managedDisk:
-          storageAccountType: Premium_LRS
         osType: Linux
-      sshPublicKey: ""
-      vmSize: Standard_D2s_v3
-      image:
-        marketplace:
-          publisher: Canonical
-          sku: 18.04-LTS
-          offer: UbuntuServer
-          version: latest
+      sshPublicKey: ${AZURE_SSH_PUBLIC_KEY_B64:=""}
+      vmSize: ${AZURE_NODE_MACHINE_TYPE:="Standard_D2s_v3"}
 ---
-apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
 kind: KThreesConfigTemplate
 metadata:
   name: ${CLUSTER_NAME}-md-0
@@ -115,29 +142,18 @@ spec:
         owner: root:root
         path: /etc/kubernetes/azure.json
         permissions: "0644"
+      agentConfig:
+        nodeName: '{{ ds.meta_data["local_hostname"] }}'
 ---
-apiVersion: cluster.x-k8s.io/v1beta1
-kind: MachineDeployment
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: AzureClusterIdentity
 metadata:
+  name: "${CLUSTER_IDENTITY_NAME}"
   labels:
-    cluster.x-k8s.io/cluster-name: ${CLUSTER_NAME}
-  name: ${CLUSTER_NAME}-md-0
-  namespace: default
+    clusterctl.cluster.x-k8s.io/move-hierarchy: "true"
 spec:
-  clusterName: ${CLUSTER_NAME}
-  replicas: 2
-  selector:
-    matchLabels: null
-  template:
-    spec:
-      version: v1.21.5+k3s2
-      bootstrap:
-        configRef:
-          apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
-          kind: KThreesConfigTemplate
-          name: ${CLUSTER_NAME}-md-0
-      clusterName: ${CLUSTER_NAME}
-      infrastructureRef:
-        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-        kind: AzureMachineTemplate
-        name: ${CLUSTER_NAME}-md-0
+  type: ServicePrincipal
+  allowedNamespaces: {}
+  tenantID: "${AZURE_TENANT_ID}"
+  clientID: "${AZURE_CLIENT_ID}"
+  clientSecret: {"name":"${AZURE_CLUSTER_IDENTITY_SECRET_NAME}","namespace":"${AZURE_CLUSTER_IDENTITY_SECRET_NAMESPACE}"}
