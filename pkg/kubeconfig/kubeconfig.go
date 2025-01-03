@@ -27,7 +27,7 @@ var (
 	ErrCAPrivateKeyNotFound         = errors.New("CA private key not found")
 )
 
-func generateKubeconfig(ctx context.Context, c client.Client, clusterName client.ObjectKey, endpoint string) ([]byte, error) {
+func generateKubeconfig(ctx context.Context, c client.Client, clusterName client.ObjectKey, endpoint string, proxyURL *string) ([]byte, error) {
 	clusterCA, err := secret.GetFromNamespacedName(ctx, c, clusterName, secret.ClusterCA)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
@@ -65,7 +65,7 @@ func generateKubeconfig(ctx context.Context, c client.Client, clusterName client
 		return nil, ErrCertNotInKubeconfig
 	}
 
-	cfg, err := New(clusterName.Name, endpoint, clientCACert, clientCAKey, serverCACert)
+	cfg, err := New(clusterName.Name, endpoint, clientCACert, clientCAKey, serverCACert, proxyURL)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to generate a kubeconfig")
 	}
@@ -78,7 +78,7 @@ func generateKubeconfig(ctx context.Context, c client.Client, clusterName client
 }
 
 // New creates a new Kubeconfig using the cluster name and specified endpoint.
-func New(clusterName, endpoint string, clientCACert *x509.Certificate, clientCAKey crypto.Signer, serverCACert *x509.Certificate) (*api.Config, error) {
+func New(clusterName, endpoint string, clientCACert *x509.Certificate, clientCAKey crypto.Signer, serverCACert *x509.Certificate, proxyURL *string) (*api.Config, error) {
 	cfg := &certs.Config{
 		CommonName:   "kubernetes-admin",
 		Organization: []string{"system:masters"},
@@ -95,6 +95,11 @@ func New(clusterName, endpoint string, clientCACert *x509.Certificate, clientCAK
 		return nil, errors.Wrap(err, "unable to sign certificate")
 	}
 
+	if proxyURL == nil {
+		proxyURLRaw := ""
+		proxyURL = &proxyURLRaw
+	}
+
 	userName := fmt.Sprintf("%s-admin", clusterName)
 	contextName := fmt.Sprintf("%s@%s", userName, clusterName)
 
@@ -103,6 +108,7 @@ func New(clusterName, endpoint string, clientCACert *x509.Certificate, clientCAK
 			clusterName: {
 				Server:                   endpoint,
 				CertificateAuthorityData: certs.EncodeCertPEM(serverCACert),
+				ProxyURL:                 *proxyURL,
 			},
 		},
 		Contexts: map[string]*api.Context{
@@ -122,20 +128,27 @@ func New(clusterName, endpoint string, clientCACert *x509.Certificate, clientCAK
 }
 
 // CreateSecret creates the Kubeconfig secret for the given cluster.
-func CreateSecret(ctx context.Context, c client.Client, cluster *clusterv1.Cluster) error {
+func CreateSecret(ctx context.Context, c client.Client, cluster *clusterv1.Cluster, proxyURL *string) error {
 	name := util.ObjectKey(cluster)
-	return CreateSecretWithOwner(ctx, c, name, cluster.Spec.ControlPlaneEndpoint.String(), metav1.OwnerReference{
-		APIVersion: clusterv1.GroupVersion.String(),
-		Kind:       "Cluster",
-		Name:       cluster.Name,
-		UID:        cluster.UID,
-	})
+	return CreateSecretWithOwner(
+		ctx,
+		c,
+		name,
+		cluster.Spec.ControlPlaneEndpoint.String(),
+		metav1.OwnerReference{
+			APIVersion: clusterv1.GroupVersion.String(),
+			Kind:       "Cluster",
+			Name:       cluster.Name,
+			UID:        cluster.UID,
+		},
+		proxyURL,
+	)
 }
 
-// CreateSecretWithOwner creates the Kubeconfig secret for the given cluster name, namespace, endpoint, and owner reference.
-func CreateSecretWithOwner(ctx context.Context, c client.Client, clusterName client.ObjectKey, endpoint string, owner metav1.OwnerReference) error {
+// CreateSecretWithOwner creates the Kubeconfig secret for the given cluster name, namespace, endpoint, owner reference and proxy URL.
+func CreateSecretWithOwner(ctx context.Context, c client.Client, clusterName client.ObjectKey, endpoint string, owner metav1.OwnerReference, proxyURL *string) error {
 	server := fmt.Sprintf("https://%s", endpoint)
-	out, err := generateKubeconfig(ctx, c, clusterName, server)
+	out, err := generateKubeconfig(ctx, c, clusterName, server, proxyURL)
 	if err != nil {
 		return err
 	}
@@ -217,7 +230,7 @@ func RegenerateSecret(ctx context.Context, c client.Client, configSecret *corev1
 	}
 	endpoint := config.Clusters[clusterName].Server
 	key := client.ObjectKey{Name: clusterName, Namespace: configSecret.Namespace}
-	out, err := generateKubeconfig(ctx, c, key, endpoint)
+	out, err := generateKubeconfig(ctx, c, key, endpoint, &config.Clusters[clusterName].ProxyURL)
 	if err != nil {
 		return err
 	}
