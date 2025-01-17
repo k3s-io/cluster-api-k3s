@@ -47,6 +47,12 @@ const (
 	// FrontProxyCA is the secret name suffix for Front Proxy CA.
 	FrontProxyCA Purpose = "proxy"
 
+	// HTTPProxy is the secret name suffix for http Proxy.
+	HTTPProxy = Purpose("http-proxy-config")
+
+	// HTTPProxyKey is the key storing http Proxy.
+	HTTPProxyKey = "http-proxy"
+
 	// APIServerEtcdClient is the secret name of user-supplied secret containing the apiserver-etcd-client key/cert.
 	APIServerEtcdClient Purpose = "apiserver-etcd-client"
 )

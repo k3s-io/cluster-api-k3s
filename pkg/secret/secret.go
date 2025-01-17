@@ -43,6 +43,10 @@ func GetFromNamespacedName(ctx context.Context, c client.Reader, clusterName cli
 		Name:      Name(clusterName.Name, purpose),
 	}
 
+	if purpose == HTTPProxy {
+		secretKey.Name = string(purpose)
+	}
+
 	if err := c.Get(ctx, secretKey, secret); err != nil {
 		return nil, err
 	}

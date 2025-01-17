@@ -65,7 +65,12 @@ func generateKubeconfig(ctx context.Context, c client.Client, clusterName client
 		return nil, ErrCertNotInKubeconfig
 	}
 
-	cfg, err := New(clusterName.Name, endpoint, clientCACert, clientCAKey, serverCACert)
+	httpProxy, err := secret.GetFromNamespacedName(ctx, c, clusterName, secret.HTTPProxy)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to retrieve HTTPProxy secret")
+	}
+
+	cfg, err := New(clusterName.Name, endpoint, clientCACert, clientCAKey, serverCACert, httpProxy.Data[secret.HTTPProxyKey])
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to generate a kubeconfig")
 	}
@@ -78,7 +83,7 @@ func generateKubeconfig(ctx context.Context, c client.Client, clusterName client
 }
 
 // New creates a new Kubeconfig using the cluster name and specified endpoint.
-func New(clusterName, endpoint string, clientCACert *x509.Certificate, clientCAKey crypto.Signer, serverCACert *x509.Certificate) (*api.Config, error) {
+func New(clusterName, endpoint string, clientCACert *x509.Certificate, clientCAKey crypto.Signer, serverCACert *x509.Certificate, proxyURL []byte) (*api.Config, error) {
 	cfg := &certs.Config{
 		CommonName:   "kubernetes-admin",
 		Organization: []string{"system:masters"},
@@ -97,12 +102,12 @@ func New(clusterName, endpoint string, clientCACert *x509.Certificate, clientCAK
 
 	userName := fmt.Sprintf("%s-admin", clusterName)
 	contextName := fmt.Sprintf("%s@%s", userName, clusterName)
-
 	return &api.Config{
 		Clusters: map[string]*api.Cluster{
 			clusterName: {
 				Server:                   endpoint,
 				CertificateAuthorityData: certs.EncodeCertPEM(serverCACert),
+				ProxyURL:                 string(proxyURL),
 			},
 		},
 		Contexts: map[string]*api.Context{
