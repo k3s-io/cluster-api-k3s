@@ -58,9 +58,6 @@ spec:
         default:
           bridge: ${BRIDGE}
           model: virtio
-      vmIDRange:
-        start: 2000
-        end: 3000
 ---
 apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
 kind: ProxmoxMachineTemplate
@@ -84,9 +81,6 @@ spec:
         default:
           bridge: ${BRIDGE}
           model: virtio
-      vmIDRange:
-        start: 2000
-        end: 3000
 ---
 apiVersion: controlplane.cluster.x-k8s.io/v1beta2
 kind: KThreesControlPlane
