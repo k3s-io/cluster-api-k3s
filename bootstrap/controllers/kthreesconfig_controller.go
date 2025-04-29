@@ -41,6 +41,7 @@ import (
 	"sigs.k8s.io/cluster-api/util/predicates"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	kubeyaml "sigs.k8s.io/yaml"
 
@@ -535,13 +536,16 @@ func (r *KThreesConfigReconciler) handleClusterNotInitialized(ctx context.Contex
 	return ctrl.Result{}, nil
 }
 
-func (r *KThreesConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *KThreesConfigReconciler) SetupWithManager(mgr ctrl.Manager, concurrency int) error {
 	if r.KThreesInitLock == nil {
 		r.KThreesInitLock = locking.NewControlPlaneInitMutex(mgr.GetClient())
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&bootstrapv1.KThreesConfig{}).
+		WithOptions(controller.Options{
+			MaxConcurrentReconciles: concurrency,
+		}).
 		WithEventFilter(predicates.ResourceNotPaused(r.Log)).
 		Complete(r)
 }

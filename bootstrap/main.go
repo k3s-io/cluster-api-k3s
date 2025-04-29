@@ -55,6 +55,7 @@ func main() {
 	var metricsAddr string
 	var enableLeaderElection bool
 	var syncPeriod time.Duration
+	var concurrencyNumber int
 
 	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,
@@ -63,6 +64,9 @@ func main() {
 
 	flag.DurationVar(&syncPeriod, "sync-period", 10*time.Minute,
 		"The minimum interval at which watched resources are reconciled (e.g. 15m)")
+
+	flag.IntVar(&concurrencyNumber, "concurrency", 1,
+		"Number of core resources to process simultaneously")
 
 	flag.Parse()
 
@@ -91,7 +95,7 @@ func main() {
 		Client: mgr.GetClient(),
 		Log:    ctrl.Log.WithName("controllers").WithName("KThreesConfig"),
 		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
+	}).SetupWithManager(mgr, concurrencyNumber); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "KThreesConfig")
 		os.Exit(1)
 	}
@@ -108,7 +112,7 @@ func main() {
 	}
 	// +kubebuilder:scaffold:builder
 
-	setupLog.Info("starting manager")
+	setupLog.Info("Starting manager", "concurrency", concurrencyNumber)
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
