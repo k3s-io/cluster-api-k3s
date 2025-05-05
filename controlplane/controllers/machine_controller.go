@@ -19,6 +19,7 @@ import (
 	"sigs.k8s.io/cluster-api/util/predicates"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 
 	k3s "github.com/k3s-io/cluster-api-k3s/pkg/k3s"
 )
@@ -43,9 +44,12 @@ type MachineReconciler struct {
 	managementClusterUncached k3s.ManagementCluster
 }
 
-func (r *MachineReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, log *logr.Logger) error {
+func (r *MachineReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, log *logr.Logger, concurrency int) error {
 	_, err := ctrl.NewControllerManagedBy(mgr).
 		For(&clusterv1.Machine{}).
+		WithOptions(controller.Options{
+			MaxConcurrentReconciles: concurrency,
+		}).
 		WithEventFilter(predicates.ResourceNotPaused(r.Log)).
 		Build(r)
 

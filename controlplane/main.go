@@ -63,6 +63,7 @@ func main() {
 	var syncPeriod time.Duration
 	var etcdDialTimeout time.Duration
 	var etcdCallTimeout time.Duration
+	var concurrencyNumber int
 
 	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,
@@ -77,6 +78,9 @@ func main() {
 
 	flag.DurationVar(&etcdCallTimeout, "etcd-call-timeout-duration", etcd.DefaultCallTimeout,
 		"Duration that the etcd client waits at most for read and write operations to etcd.")
+
+	flag.IntVar(&concurrencyNumber, "concurrency", 1,
+		"Number of core resources to process simultaneously")
 
 	flag.Parse()
 
@@ -110,7 +114,7 @@ func main() {
 		Scheme:          mgr.GetScheme(),
 		EtcdDialTimeout: etcdDialTimeout,
 		EtcdCallTimeout: etcdCallTimeout,
-	}).SetupWithManager(ctx, mgr, &ctrPlaneLogger); err != nil {
+	}).SetupWithManager(ctx, mgr, &ctrPlaneLogger, concurrencyNumber); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "KThreesControlPlane")
 		os.Exit(1)
 	}
@@ -122,7 +126,7 @@ func main() {
 		Scheme:          mgr.GetScheme(),
 		EtcdDialTimeout: etcdDialTimeout,
 		EtcdCallTimeout: etcdCallTimeout,
-	}).SetupWithManager(ctx, mgr, &ctrMachineLogger); err != nil {
+	}).SetupWithManager(ctx, mgr, &ctrMachineLogger, concurrencyNumber); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Machine")
 		os.Exit(1)
 	}
@@ -135,7 +139,7 @@ func main() {
 	}
 	// +kubebuilder:scaffold:builder
 
-	setupLog.Info("starting manager")
+	setupLog.Info("Starting manager", "concurrency", concurrencyNumber)
 	if err := mgr.Start(ctx); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)

@@ -283,11 +283,13 @@ func patchKThreesControlPlane(ctx context.Context, patchHelper *patch.Helper, kc
 	)
 }
 
-func (r *KThreesControlPlaneReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, log *logr.Logger) error {
+func (r *KThreesControlPlaneReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, log *logr.Logger, concurrency int) error {
 	c, err := ctrl.NewControllerManagedBy(mgr).
 		For(&controlplanev1.KThreesControlPlane{}).
 		Owns(&clusterv1.Machine{}).
-		//	WithOptions(options).
+		WithOptions(controller.Options{
+			MaxConcurrentReconciles: concurrency,
+		}).
 		WithEventFilter(predicates.ResourceNotPaused(r.Log)).
 		Watches(
 			&clusterv1.Cluster{},
