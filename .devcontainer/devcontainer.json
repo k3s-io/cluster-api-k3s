@@ -1,0 +1,20 @@
+{
+  "name": "k3s devbox",
+  "build": {
+    "dockerfile": "./Dockerfile",
+    "context": ".."
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2.12.0": {}
+  },
+  "customizations": {
+    "vscode": {
+      "settings": {},
+      "extensions": [
+        "jetpack-io.devbox",
+        "golang.go"
+      ]
+    }
+  },
+  "remoteUser": "devbox"
+}
