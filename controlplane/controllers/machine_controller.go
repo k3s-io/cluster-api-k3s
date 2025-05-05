@@ -50,7 +50,7 @@ func (r *MachineReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manag
 		WithOptions(controller.Options{
 			MaxConcurrentReconciles: concurrency,
 		}).
-		WithEventFilter(predicates.ResourceNotPaused(r.Log)).
+		WithEventFilter(predicates.ResourceNotPaused(mgr.GetScheme(), r.Log)).
 		Build(r)
 
 	if r.managementCluster == nil {
@@ -181,7 +181,7 @@ func (r *MachineReconciler) isRemoveEtcdMemberNeeded(ctx context.Context, cluste
 	// controlPlaneRef is an optional field in the Cluster so skip the external
 	// managed control plane check if it is nil
 	if cluster.Spec.ControlPlaneRef != nil {
-		controlPlane, err := external.Get(ctx, r.Client, cluster.Spec.ControlPlaneRef, cluster.Spec.ControlPlaneRef.Namespace)
+		controlPlane, err := external.Get(ctx, r.Client, cluster.Spec.ControlPlaneRef)
 		if apierrors.IsNotFound(err) {
 			// If control plane object in the reference does not exist, log and skip check for
 			// external managed control plane

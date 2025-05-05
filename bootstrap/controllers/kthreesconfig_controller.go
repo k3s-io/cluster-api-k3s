@@ -546,7 +546,7 @@ func (r *KThreesConfigReconciler) SetupWithManager(mgr ctrl.Manager, concurrency
 		WithOptions(controller.Options{
 			MaxConcurrentReconciles: concurrency,
 		}).
-		WithEventFilter(predicates.ResourceNotPaused(r.Log)).
+		WithEventFilter(predicates.ResourceNotPaused(mgr.GetScheme(), r.Log)).
 		Complete(r)
 }
 

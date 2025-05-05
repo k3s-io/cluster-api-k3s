@@ -28,7 +28,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 
 	"sigs.k8s.io/cluster-api/test/framework"
 	"sigs.k8s.io/cluster-api/test/framework/clusterctl"
@@ -89,9 +89,9 @@ var _ = Describe("When testing MachineDeployment remediation", func() {
 					Flavor:                   "md-remediation",
 					Namespace:                namespace.Name,
 					ClusterName:              clusterName,
-					KubernetesVersion:        e2eConfig.GetVariable(KubernetesVersion),
-					ControlPlaneMachineCount: pointer.Int64Ptr(1),
-					WorkerMachineCount:       pointer.Int64Ptr(1),
+					KubernetesVersion:        e2eConfig.GetVariableOrEmpty(KubernetesVersion),
+					ControlPlaneMachineCount: ptr.To[int64](1),
+					WorkerMachineCount:       ptr.To[int64](1),
 				},
 				WaitForClusterIntervals:      e2eConfig.GetIntervals(specName, "wait-cluster"),
 				WaitForControlPlaneIntervals: e2eConfig.GetIntervals(specName, "wait-control-plane"),
@@ -112,7 +112,7 @@ var _ = Describe("When testing MachineDeployment remediation", func() {
 			workloadClient := workloadProxy.GetClient()
 			framework.WaitForNodesReady(ctx, framework.WaitForNodesReadyInput{
 				Lister:            workloadClient,
-				KubernetesVersion: e2eConfig.GetVariable(KubernetesVersion),
+				KubernetesVersion: e2eConfig.GetVariableOrEmpty(KubernetesVersion),
 				Count:             int(result.ExpectedTotalNodes()),
 				WaitForNodesReady: e2eConfig.GetIntervals(specName, "wait-nodes-ready"),
 			})

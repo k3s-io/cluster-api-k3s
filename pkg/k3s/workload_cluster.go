@@ -38,9 +38,7 @@ const (
 	k3sServingSecretKey       = "k3s-serving"
 )
 
-var (
-	ErrControlPlaneMinNodes = errors.New("cluster has fewer than 2 control plane nodes; removing an etcd member is not supported")
-)
+var ErrControlPlaneMinNodes = errors.New("cluster has fewer than 2 control plane nodes; removing an etcd member is not supported")
 
 // WorkloadCluster defines all behaviors necessary to upgrade kubernetes on a workload cluster
 //

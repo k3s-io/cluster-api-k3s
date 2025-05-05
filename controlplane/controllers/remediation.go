@@ -297,7 +297,7 @@ func (r *KThreesControlPlaneReconciler) checkRetryLimits(log logr.Logger, machin
 	// NOTE: this could potentially lead to executing more retries than expected or to executing retries before than
 	// expected, but this is considered acceptable when the system recovers from someone/something changes or deletes
 	// the RemediationForAnnotation on Machines.
-	lastRemediationTime := reconciliationTime.Add(-2 * max(minHealthyPeriod, retryPeriod))
+	lastRemediationTime := reconciliationTime.Add(-2 * maxDuration(minHealthyPeriod, retryPeriod))
 	if !lastRemediationData.Timestamp.IsZero() {
 		lastRemediationTime = lastRemediationData.Timestamp.Time
 	}
@@ -345,7 +345,7 @@ func (r *KThreesControlPlaneReconciler) checkRetryLimits(log logr.Logger, machin
 }
 
 // max calculates the maximum duration.
-func max(x, y time.Duration) time.Duration {
+func maxDuration(x, y time.Duration) time.Duration {
 	if x < y {
 		return y
 	}

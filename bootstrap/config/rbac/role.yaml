@@ -22,17 +22,6 @@ rules:
   - bootstrap.cluster.x-k8s.io
   resources:
   - kthreesconfigs
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - bootstrap.cluster.x-k8s.io
-  resources:
   - kthreesconfigs/status
   verbs:
   - create
