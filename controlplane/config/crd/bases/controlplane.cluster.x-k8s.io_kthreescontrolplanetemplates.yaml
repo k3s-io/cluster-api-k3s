@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.17.2
   name: kthreescontrolplanetemplates.controlplane.cluster.x-k8s.io
 spec:
   group: controlplane.cluster.x-k8s.io
@@ -100,9 +100,8 @@ spec:
                                   type: string
                                 type: array
                               privateRegistry:
-                                description: |-
-                                  TODO: take in a object or secret and write to file. this is not useful
-                                  PrivateRegistry  registry configuration file (default: "/etc/rancher/k3s/registries.yaml")
+                                description: 'PrivateRegistry  registry configuration
+                                  file (default: "/etc/rancher/k3s/registries.yaml")'
                                 type: string
                             type: object
                           files:
@@ -292,7 +291,6 @@ spec:
                                   the event) or if no container name is specified "spec.containers[2]" (container with
                                   index 2 in this pod). This syntax is chosen only to have some well-defined way of
                                   referencing a part of an object.
-                                  TODO: this design is not final and this field is subject to change in the future.
                                 type: string
                               kind:
                                 description: |-
@@ -330,7 +328,7 @@ spec:
                                 additionalProperties:
                                   type: string
                                 description: |-
-                                  Annotations is an unstructured key value map stored with a resource that may be
+                                  annotations is an unstructured key value map stored with a resource that may be
                                   set by external tools to store and retrieve arbitrary metadata. They are not
                                   queryable and should be preserved when modifying objects.
                                   More info: http://kubernetes.io/docs/user-guide/annotations
@@ -339,7 +337,7 @@ spec:
                                 additionalProperties:
                                   type: string
                                 description: |-
-                                  Map of string keys and values that can be used to organize and categorize
+                                  labels is a map of string keys and values that can be used to organize and categorize
                                   (scope and select) objects. May match selectors of replication controllers
                                   and services.
                                   More info: http://kubernetes.io/docs/user-guide/labels
@@ -374,20 +372,19 @@ spec:
                               attempting to remediate an unhealthy machine.\nA retry
                               happens when a machine that was created as a replacement
                               for an unhealthy machine also fails.\nFor example, given
-                              a control plane with three machines M1, M2, M3:\n\n\n\tM1
+                              a control plane with three machines M1, M2, M3:\n\n\tM1
                               become unhealthy; remediation happens, and M1-1 is created
                               as a replacement.\n\tIf M1-1 (replacement of M1) has
                               problems while bootstrapping it will become unhealthy,
                               and then be\n\tremediated; such operation is considered
                               a retry, remediation-retry #1.\n\tIf M1-2 (replacement
                               of M1-1) becomes unhealthy, remediation-retry #2 will
-                              happen, etc.\n\n\nA retry could happen only after RetryPeriod
+                              happen, etc.\n\nA retry could happen only after RetryPeriod
                               from the previous retry.\nIf a machine is marked as
                               unhealthy after MinHealthyPeriod from the previous remediation
                               expired,\nthis is not considered a retry anymore because
                               the new issue is assumed unrelated from the previous
-                              one.\n\n\nIf not set, the remedation will be retried
-                              infinitely."
+                              one.\n\nIf not set, the remedation will be retried infinitely."
                             format: int32
                             type: integer
                           minHealthyPeriod:
@@ -396,23 +393,22 @@ spec:
                               the previous one. In this case the remediation is not
                               considered a retry anymore, and thus the retry\ncounter
                               restarts from 0. For example, assuming MinHealthyPeriod
-                              is set to 1h (default)\n\n\n\tM1 become unhealthy; remediation
+                              is set to 1h (default)\n\n\tM1 become unhealthy; remediation
                               happens, and M1-1 is created as a replacement.\n\tIf
                               M1-1 (replacement of M1) has problems within the 1hr
                               after the creation, also\n\tthis machine will be remediated
                               and this operation is considered a retry - a problem
-                              related\n\tto the original issue happened to M1 -.\n\n\n\tIf
+                              related\n\tto the original issue happened to M1 -.\n\n\tIf
                               instead the problem on M1-1 is happening after MinHealthyPeriod
                               expired, e.g. four days after\n\tm1-1 has been created
                               as a remediation of M1, the problem on M1-1 is considered
-                              unrelated to\n\tthe original issue happened to M1.\n\n\nIf
+                              unrelated to\n\tthe original issue happened to M1.\n\nIf
                               not set, this value is defaulted to 1h."
                             type: string
                           retryPeriod:
                             description: |-
                               RetryPeriod is the duration that KCP should wait before remediating a machine being created as a replacement
                               for an unhealthy machine (a retry).
-
 
                               If not set, a retry will happen immediately.
                             type: string

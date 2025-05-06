@@ -1,36 +1,24 @@
 run:
-  skip-files:
-  - ".*zz_generated.*\\.go"
-  - "contrib/.*"
-  timeout: 5m
+  go: "1.23"
+  timeout: 10m
+
 issue:
   max-same-issues: 0
   max-per-linter: 0
-issues:
-  exclude-rules:
-    - path: "test/e2e/*"
-      linters:
-        - gosec
-      text: "G106:"
-    - linters:
-        - revive
-      text: "dot-imports"
-      path: ".*test.*"
-    - linters:
-        - stylecheck
-      text: "ST1001"
-      path: ".*test.*"
-      
+  exclude-files:
+    - ".*zz_generated.*\\.go"
+    - "contrib/.*"
+
 linters:
   fast: true
   disable-all: true
   enable:
   - asciicheck
   - bodyclose
+  - copyloopvar
   - depguard
   - dogsled
   - errcheck
-  - exportloopref
   - gci
   - goconst
   - gocritic
@@ -117,6 +105,7 @@ linters-settings:
     excludes:
     - G307 # Deferring unsafe method "Close" on type "\*os.File"
     - G108 # Profiling endpoint is automatically exposed on /debug/pprof
+    - G115 # integer overflow conversion int -> int32
   importas:
     # Do not allow unaliased imports of aliased packages.
     # Default: false
@@ -147,10 +136,6 @@ linters-settings:
           - disableStutteringCheck
       - name: unused-parameter
         disabled: true
-  staticcheck:
-    go: "1.22"
-  stylecheck:
-    go: "1.22"
   tagliatelle:
     case:
       rules:
@@ -158,4 +143,22 @@ linters-settings:
         # Support string case: `camel`, `pascal`, `kebab`, `snake`, `goCamel`, `goPascal`, `goKebab`, `goSnake`, `upper`, `lower`, `header`
         json: goCamel
   unused:
-    go: "1.22"
+    go: "1.23"
+
+issues:
+  exclude-rules:
+    - path: "test/e2e/*"
+      linters:
+        - gosec
+      text: "G106:"
+    - linters:
+        - revive
+      text: "dot-imports"
+      path: ".*test.*"
+    - linters:
+        - stylecheck
+      text: "ST1001"
+      path: ".*test.*"
+    - linters:
+        - govet
+      text: "non-constant format string in call to sigs\\.k8s\\.io\\/cluster-api\\/util\\/conditions\\."

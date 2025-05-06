@@ -340,9 +340,7 @@ func (c *ControlPlane) IsEtcdManaged() bool {
 
 // UnhealthyMachines returns the list of control plane machines marked as unhealthy by MHC.
 func (c *ControlPlane) UnhealthyMachines() collections.Machines {
-	return c.Machines.Filter(func(machine *clusterv1.Machine) bool {
-		return collections.IsUnhealthy(machine)
-	})
+	return c.Machines.Filter(collections.IsUnhealthy)
 }
 
 // HealthyMachines returns the list of control plane machines not marked as unhealthy by MHC.
