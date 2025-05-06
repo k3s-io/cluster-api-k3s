@@ -15,8 +15,8 @@ providers:
   - name: cluster-api
     type: CoreProvider
     versions:
-      - name: v1.8.1
-        value: https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.8.1/core-components.yaml
+      - name: v1.10.1
+        value: https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.10.1/core-components.yaml
         type: url
         contract: v1beta1
         files:
@@ -29,8 +29,8 @@ providers:
     versions:
       # Will use the latest version defined in ../data/shared/v1beta1/metadata.yaml
       # to init the management cluster
-      - name: v1.8.1 # used during e2e-test
-        value: https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.8.1/infrastructure-components-development.yaml
+      - name: v1.10.1 # used during e2e-test
+        value: https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.10.1/infrastructure-components-development.yaml
         type: url
         contract: v1beta1
         files:
@@ -62,7 +62,7 @@ providers:
       # ${ProjectRoot}/metadata.yaml (this one) to init the management cluster
       # this version should be updated when ${ProjectRoot}/metadata.yaml
       # is modified
-      - name: v0.2.99 # next; use manifest from source files
+      - name: v0.3.99 # next; use manifest from source files
         value: "../../../bootstrap/config/default"
         files:
           - sourcePath: "../../../metadata.yaml"
@@ -77,21 +77,21 @@ providers:
         files:
           - sourcePath: "../data/shared/k3s/v0.2/metadata.yaml"
             targetName: "metadata.yaml"
-      - name: v0.2.99 # next; use manifest from source files
+      - name: v0.3.99 # next; use manifest from source files
         value: "../../../controlplane/config/default"
         files:
           - sourcePath: "../../../metadata.yaml"
             targetName: "metadata.yaml"
 
 variables:
-  KUBERNETES_VERSION_MANAGEMENT: "v1.30.0"
-  KUBERNETES_VERSION: "v1.30.2+k3s2"
-  KUBERNETES_VERSION_UPGRADE_TO: "v1.30.3+k3s1"
+  KUBERNETES_VERSION_MANAGEMENT: "v1.33.0"
+  KUBERNETES_VERSION: "v1.31.8+k3s1"
+  KUBERNETES_VERSION_UPGRADE_TO: "v1.32.4+k3s1"
   IP_FAMILY: "IPv4"
-  KIND_IMAGE_VERSION: "v1.30.0"
+  KIND_IMAGE_VERSION: "v1.33.0"
   # Used during clusterctl upgrade test
-  CAPI_CORE_VERSION: "1.8.1"
-  K3S_CAPI_CURRENT_VERSION: "0.2.99"
+  CAPI_CORE_VERSION: "1.10.1"
+  K3S_CAPI_CURRENT_VERSION: "0.3.99"
   # Enabling the feature flags by setting the env variables.
   CLUSTER_TOPOLOGY: "true"
   EXP_MACHINE_POOL: "true"

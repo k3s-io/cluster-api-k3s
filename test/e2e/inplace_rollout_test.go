@@ -33,7 +33,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 
 	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
@@ -103,9 +103,9 @@ var _ = Describe("Inplace mutable fields rollout test [ClusterClass]", func() {
 					Flavor:                   "topology",
 					Namespace:                namespace.Name,
 					ClusterName:              clusterName,
-					KubernetesVersion:        e2eConfig.GetVariable(KubernetesVersion),
-					ControlPlaneMachineCount: pointer.Int64Ptr(3),
-					WorkerMachineCount:       pointer.Int64Ptr(1),
+					KubernetesVersion:        e2eConfig.GetVariableOrEmpty(KubernetesVersion),
+					ControlPlaneMachineCount: ptr.To[int64](3),
+					WorkerMachineCount:       ptr.To[int64](1),
 				},
 				WaitForClusterIntervals:      e2eConfig.GetIntervals(specName, "wait-cluster"),
 				WaitForControlPlaneIntervals: e2eConfig.GetIntervals(specName, "wait-control-plane"),

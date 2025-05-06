@@ -111,7 +111,7 @@ func TestE2E(t *testing.T) {
 	}
 
 	// ensure the artifacts folder exists
-	g.Expect(os.MkdirAll(artifactFolder, 0755)).To(Succeed(), "Invalid test suite argument. Can't create e2e.artifacts-folder %q", artifactFolder) //nolint:gosec
+	g.Expect(os.MkdirAll(artifactFolder, 0o755)).To(Succeed(), "Invalid test suite argument. Can't create e2e.artifacts-folder %q", artifactFolder) //nolint:gosec
 
 	RegisterFailHandler(Fail)
 
@@ -204,7 +204,7 @@ func loadE2EConfig(configPath string) *clusterctl.E2EConfig {
 	// TODO: This is commented out as it assumes kubeadm and errors if its not there
 	// Remove localLoadE2EConfig and use the line below when this issue is resolved:
 	// https://github.com/kubernetes-sigs/cluster-api/issues/3983
-	//config := clusterctl.LoadE2EConfig(ctx, clusterctl.LoadE2EConfigInput{ConfigPath: configPath})
+	// config := clusterctl.LoadE2EConfig(ctx, clusterctl.LoadE2EConfigInput{ConfigPath: configPath})
 	config := localLoadE2EConfig(configPath)
 	Expect(config).ToNot(BeNil(), "Failed to load E2E config from %s", configPath)
 
@@ -231,10 +231,10 @@ func setupBootstrapCluster(config *clusterctl.E2EConfig, scheme *runtime.Scheme,
 		By("Creating the bootstrap cluster")
 		clusterProvider = bootstrap.CreateKindBootstrapClusterAndLoadImages(ctx, bootstrap.CreateKindBootstrapClusterAndLoadImagesInput{
 			Name:               config.ManagementClusterName,
-			KubernetesVersion:  config.GetVariable(KubernetesVersionManagement),
+			KubernetesVersion:  config.GetVariableOrEmpty(KubernetesVersionManagement),
 			RequiresDockerSock: config.HasDockerProvider(),
 			Images:             config.Images,
-			IPFamily:           config.GetVariable(IPFamily),
+			IPFamily:           config.GetVariableOrEmpty(IPFamily),
 			LogFolder:          filepath.Join(artifactFolder, "kind"),
 		})
 		Expect(clusterProvider).ToNot(BeNil(), "Failed to create a bootstrap cluster")
