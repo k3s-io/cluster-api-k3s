@@ -45,7 +45,7 @@ jobs:
 
       - name: Docker ${{ matrix.target }} metadata
         id: meta
-        uses: docker/metadata-action@v4
+        uses: docker/metadata-action@v5
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           images: ${{ env.REGISTRY }}/${{ matrix.target }}-controller
@@ -114,7 +114,7 @@ jobs:
 
       - name: Docker ${{ matrix.target }} metadata
         id: meta
-        uses: docker/metadata-action@v4
+        uses: docker/metadata-action@v5
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           images: |
