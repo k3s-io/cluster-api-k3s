@@ -290,12 +290,12 @@ func (r *KThreesControlPlaneReconciler) SetupWithManager(ctx context.Context, mg
 		WithOptions(controller.Options{
 			MaxConcurrentReconciles: concurrency,
 		}).
-		WithEventFilter(predicates.ResourceNotPaused(r.Log)).
+		WithEventFilter(predicates.ResourceNotPaused(mgr.GetScheme(), r.Log)).
 		Watches(
 			&clusterv1.Cluster{},
 			handler.EnqueueRequestsFromMapFunc(r.ClusterToKThreesControlPlane(ctx, log)),
 			builder.WithPredicates(
-				predicates.ClusterUnpausedAndInfrastructureReady(r.Log),
+				predicates.ClusterPausedTransitionsOrInfrastructureReady(mgr.GetScheme(), r.Log),
 			),
 		).Build(r)
 	if err != nil {
@@ -613,7 +613,7 @@ func (r *KThreesControlPlaneReconciler) reconcileExternalReference(ctx context.C
 		return nil
 	}
 
-	obj, err := external.Get(ctx, r.Client, &ref, cluster.Namespace)
+	obj, err := external.Get(ctx, r.Client, &ref)
 	if err != nil {
 		return err
 	}

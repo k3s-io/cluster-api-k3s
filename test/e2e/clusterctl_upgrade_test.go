@@ -62,11 +62,11 @@ var _ = Describe("When testing clusterctl upgrades using ClusterClass (v0.2.0=>c
 		Expect(e2eConfig.Variables).To(HaveKey(CapiCoreVersion))
 
 		// Will upgrade k3s CAPI from v0.2.0 to k3sCapiUpgradedVersion.
-		k3sCapiUpgradedVersion = e2eConfig.GetVariable(K3sCapiCurrentVersion)
+		k3sCapiUpgradedVersion = e2eConfig.GetVariableOrEmpty(K3sCapiCurrentVersion)
 
 		// Will init other CAPI core/CAPD componenets with CapiCoreVersion, and then upgrade to CapiCoreUpgradedVersion.
 		// For now, this two versions are equal.
-		capiCoreVersion = e2eConfig.GetVariable(CapiCoreVersion)
+		capiCoreVersion = e2eConfig.GetVariableOrEmpty(CapiCoreVersion)
 		capiCoreUpgradedVersion = capiCoreVersion
 	})
 

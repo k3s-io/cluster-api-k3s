@@ -28,7 +28,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 
 	"sigs.k8s.io/cluster-api/test/framework/clusterctl"
 	"sigs.k8s.io/cluster-api/util"
@@ -62,14 +62,15 @@ var _ = Describe("Workload cluster creation", func() {
 
 	AfterEach(func() {
 		cleanInput := cleanupInput{
-			SpecName:        specName,
-			Cluster:         result.Cluster,
-			ClusterProxy:    bootstrapClusterProxy,
-			Namespace:       namespace,
-			CancelWatches:   cancelWatches,
-			IntervalsGetter: e2eConfig.GetIntervals,
-			SkipCleanup:     skipCleanup,
-			ArtifactFolder:  artifactFolder,
+			SpecName:             specName,
+			Cluster:              result.Cluster,
+			ClusterProxy:         bootstrapClusterProxy,
+			ClusterctlConfigPath: clusterctlConfigPath,
+			Namespace:            namespace,
+			CancelWatches:        cancelWatches,
+			IntervalsGetter:      e2eConfig.GetIntervals,
+			SkipCleanup:          skipCleanup,
+			ArtifactFolder:       artifactFolder,
 		}
 
 		dumpSpecResourcesAndCleanup(ctx, cleanInput)
@@ -87,9 +88,9 @@ var _ = Describe("Workload cluster creation", func() {
 					InfrastructureProvider:   infrastructureProvider,
 					Namespace:                namespace.Name,
 					ClusterName:              clusterName,
-					KubernetesVersion:        e2eConfig.GetVariable(KubernetesVersion),
-					ControlPlaneMachineCount: pointer.Int64Ptr(1),
-					WorkerMachineCount:       pointer.Int64Ptr(3),
+					KubernetesVersion:        e2eConfig.GetVariableOrEmpty(KubernetesVersion),
+					ControlPlaneMachineCount: ptr.To[int64](1),
+					WorkerMachineCount:       ptr.To[int64](3),
 				},
 				WaitForClusterIntervals:      e2eConfig.GetIntervals(specName, "wait-cluster"),
 				WaitForControlPlaneIntervals: e2eConfig.GetIntervals(specName, "wait-control-plane"),
@@ -111,9 +112,9 @@ var _ = Describe("Workload cluster creation", func() {
 					Flavor:                   "v1beta1",
 					Namespace:                namespace.Name,
 					ClusterName:              clusterName,
-					KubernetesVersion:        e2eConfig.GetVariable(KubernetesVersion),
-					ControlPlaneMachineCount: pointer.Int64Ptr(1),
-					WorkerMachineCount:       pointer.Int64Ptr(3),
+					KubernetesVersion:        e2eConfig.GetVariableOrEmpty(KubernetesVersion),
+					ControlPlaneMachineCount: ptr.To[int64](1),
+					WorkerMachineCount:       ptr.To[int64](3),
 				},
 				WaitForClusterIntervals:      e2eConfig.GetIntervals(specName, "wait-cluster"),
 				WaitForControlPlaneIntervals: e2eConfig.GetIntervals(specName, "wait-control-plane"),
@@ -135,9 +136,9 @@ var _ = Describe("Workload cluster creation", func() {
 					Flavor:                   "topology",
 					Namespace:                namespace.Name,
 					ClusterName:              clusterName,
-					KubernetesVersion:        e2eConfig.GetVariable(KubernetesVersion),
-					ControlPlaneMachineCount: pointer.Int64Ptr(1),
-					WorkerMachineCount:       pointer.Int64Ptr(1),
+					KubernetesVersion:        e2eConfig.GetVariableOrEmpty(KubernetesVersion),
+					ControlPlaneMachineCount: ptr.To[int64](1),
+					WorkerMachineCount:       ptr.To[int64](1),
 				},
 				WaitForClusterIntervals:      e2eConfig.GetIntervals(specName, "wait-cluster"),
 				WaitForControlPlaneIntervals: e2eConfig.GetIntervals(specName, "wait-control-plane"),
