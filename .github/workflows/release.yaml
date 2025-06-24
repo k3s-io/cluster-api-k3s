@@ -104,7 +104,7 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - uses: actions/cache@v3
+      - uses: actions/cache@v4
         with:
           path: hack/tools/bin
           key: ${{ runner.os }}-tools-bin-release-${{ hashFiles('Makefile') }}
