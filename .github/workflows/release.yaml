@@ -23,7 +23,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: "./go.mod"
           cache: true
@@ -99,7 +99,7 @@ jobs:
       - name: Set release
         run: echo "RELEASE_TAG=${GITHUB_REF:10}" >> $GITHUB_ENV
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
