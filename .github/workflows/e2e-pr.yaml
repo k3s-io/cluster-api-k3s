@@ -43,7 +43,7 @@ jobs:
         run: make GINKGO_FOCUS="\\[PR-Blocking\\]" test-e2e
       - name: Archive artifacts
         if: always()
-        uses: actions/upload-artifact@v4.6.2
+        uses: actions/upload-artifact@v5.0.0
         with:
           name: e2e-artifacts
           path: _artifacts
