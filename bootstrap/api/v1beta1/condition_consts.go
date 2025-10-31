@@ -16,7 +16,7 @@ limitations under the License.
 
 package v1beta1
 
-import clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+import clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 
 // Conditions and condition Reasons for the KThreesConfig object.
 
@@ -26,7 +26,7 @@ const (
 	// NOTE: When the DataSecret generation starts the process completes immediately and within the
 	// same reconciliation, so the user will always see a transition from Wait to Generated without having
 	// evidence that BootstrapSecret generation is started/in progress.
-	DataSecretAvailableCondition clusterv1.ConditionType = "DataSecretAvailable"
+	DataSecretAvailableCondition clusterv1beta1.ConditionType = "DataSecretAvailable"
 
 	// WaitingForClusterInfrastructureReason (Severity=Info) document a bootstrap secret generation process
 	// waiting for the cluster infrastructure to be ready.
@@ -43,7 +43,7 @@ const (
 	// Deprecated: This has been deprecated in v1beta1 and will be removed in a future version.
 	// Switch to WaitingForControlPlaneAvailableReason constant from the `sigs.k8s.io/cluster-api/api/v1beta1`
 	// package.
-	WaitingForControlPlaneAvailableReason = clusterv1.WaitingForControlPlaneAvailableReason
+	WaitingForControlPlaneAvailableReason = clusterv1beta1.WaitingForControlPlaneAvailableReason
 
 	// DataSecretGenerationFailedReason (Severity=Warning) documents a KThreesConfig controller detecting
 	// an error while generating a data secret; those kind of errors are usually due to misconfigurations
@@ -58,7 +58,7 @@ const (
 	// machine, if the cluster is not using a control plane ref object, if the certificates are not provided
 	// by the users.
 	// IMPORTANT: This condition won't be re-created after clusterctl move.
-	CertificatesAvailableCondition clusterv1.ConditionType = "CertificatesAvailable"
+	CertificatesAvailableCondition clusterv1beta1.ConditionType = "CertificatesAvailable"
 
 	// CertificatesGenerationFailedReason (Severity=Warning) documents a KThreesConfig controller detecting
 	// an error while generating certificates; those kind of errors are usually temporary and the controller

@@ -18,7 +18,6 @@ package controllers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -27,20 +26,20 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/types"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apiserver/pkg/storage/names"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/controllers/external"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/collections"
-	"sigs.k8s.io/cluster-api/util/conditions"
+	"sigs.k8s.io/cluster-api/util/conditions" //nolint:staticcheck
 	"sigs.k8s.io/cluster-api/util/patch"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
 	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
+	"github.com/k3s-io/cluster-api-k3s/controlplane/internal/desiredstate"
 	k3s "github.com/k3s-io/cluster-api-k3s/pkg/k3s"
 	"github.com/k3s-io/cluster-api-k3s/pkg/util/ssa"
 )
@@ -225,16 +224,16 @@ loopmachines:
 	return ctrl.Result{}, nil
 }
 
-func preflightCheckCondition(kind string, obj conditions.Getter, condition clusterv1.ConditionType) error {
-	c := conditions.Get(obj, condition)
+func preflightCheckCondition(kind string, obj clusterv1.Machine, conditionType string) error {
+	c := conditions.Get(obj, conditionType)
 	if c == nil {
-		return fmt.Errorf("%s %s does not have %s condition: %w", kind, obj.GetName(), condition, ErrPreConditionFailed)
+		return fmt.Errorf("%s %s does not have %s condition: %w", kind, obj.GetName(), conditionType, ErrPreConditionFailed)
 	}
-	if c.Status == corev1.ConditionFalse {
-		return fmt.Errorf("%s %s reports %s condition is false (%s, %s): %w", kind, obj.GetName(), condition, c.Severity, c.Message, ErrPreConditionFailed)
+	if c.Status == metav1.ConditionFalse {
+		return errors.Errorf("%s %s reports %s condition is false (%s)", kind, obj.GetName(), conditionType, c.Message)
 	}
-	if c.Status == corev1.ConditionUnknown {
-		return fmt.Errorf("%s %s reports %s condition is unknown (%s): %w", kind, obj.GetName(), condition, c.Message, ErrPreConditionFailed)
+	if c.Status == metav1.ConditionUnknown {
+		return errors.Errorf("%s %s reports %s condition is unknown (%s)", kind, obj.GetName(), conditionType, c.Message)
 	}
 
 	return nil
@@ -253,11 +252,11 @@ func selectMachineForScaleDown(ctx context.Context, controlPlane *k3s.ControlPla
 	return controlPlane.MachineInFailureDomainWithMostMachines(ctx, machines)
 }
 
-func (r *KThreesControlPlaneReconciler) cloneConfigsAndGenerateMachine(ctx context.Context, cluster *clusterv1.Cluster, kcp *controlplanev1.KThreesControlPlane, bootstrapSpec *bootstrapv1.KThreesConfigSpec, failureDomain *string) error {
+func (r *KThreesControlPlaneReconciler) cloneConfigsAndGenerateMachine(ctx context.Context, cluster *clusterv1.Cluster, kcp *controlplanev1.KThreesControlPlane, bootstrapSpec *bootstrapv1.KThreesConfigSpec, failureDomain string) error {
 	var errs []error
 
 	// Compute desired Machine
-	machine, err := r.computeDesiredMachine(kcp, cluster, failureDomain, nil)
+	machine, err := desiredstate.ComputeDesiredMachine(kcp, cluster, failureDomain, nil)
 	if err != nil {
 		return errors.Wrap(err, "failed to create Machine: failed to compute desired Machine")
 	}
@@ -331,6 +330,7 @@ func (r *KThreesControlPlaneReconciler) cleanupFromGeneration(ctx context.Contex
 
 	return kerrors.NewAggregate(errs)
 }
+
 
 func (r *KThreesControlPlaneReconciler) generateKThreesConfig(ctx context.Context, kcp *controlplanev1.KThreesControlPlane, cluster *clusterv1.Cluster, spec *bootstrapv1.KThreesConfigSpec) (*corev1.ObjectReference, error) {
 	// Create an owner reference without a controller reference because the owning controller is the machine controller
@@ -408,93 +408,4 @@ func (r *KThreesControlPlaneReconciler) updateMachine(ctx context.Context, machi
 		return nil, errors.Wrap(err, "failed to update Machine")
 	}
 	return updatedMachine, nil
-}
-
-// computeDesiredMachine computes the desired Machine.
-// This Machine will be used during reconciliation to:
-// * create a new Machine
-// * update an existing Machine
-// Because we are using Server-Side-Apply we always have to calculate the full object.
-// There are small differences in how we calculate the Machine depending on if it
-// is a create or update. Example: for a new Machine we have to calculate a new name,
-// while for an existing Machine we have to use the name of the existing Machine.
-// Also, for an existing Machine, we will not copy its labels, as they are not managed by the KThreesControlPlane controller.
-func (r *KThreesControlPlaneReconciler) computeDesiredMachine(kcp *controlplanev1.KThreesControlPlane, cluster *clusterv1.Cluster, failureDomain *string, existingMachine *clusterv1.Machine) (*clusterv1.Machine, error) {
-	var machineName string
-	var machineUID types.UID
-	var version *string
-	annotations := map[string]string{}
-	if existingMachine == nil {
-		// Creating a new machine
-		machineName = names.SimpleNameGenerator.GenerateName(kcp.Name + "-")
-		version = &kcp.Spec.Version
-
-		// Machine's bootstrap config may be missing ClusterConfiguration if it is not the first machine in the control plane.
-		// We store ClusterConfiguration as annotation here to detect any changes in KCP ClusterConfiguration and rollout the machine if any.
-		serverConfig, err := json.Marshal(kcp.Spec.KThreesConfigSpec.ServerConfig)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to marshal cluster configuration")
-		}
-		annotations[controlplanev1.KThreesServerConfigurationAnnotation] = string(serverConfig)
-
-		// In case this machine is being created as a consequence of a remediation, then add an annotation
-		// tracking remediating data.
-		// NOTE: This is required in order to track remediation retries.
-		if remediationData, ok := kcp.Annotations[controlplanev1.RemediationInProgressAnnotation]; ok {
-			annotations[controlplanev1.RemediationForAnnotation] = remediationData
-		}
-	} else {
-		// Updating an existing machine
-		machineName = existingMachine.Name
-		machineUID = existingMachine.UID
-		version = existingMachine.Spec.Version
-
-		// For existing machine only set the ClusterConfiguration annotation if the machine already has it.
-		// We should not add the annotation if it was missing in the first place because we do not have enough
-		// information.
-		if serverConfig, ok := existingMachine.Annotations[controlplanev1.KThreesServerConfigurationAnnotation]; ok {
-			annotations[controlplanev1.KThreesServerConfigurationAnnotation] = serverConfig
-		}
-
-		// If the machine already has remediation data then preserve it.
-		// NOTE: This is required in order to track remediation retries.
-		if remediationData, ok := existingMachine.Annotations[controlplanev1.RemediationForAnnotation]; ok {
-			annotations[controlplanev1.RemediationForAnnotation] = remediationData
-		}
-	}
-
-	// Construct the basic Machine.
-	desiredMachine := &clusterv1.Machine{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      machineName,
-			Namespace: kcp.Namespace,
-			UID:       machineUID,
-			Labels:    k3s.ControlPlaneLabelsForCluster(cluster.Name, kcp.Spec.MachineTemplate),
-			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(kcp, controlplanev1.GroupVersion.WithKind("KThreesControlPlane")),
-			},
-		},
-		Spec: clusterv1.MachineSpec{
-			ClusterName:             cluster.Name,
-			Version:                 version,
-			FailureDomain:           failureDomain,
-			NodeDrainTimeout:        kcp.Spec.MachineTemplate.NodeDrainTimeout,
-			NodeVolumeDetachTimeout: kcp.Spec.MachineTemplate.NodeVolumeDetachTimeout,
-			NodeDeletionTimeout:     kcp.Spec.MachineTemplate.NodeDeletionTimeout,
-		},
-	}
-
-	// Set annotations
-	for k, v := range kcp.Spec.MachineTemplate.ObjectMeta.Annotations {
-		annotations[k] = v
-	}
-
-	desiredMachine.SetAnnotations(annotations)
-
-	if existingMachine != nil {
-		desiredMachine.Spec.InfrastructureRef = existingMachine.Spec.InfrastructureRef
-		desiredMachine.Spec.Bootstrap.ConfigRef = existingMachine.Spec.Bootstrap.ConfigRef
-	}
-
-	return desiredMachine, nil
 }

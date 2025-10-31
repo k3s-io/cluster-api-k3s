@@ -18,7 +18,7 @@ package v1beta2
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 )
 
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
@@ -195,7 +195,36 @@ type KThreesConfigStatus struct {
 
 	// Conditions defines current service state of the KThreesConfig.
 	// +optional
-	Conditions clusterv1.Conditions `json:"conditions,omitempty"`
+	Conditions clusterv1beta1.Conditions `json:"conditions,omitempty"`
+
+	// v1beta2 groups all the fields that will be added or modified in KThreesConfig's status with the V1Beta2 version.
+	// +optional
+	V1Beta2 *KThreesConfigV1Beta2Status `json:"v1beta2,omitempty"`
+
+	// initialization provides observations of the KThreesConfig initialization process.
+	// NOTE: Fields in this struct are part of the Cluster API contract and are used to orchestrate initial Machine provisioning.
+	// +optional
+	Initialization KThreesConfigInitializationStatus `json:"initialization,omitempty,omitzero"`
+}
+
+// KThreesConfigInitializationStatus provides observations of the KThreesConfig initialization process.
+type KThreesConfigInitializationStatus struct {
+	// dataSecretCreated is true when the Machine's boostrap secret is created.
+	// NOTE: this field is part of the Cluster API contract, and it is used to orchestrate initial Machine provisioning.
+	// +optional
+	DataSecretCreated bool `json:"dataSecretCreated,omitempty"`
+}
+
+// KThreesConfigV1Beta2Status groups all the fields that will be added or modified in KThreesConfigStatus with the V1Beta2 version.
+// See https://github.com/kubernetes-sigs/cluster-api/blob/main/docs/proposals/20240916-improve-status-in-CAPI-resources.md for more context.
+type KThreesConfigV1Beta2Status struct {
+	// conditions represents the observations of a KThreesConfig's current state.
+	// Known condition types are Ready, Paused.
+	// +optional
+	// +listType=map
+	// +listMapKey=type
+	// +kubebuilder:validation:MaxItems=32
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -211,12 +240,28 @@ type KThreesConfig struct {
 	Status KThreesConfigStatus `json:"status,omitempty"`
 }
 
-func (c *KThreesConfig) GetConditions() clusterv1.Conditions {
+func (c *KThreesConfig) GetConditions() clusterv1beta1.Conditions {
 	return c.Status.Conditions
 }
 
-func (c *KThreesConfig) SetConditions(conditions clusterv1.Conditions) {
+func (c *KThreesConfig) SetConditions(conditions clusterv1beta1.Conditions) {
 	c.Status.Conditions = conditions
+}
+
+// GetV1Beta2Conditions returns the set of conditions for this object.
+func (c *KThreesConfig) GetV1Beta2Conditions() []metav1.Condition {
+	if c.Status.V1Beta2 == nil {
+		return nil
+	}
+	return c.Status.V1Beta2.Conditions
+}
+
+// SetV1Beta2Conditions sets conditions for an API object.
+func (c *KThreesConfig) SetV1Beta2Conditions(conditions []metav1.Condition) {
+	if c.Status.V1Beta2 == nil {
+		c.Status.V1Beta2 = &KThreesConfigV1Beta2Status{}
+	}
+	c.Status.V1Beta2.Conditions = conditions
 }
 
 // +kubebuilder:object:root=true

@@ -21,7 +21,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 
 	bootstrapv1beta2 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
 	"github.com/k3s-io/cluster-api-k3s/pkg/errors"
@@ -92,7 +92,7 @@ type KThreesControlPlaneMachineTemplate struct {
 	// Standard object's metadata.
 	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
 	// +optional
-	ObjectMeta clusterv1.ObjectMeta `json:"metadata,omitempty"`
+	ObjectMeta clusterv1beta1.ObjectMeta `json:"metadata,omitempty"`
 	// InfrastructureRef is a required reference to a custom resource
 	// offered by an infrastructure provider.
 	InfrastructureRef corev1.ObjectReference `json:"infrastructureRef"`
@@ -219,11 +219,27 @@ type KThreesControlPlaneStatus struct {
 
 	// Conditions defines current service state of the KThreesControlPlane.
 	// +optional
-	Conditions clusterv1.Conditions `json:"conditions,omitempty"`
+	Conditions clusterv1beta1.Conditions `json:"conditions,omitempty"`
 
 	// LastRemediation stores info about last remediation performed.
 	// +optional
 	LastRemediation *LastRemediationStatus `json:"lastRemediation,omitempty"`
+
+	// v1beta2 groups all the fields that will be added or modified in KThreesControlPlane's status with the V1Beta2 version.
+	// +optional
+	V1Beta2 *KThreesControlPlaneV1Beta2Status `json:"v1beta2,omitempty"`
+}
+
+// KThreesControlPlaneV1Beta2Status groups all the fields that will be added or modified in KThreesControlPlaneStatus with the V1Beta2 version.
+// See https://github.com/kubernetes-sigs/cluster-api/blob/main/docs/proposals/20240916-improve-status-in-CAPI-resources.md for more context.
+type KThreesControlPlaneV1Beta2Status struct {
+	// conditions represents the observations of a KThreesControlPlane's current state.
+	// Known condition types are Ready, Paused.
+	// +optional
+	// +listType=map
+	// +listMapKey=type
+	// +kubebuilder:validation:MaxItems=32
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 // LastRemediationStatus  stores info about last remediation performed.
@@ -262,12 +278,28 @@ type KThreesControlPlane struct {
 	Status KThreesControlPlaneStatus `json:"status,omitempty"`
 }
 
-func (in *KThreesControlPlane) GetConditions() clusterv1.Conditions {
+func (in *KThreesControlPlane) GetConditions() clusterv1beta1.Conditions {
 	return in.Status.Conditions
 }
 
-func (in *KThreesControlPlane) SetConditions(conditions clusterv1.Conditions) {
+func (in *KThreesControlPlane) SetConditions(conditions clusterv1beta1.Conditions) {
 	in.Status.Conditions = conditions
+}
+
+// GetV1Beta2Conditions returns the set of conditions for this object.
+func (c *KThreesControlPlane) GetV1Beta2Conditions() []metav1.Condition {
+	if c.Status.V1Beta2 == nil {
+		return nil
+	}
+	return c.Status.V1Beta2.Conditions
+}
+
+// SetV1Beta2Conditions sets conditions for an API object.
+func (c *KThreesControlPlane) SetV1Beta2Conditions(conditions []metav1.Condition) {
+	if c.Status.V1Beta2 == nil {
+		c.Status.V1Beta2 = &KThreesControlPlaneV1Beta2Status{}
+	}
+	c.Status.V1Beta2.Conditions = conditions
 }
 
 // +kubebuilder:object:root=true
