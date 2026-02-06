@@ -28,6 +28,7 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/pkg/errors"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/ptr"
 
 	"sigs.k8s.io/cluster-api/test/framework"
 	"sigs.k8s.io/cluster-api/test/framework/clusterctl"
@@ -37,8 +38,7 @@ import (
 	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
-	expv1 "sigs.k8s.io/cluster-api/exp/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 )
 
 // NOTE: the code in this file is largely copied from the cluster-api test framework.
@@ -82,7 +82,7 @@ type ApplyClusterTemplateAndWaitResult struct {
 	Cluster            *clusterv1.Cluster
 	ControlPlane       *controlplanev1.KThreesControlPlane
 	MachineDeployments []*clusterv1.MachineDeployment
-	MachinePools       []*expv1.MachinePool
+	MachinePools       []*clusterv1.MachinePool
 }
 
 // ExpectedWorkerNodes returns the expected number of worker nodes that will
@@ -199,7 +199,7 @@ type ApplyCustomClusterTemplateAndWaitResult struct {
 	Cluster            *clusterv1.Cluster
 	ControlPlane       *controlplanev1.KThreesControlPlane
 	MachineDeployments []*clusterv1.MachineDeployment
-	MachinePools       []*expv1.MachinePool
+	MachinePools       []*clusterv1.MachinePool
 }
 
 func ApplyCustomClusterTemplateAndWait(ctx context.Context, input ApplyCustomClusterTemplateAndWaitInput, result *ApplyCustomClusterTemplateAndWaitResult) {
@@ -241,11 +241,11 @@ func ApplyCustomClusterTemplateAndWait(ctx context.Context, input ApplyCustomClu
 		Name:      input.ClusterName,
 	}, input.WaitForClusterIntervals...)
 
-	if result.Cluster.Spec.Topology != nil {
+	if result.Cluster.Spec.Topology.IsDefined() {
 		result.ClusterClass = framework.GetClusterClassByName(ctx, framework.GetClusterClassByNameInput{
 			Getter:    input.ClusterProxy.GetClient(),
-			Namespace: input.Namespace,
-			Name:      result.Cluster.Spec.Topology.Class,
+			Namespace: result.Cluster.Spec.Topology.ClassRef.Namespace,
+			Name:      result.Cluster.Spec.Topology.ClassRef.Name,
 		})
 	}
 
@@ -354,7 +354,7 @@ func WaitForKThreesControlPlaneMachinesToExist(ctx context.Context, input WaitFo
 		}
 		count := 0
 		for _, machine := range machineList.Items {
-			if machine.Status.NodeRef != nil {
+			if machine.Status.NodeRef.IsDefined() {
 				count++
 			}
 		}
@@ -391,7 +391,7 @@ func WaitForOneKThreesControlPlaneMachineToExist(ctx context.Context, input Wait
 		}
 		count := 0
 		for _, machine := range machineList.Items {
-			if machine.Status.NodeRef != nil {
+			if machine.Status.NodeRef.IsDefined() {
 				count++
 			}
 		}
@@ -454,9 +454,9 @@ func AssertControlPlaneFailureDomains(ctx context.Context, input AssertControlPl
 
 	By("Checking all the control plane machines are in the expected failure domains")
 	controlPlaneFailureDomains := sets.Set[string]{}
-	for fd, fdSettings := range input.Cluster.Status.FailureDomains {
-		if fdSettings.ControlPlane {
-			controlPlaneFailureDomains.Insert(fd)
+	for _, fd := range input.Cluster.Status.FailureDomains {
+		if ptr.Deref(fd.ControlPlane, false) {
+			controlPlaneFailureDomains.Insert(fd.Name)
 		}
 	}
 
@@ -473,8 +473,8 @@ func AssertControlPlaneFailureDomains(ctx context.Context, input AssertControlPl
 	}, retryableOperationTimeout, retryableOperationInterval).Should(Succeed(), "Couldn't list control-plane machines for the cluster %q", input.Cluster.Name)
 
 	for _, machine := range machineList.Items {
-		if machine.Spec.FailureDomain != nil {
-			machineFD := *machine.Spec.FailureDomain
+		if machine.Spec.FailureDomain != "" {
+			machineFD := machine.Spec.FailureDomain
 			if !controlPlaneFailureDomains.Has(machineFD) {
 				Fail(fmt.Sprintf("Machine %s is in the %q failure domain, expecting one of the failure domain defined at cluster level", machine.Name, machineFD))
 			}

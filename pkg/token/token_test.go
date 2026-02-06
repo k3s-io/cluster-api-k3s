@@ -11,7 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -35,7 +35,7 @@ func TestLookup(t *testing.T) {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: name(clusterKey.Name), Namespace: clusterKey.Namespace},
 		Data:       map[string][]byte{"value": []byte(testToken)},
-		Type:       clusterv1.ClusterSecretType,
+		Type:       clusterv1beta1.ClusterSecretType,
 	}
 	//nolint:errcheck
 	ctrlClient.Create(context.Background(), secret)

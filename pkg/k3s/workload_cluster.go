@@ -19,11 +19,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/rest"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/certs"
 	"sigs.k8s.io/cluster-api/util/collections"
 	"sigs.k8s.io/cluster-api/util/conditions"
+	v1beta1conditions "sigs.k8s.io/cluster-api/util/deprecated/v1beta1/conditions"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -50,8 +52,8 @@ type WorkloadCluster interface {
 	UpdateEtcdConditions(ctx context.Context, controlPlane *ControlPlane)
 
 	// Etcd tasks
-	RemoveEtcdMemberForMachine(ctx context.Context, machine *clusterv1.Machine) (bool, error)
-	ForwardEtcdLeadership(ctx context.Context, machine *clusterv1.Machine, leaderCandidate *clusterv1.Machine) error
+	RemoveEtcdMemberForMachine(ctx context.Context, machine *clusterv1beta1.Machine) (bool, error)
+	ForwardEtcdLeadership(ctx context.Context, machine *clusterv1beta1.Machine, leaderCandidate *clusterv1beta1.Machine) error
 	ReconcileEtcdMembers(ctx context.Context, nodeNames []string) ([]string, error)
 
 	// AllowBootstrapTokensToGetNodes(ctx context.Context) error
@@ -134,7 +136,7 @@ func (w *Workload) ClusterStatus(ctx context.Context) (ClusterStatus, error) {
 
 func hasProvisioningMachine(machines collections.Machines) bool {
 	for _, machine := range machines {
-		if machine.Status.NodeRef == nil {
+		if !machine.Status.NodeRef.IsDefined() {
 			return true
 		}
 	}
@@ -156,7 +158,7 @@ func nodeHasUnreachableTaint(node corev1.Node) bool {
 // of problems in retrieving the pod status, it sets the condition to Unknown state without returning any error.
 func (w *Workload) UpdateAgentConditions(ctx context.Context, controlPlane *ControlPlane) {
 	allMachinePodConditions := []clusterv1.ConditionType{
-		controlplanev1.MachineAgentHealthyCondition,
+		controlplanev1.MachineAgentHealthyV1Beta2Condition,
 	}
 
 	// NOTE: this fun uses control plane nodes from the workload cluster as a source of truth for the current state.
@@ -165,10 +167,15 @@ func (w *Workload) UpdateAgentConditions(ctx context.Context, controlPlane *Cont
 		for i := range controlPlane.Machines {
 			machine := controlPlane.Machines[i]
 			for _, condition := range allMachinePodConditions {
-				conditions.MarkUnknown(machine, condition, controlplanev1.PodInspectionFailedReason, "Failed to get the node which is hosting this component")
+				conditions.Set(machine, metav1.Condition{
+					Type:    string(condition),
+					Status:  metav1.ConditionUnknown,
+					Reason:  controlplanev1.PodInspectionFailedReason,
+					Message: "Failed to get the node which is hosting this component",
+				})
 			}
 		}
-		conditions.MarkUnknown(controlPlane.KCP, controlplanev1.ControlPlaneComponentsHealthyCondition, controlplanev1.ControlPlaneComponentsInspectionFailedReason, "Failed to list nodes which are hosting control plane components")
+		v1beta1conditions.MarkUnknown(controlPlane.KCP, controlplanev1.ControlPlaneComponentsHealthyCondition, controlplanev1.ControlPlaneComponentsInspectionFailedReason, "Failed to list nodes which are hosting control plane components")
 		return
 	}
 
@@ -179,7 +186,7 @@ func (w *Workload) UpdateAgentConditions(ctx context.Context, controlPlane *Cont
 		// Search for the machine corresponding to the node.
 		var machine *clusterv1.Machine
 		for _, m := range controlPlane.Machines {
-			if m.Status.NodeRef != nil && m.Status.NodeRef.Name == node.Name {
+			if m.Status.NodeRef.IsDefined() && m.Status.NodeRef.Name == node.Name {
 				machine = m
 				break
 			}
@@ -199,7 +206,11 @@ func (w *Workload) UpdateAgentConditions(ctx context.Context, controlPlane *Cont
 		// If the machine is deleting, report all the conditions as deleting
 		if !machine.ObjectMeta.DeletionTimestamp.IsZero() {
 			for _, condition := range allMachinePodConditions {
-				conditions.MarkFalse(machine, condition, clusterv1.DeletingReason, clusterv1.ConditionSeverityInfo, "")
+				conditions.Set(machine, metav1.Condition{
+					Type:   string(condition),
+					Status: metav1.ConditionFalse,
+					Reason: clusterv1beta1.DeletingReason,
+				})
 			}
 			continue
 		}
@@ -209,7 +220,12 @@ func (w *Workload) UpdateAgentConditions(ctx context.Context, controlPlane *Cont
 			// NOTE: We are assuming unreachable as a temporary condition, leaving to MHC
 			// the responsibility to determine if the node is unhealthy or not.
 			for _, condition := range allMachinePodConditions {
-				conditions.MarkUnknown(machine, condition, controlplanev1.PodInspectionFailedReason, "Node is unreachable")
+				conditions.Set(machine, metav1.Condition{
+					Type:    string(condition),
+					Status:  metav1.ConditionUnknown,
+					Reason:  controlplanev1.PodInspectionFailedReason,
+					Message: "Node is unreachable",
+				})
 			}
 			continue
 		}
@@ -223,17 +239,31 @@ func (w *Workload) UpdateAgentConditions(ctx context.Context, controlPlane *Cont
 		if err := w.Client.Get(ctx, nodeKey, &targetnode); err != nil {
 			// If there is an error getting the Pod, do not set any conditions.
 			if apierrors.IsNotFound(err) {
-				conditions.MarkFalse(machine, controlplanev1.MachineAgentHealthyCondition, controlplanev1.PodMissingReason, clusterv1.ConditionSeverityError, "Node %s is missing", nodeKey.Name)
-
+				conditions.Set(machine, metav1.Condition{
+					Type:    controlplanev1.MachineAgentHealthyV1Beta2Condition,
+					Status:  metav1.ConditionFalse,
+					Reason:  controlplanev1.PodMissingReason,
+					Message: fmt.Sprintf("Node %s is missing", nodeKey.Name),
+				})
 				return
 			}
-			conditions.MarkUnknown(machine, controlplanev1.MachineAgentHealthyCondition, controlplanev1.PodInspectionFailedReason, "Failed to get node status")
+
+			conditions.Set(machine, metav1.Condition{
+				Type:    controlplanev1.MachineAgentHealthyV1Beta2Condition,
+				Status:  metav1.ConditionUnknown,
+				Reason:  controlplanev1.PodInspectionFailedReason,
+				Message: fmt.Sprintf("Failed to get node status: %s", err),
+			})
+
 			return
 		}
 
 		for _, condition := range targetnode.Status.Conditions {
 			if condition.Type == corev1.NodeReady && condition.Status == corev1.ConditionTrue {
-				conditions.MarkTrue(machine, controlplanev1.MachineAgentHealthyCondition)
+				conditions.Set(machine, metav1.Condition{
+					Type:   controlplanev1.MachineAgentHealthyV1Beta2Condition,
+					Status: metav1.ConditionTrue,
+				})
 			}
 		}
 	}
@@ -241,7 +271,7 @@ func (w *Workload) UpdateAgentConditions(ctx context.Context, controlPlane *Cont
 	// If there are provisioned machines without corresponding nodes, report this as a failing conditions with SeverityError.
 	for i := range controlPlane.Machines {
 		machine := controlPlane.Machines[i]
-		if machine.Status.NodeRef == nil {
+		if !machine.Status.NodeRef.IsDefined() {
 			continue
 		}
 		found := false
@@ -253,7 +283,12 @@ func (w *Workload) UpdateAgentConditions(ctx context.Context, controlPlane *Cont
 		}
 		if !found {
 			for _, condition := range allMachinePodConditions {
-				conditions.MarkFalse(machine, condition, controlplanev1.PodFailedReason, clusterv1.ConditionSeverityError, "Missing node")
+				conditions.Set(machine, metav1.Condition{
+					Type:    string(condition),
+					Status:  metav1.ConditionFalse,
+					Reason:  controlplanev1.PodFailedReason,
+					Message: "Missing node",
+				})
 			}
 		}
 	}
@@ -274,7 +309,7 @@ type aggregateFromMachinesToKCPInput struct {
 	controlPlane      *ControlPlane
 	machineConditions []clusterv1.ConditionType
 	kcpErrors         []string
-	condition         clusterv1.ConditionType
+	condition         clusterv1beta1.ConditionType
 	unhealthyReason   string
 	unknownReason     string
 	note              string
@@ -286,65 +321,57 @@ type aggregateFromMachinesToKCPInput struct {
 func aggregateFromMachinesToKCP(input aggregateFromMachinesToKCPInput) {
 	// Aggregates machines for condition status.
 	// NB. A machine could be assigned to many groups, but only the group with the highest severity will be reported.
-	kcpMachinesWithErrors := sets.NewString()
-	kcpMachinesWithWarnings := sets.NewString()
 	kcpMachinesWithInfo := sets.NewString()
 	kcpMachinesWithTrue := sets.NewString()
+	kcpMachinesWithFalse := sets.NewString()
 	kcpMachinesWithUnknown := sets.NewString()
 
 	for i := range input.controlPlane.Machines {
 		machine := input.controlPlane.Machines[i]
 		for _, condition := range input.machineConditions {
-			if machineCondition := conditions.Get(machine, condition); machineCondition != nil {
+			if machineCondition := conditions.Get(machine, string(condition)); machineCondition != nil {
 				switch machineCondition.Status {
-				case corev1.ConditionTrue:
+				case metav1.ConditionTrue:
 					kcpMachinesWithTrue.Insert(machine.Name)
-				case corev1.ConditionFalse:
-					switch machineCondition.Severity {
-					case clusterv1.ConditionSeverityInfo:
-						kcpMachinesWithInfo.Insert(machine.Name)
-					case clusterv1.ConditionSeverityWarning:
-						kcpMachinesWithWarnings.Insert(machine.Name)
-					case clusterv1.ConditionSeverityError:
-						kcpMachinesWithErrors.Insert(machine.Name)
-					}
-				case corev1.ConditionUnknown:
+				case metav1.ConditionFalse:
+					kcpMachinesWithFalse.Insert(machine.Name)
+				case metav1.ConditionUnknown:
 					kcpMachinesWithUnknown.Insert(machine.Name)
 				}
 			}
 		}
 	}
 
-	// In case of at least one machine with errors or KCP level errors (nodes without machines), report false, error.
-	if len(kcpMachinesWithErrors) > 0 {
-		input.kcpErrors = append(input.kcpErrors, fmt.Sprintf("Following machines are reporting %s errors: %s", input.note, strings.Join(kcpMachinesWithErrors.List(), ", ")))
+	// In case of at least one machine with false, report false, error.
+	if len(kcpMachinesWithFalse) > 0 {
+		input.kcpErrors = append(input.kcpErrors, fmt.Sprintf("Following machines are reporting %s false: %s", input.note, strings.Join(kcpMachinesWithFalse.List(), ", ")))
 	}
 	if len(input.kcpErrors) > 0 {
-		conditions.MarkFalse(input.controlPlane.KCP, input.condition, input.unhealthyReason, clusterv1.ConditionSeverityError, strings.Join(input.kcpErrors, "; "))
+		v1beta1conditions.MarkFalse(input.controlPlane.KCP, input.condition, input.unhealthyReason, clusterv1beta1.ConditionSeverityError, "errors found: %s", strings.Join(input.kcpErrors, "; "))
 		return
 	}
 
 	// In case of no errors and at least one machine with warnings, report false, warnings.
-	if len(kcpMachinesWithWarnings) > 0 {
-		conditions.MarkFalse(input.controlPlane.KCP, input.condition, input.unhealthyReason, clusterv1.ConditionSeverityWarning, "Following machines are reporting %s warnings: %s", input.note, strings.Join(kcpMachinesWithWarnings.List(), ", "))
+	if len(kcpMachinesWithInfo) > 0 {
+		v1beta1conditions.MarkFalse(input.controlPlane.KCP, input.condition, input.unhealthyReason, clusterv1beta1.ConditionSeverityWarning, "Following machines are reporting %s warnings: %s", input.note, strings.Join(kcpMachinesWithInfo.List(), ", "))
 		return
 	}
 
 	// In case of no errors, no warning, and at least one machine with info, report false, info.
-	if len(kcpMachinesWithWarnings) > 0 {
-		conditions.MarkFalse(input.controlPlane.KCP, input.condition, input.unhealthyReason, clusterv1.ConditionSeverityWarning, "Following machines are reporting %s info: %s", input.note, strings.Join(kcpMachinesWithInfo.List(), ", "))
+	if len(kcpMachinesWithInfo) > 0 {
+		v1beta1conditions.MarkFalse(input.controlPlane.KCP, input.condition, input.unhealthyReason, clusterv1beta1.ConditionSeverityWarning, "Following machines are reporting %s info: %s", input.note, strings.Join(kcpMachinesWithInfo.List(), ", "))
 		return
 	}
 
 	// In case of no errors, no warning, no Info, and at least one machine with true conditions, report true.
 	if len(kcpMachinesWithTrue) > 0 {
-		conditions.MarkTrue(input.controlPlane.KCP, input.condition)
+		v1beta1conditions.MarkTrue(input.controlPlane.KCP, input.condition)
 		return
 	}
 
 	// Otherwise, if there is at least one machine with unknown, report unknown.
 	if len(kcpMachinesWithUnknown) > 0 {
-		conditions.MarkUnknown(input.controlPlane.KCP, input.condition, input.unknownReason, "Following machines are reporting unknown %s status: %s", input.note, strings.Join(kcpMachinesWithUnknown.List(), ", "))
+		v1beta1conditions.MarkUnknown(input.controlPlane.KCP, input.condition, input.unknownReason, "Following machines are reporting unknown %s status: %s", input.note, strings.Join(kcpMachinesWithUnknown.List(), ", "))
 		return
 	}
 
@@ -364,9 +391,14 @@ func (w *Workload) updateManagedEtcdConditions(ctx context.Context, controlPlane
 	// as ultimate source of truth for the list of members and for their health.
 	controlPlaneNodes, err := w.getControlPlaneNodes(ctx)
 	if err != nil {
-		conditions.MarkUnknown(controlPlane.KCP, controlplanev1.EtcdClusterHealthyCondition, controlplanev1.EtcdClusterInspectionFailedReason, "Failed to list nodes which are hosting the etcd members")
+		v1beta1conditions.MarkUnknown(controlPlane.KCP, controlplanev1.EtcdClusterHealthyCondition, controlplanev1.EtcdClusterInspectionFailedReason, "Failed to list nodes which are hosting the etcd members")
 		for _, m := range controlPlane.Machines {
-			conditions.MarkUnknown(m, controlplanev1.MachineEtcdMemberHealthyCondition, controlplanev1.EtcdMemberInspectionFailedReason, "Failed to get the node which is hosting the etcd member")
+			conditions.Set(m, metav1.Condition{
+				Type:    string(controlplanev1.MachineEtcdMemberHealthyCondition),
+				Status:  metav1.ConditionUnknown,
+				Reason:  controlplanev1.EtcdMemberInspectionFailedReason,
+				Message: "Failed to get the node which is hosting the etcd member",
+			})
 		}
 		return
 	}
@@ -385,7 +417,7 @@ func (w *Workload) updateManagedEtcdConditions(ctx context.Context, controlPlane
 		// Search for the machine corresponding to the node.
 		var machine *clusterv1.Machine
 		for _, m := range controlPlane.Machines {
-			if m.Status.NodeRef != nil && m.Status.NodeRef.Name == node.Name {
+			if m.Status.NodeRef.IsDefined() && m.Status.NodeRef.Name == node.Name {
 				machine = m
 			}
 		}
@@ -402,7 +434,12 @@ func (w *Workload) updateManagedEtcdConditions(ctx context.Context, controlPlane
 
 		// If the machine is deleting, report all the conditions as deleting
 		if !machine.ObjectMeta.DeletionTimestamp.IsZero() {
-			conditions.MarkFalse(machine, controlplanev1.MachineEtcdMemberHealthyCondition, clusterv1.DeletingReason, clusterv1.ConditionSeverityInfo, "")
+			conditions.Set(machine, metav1.Condition{
+				Type:   string(controlplanev1.MachineEtcdMemberHealthyCondition),
+				Status: metav1.ConditionFalse,
+				Reason: clusterv1beta1.DeletingReason,
+			})
+
 			continue
 		}
 
@@ -417,7 +454,13 @@ func (w *Workload) updateManagedEtcdConditions(ctx context.Context, controlPlane
 			members = currentMembers
 		}
 		if !etcdutil.MemberEqual(members, currentMembers) {
-			conditions.MarkFalse(machine, controlplanev1.MachineEtcdMemberHealthyCondition, controlplanev1.EtcdMemberUnhealthyReason, clusterv1.ConditionSeverityError, "etcd member reports the cluster is composed by members %s, but all previously seen etcd members are reporting %s", etcdutil.MemberNames(currentMembers), etcdutil.MemberNames(members))
+			conditions.Set(machine, metav1.Condition{
+				Type:    string(controlplanev1.MachineEtcdMemberHealthyCondition),
+				Status:  metav1.ConditionFalse,
+				Reason:  controlplanev1.EtcdMemberUnhealthyReason,
+				Message: fmt.Sprintf("etcd member reports the cluster is composed by members %s, but all previously seen etcd members are reporting %s", etcdutil.MemberNames(currentMembers), etcdutil.MemberNames(members)),
+			})
+
 			continue
 		}
 
@@ -425,7 +468,13 @@ func (w *Workload) updateManagedEtcdConditions(ctx context.Context, controlPlane
 		// NB. The member for this node always exists given forFirstAvailableNode(node) used above
 		member := etcdutil.MemberForName(currentMembers, node.Name)
 		if member == nil {
-			conditions.MarkFalse(machine, controlplanev1.MachineEtcdMemberHealthyCondition, controlplanev1.EtcdMemberUnhealthyReason, clusterv1.ConditionSeverityError, "etcd member reports the cluster is composed by members %s, but the member itself (%s) is not included", etcdutil.MemberNames(currentMembers), node.Name)
+			conditions.Set(machine, metav1.Condition{
+				Type:    string(controlplanev1.MachineEtcdMemberHealthyCondition),
+				Status:  metav1.ConditionFalse,
+				Reason:  controlplanev1.EtcdMemberUnhealthyReason,
+				Message: fmt.Sprintf("etcd member reports the cluster is composed by members %s, but the member itself (%s) is not included", etcdutil.MemberNames(currentMembers), node.Name),
+			})
+
 			continue
 		}
 		if len(member.Alarms) > 0 {
@@ -439,7 +488,13 @@ func (w *Workload) updateManagedEtcdConditions(ctx context.Context, controlPlane
 				}
 			}
 			if len(alarmList) > 0 {
-				conditions.MarkFalse(machine, controlplanev1.MachineEtcdMemberHealthyCondition, controlplanev1.EtcdMemberUnhealthyReason, clusterv1.ConditionSeverityError, "Etcd member reports alarms: %s", strings.Join(alarmList, ", "))
+				conditions.Set(machine, metav1.Condition{
+					Type:    string(controlplanev1.MachineEtcdMemberHealthyCondition),
+					Status:  metav1.ConditionFalse,
+					Reason:  controlplanev1.EtcdMemberUnhealthyReason,
+					Message: fmt.Sprintf("etcd member reports alarms: %s", strings.Join(alarmList, ", ")),
+				})
+
 				continue
 			}
 		}
@@ -450,11 +505,20 @@ func (w *Workload) updateManagedEtcdConditions(ctx context.Context, controlPlane
 			clusterID = &member.ClusterID
 		}
 		if *clusterID != member.ClusterID {
-			conditions.MarkFalse(machine, controlplanev1.MachineEtcdMemberHealthyCondition, controlplanev1.EtcdMemberUnhealthyReason, clusterv1.ConditionSeverityError, "etcd member has cluster ID %d, but all previously seen etcd members have cluster ID %d", member.ClusterID, *clusterID)
+			conditions.Set(machine, metav1.Condition{
+				Type:    string(controlplanev1.MachineEtcdMemberHealthyCondition),
+				Status:  metav1.ConditionFalse,
+				Reason:  controlplanev1.EtcdMemberUnhealthyReason,
+				Message: fmt.Sprintf("etcd member has cluster ID %d, but all previously seen etcd members have cluster ID %d", member.ClusterID, *clusterID),
+			})
+
 			continue
 		}
 
-		conditions.MarkTrue(machine, controlplanev1.MachineEtcdMemberHealthyCondition)
+		conditions.Set(machine, metav1.Condition{
+			Type:   string(controlplanev1.MachineEtcdMemberHealthyCondition),
+			Status: metav1.ConditionTrue,
+		})
 	}
 
 	// Make sure that the list of etcd members and machines is consistent.
@@ -463,7 +527,7 @@ func (w *Workload) updateManagedEtcdConditions(ctx context.Context, controlPlane
 	// Aggregate components error from machines at KCP level
 	aggregateFromMachinesToKCP(aggregateFromMachinesToKCPInput{
 		controlPlane:      controlPlane,
-		machineConditions: []clusterv1.ConditionType{controlplanev1.MachineEtcdMemberHealthyCondition},
+		machineConditions: []clusterv1.ConditionType{controlplanev1.MachineEtcdMemberHealthyV1Beta2Condition},
 		kcpErrors:         kcpErrors,
 		condition:         controlplanev1.EtcdClusterHealthyCondition,
 		unhealthyReason:   controlplanev1.EtcdClusterUnhealthyReason,
@@ -476,14 +540,26 @@ func (w *Workload) getCurrentEtcdMembers(ctx context.Context, machine *clusterv1
 	// Create the etcd Client for the etcd Pod scheduled on the Node
 	etcdClient, err := w.etcdClientGenerator.forFirstAvailableNode(ctx, []string{nodeName})
 	if err != nil {
-		conditions.MarkUnknown(machine, controlplanev1.MachineEtcdMemberHealthyCondition, controlplanev1.EtcdMemberInspectionFailedReason, "Failed to connect to the etcd pod on the %s node: %s", nodeName, err)
+		conditions.Set(machine, metav1.Condition{
+			Type:    string(controlplanev1.MachineEtcdMemberHealthyCondition),
+			Status:  metav1.ConditionFalse,
+			Reason:  controlplanev1.EtcdMemberInspectionFailedReason,
+			Message: fmt.Sprintf("Failed to connect to the etcd pod on the %s node: %s", nodeName, err),
+		})
+
 		return nil, errors.Wrapf(err, "failed to get current etcd members: failed to connect to the etcd pod on the %s node", nodeName)
 	}
 	defer etcdClient.Close()
 
 	// While creating a new client, forFirstAvailableNode retrieves the status for the endpoint; check if the endpoint has errors.
 	if len(etcdClient.Errors) > 0 {
-		conditions.MarkFalse(machine, controlplanev1.MachineEtcdMemberHealthyCondition, controlplanev1.EtcdMemberUnhealthyReason, clusterv1.ConditionSeverityError, "Etcd member status reports errors: %s", strings.Join(etcdClient.Errors, ", "))
+		conditions.Set(machine, metav1.Condition{
+			Type:    string(controlplanev1.MachineEtcdMemberHealthyCondition),
+			Status:  metav1.ConditionFalse,
+			Reason:  controlplanev1.EtcdMemberUnhealthyReason,
+			Message: fmt.Sprintf("Etcd member status reports errors: %s", strings.Join(etcdClient.Errors, ", ")),
+		})
+
 		return nil, errors.Errorf("failed to get current etcd members: etcd member status reports errors: %s", strings.Join(etcdClient.Errors, ", "))
 	}
 
@@ -492,7 +568,13 @@ func (w *Workload) getCurrentEtcdMembers(ctx context.Context, machine *clusterv1
 	if err != nil {
 		// NB. We should never be in here, given that we just received answer to the etcd calls included in forFirstAvailableNode;
 		// however, we are considering the calls to Members a signal of etcd not being stable.
-		conditions.MarkFalse(machine, controlplanev1.MachineEtcdMemberHealthyCondition, controlplanev1.EtcdMemberUnhealthyReason, clusterv1.ConditionSeverityError, "Failed get answer from the etcd member on the %s node", nodeName)
+		conditions.Set(machine, metav1.Condition{
+			Type:    string(controlplanev1.MachineEtcdMemberHealthyCondition),
+			Status:  metav1.ConditionFalse,
+			Reason:  controlplanev1.EtcdMemberUnhealthyReason,
+			Message: fmt.Sprintf("Failed get answer from the etcd member on the %s node", nodeName),
+		})
+
 		return nil, errors.Errorf("failed to get current etcd members: failed get answer from the etcd member on the %s node", nodeName)
 	}
 
@@ -508,7 +590,7 @@ func compareMachinesAndMembers(controlPlane *ControlPlane, members []*etcd.Membe
 
 	// Check Machine -> Etcd member.
 	for _, machine := range controlPlane.Machines {
-		if machine.Status.NodeRef == nil {
+		if !machine.Status.NodeRef.IsDefined() {
 			continue
 		}
 		found := false
@@ -520,7 +602,12 @@ func compareMachinesAndMembers(controlPlane *ControlPlane, members []*etcd.Membe
 			}
 		}
 		if !found {
-			conditions.MarkFalse(machine, controlplanev1.MachineEtcdMemberHealthyCondition, controlplanev1.EtcdMemberUnhealthyReason, clusterv1.ConditionSeverityError, "Missing etcd member")
+			conditions.Set(machine, metav1.Condition{
+				Type:    string(controlplanev1.MachineEtcdMemberHealthyCondition),
+				Status:  metav1.ConditionFalse,
+				Reason:  controlplanev1.EtcdMemberUnhealthyReason,
+				Message: "Missing etcd member",
+			})
 		}
 	}
 
@@ -529,7 +616,7 @@ func compareMachinesAndMembers(controlPlane *ControlPlane, members []*etcd.Membe
 		found := false
 		nodeNameFromMember := etcdutil.NodeNameFromMember(member)
 		for _, machine := range controlPlane.Machines {
-			if machine.Status.NodeRef != nil && machine.Status.NodeRef.Name == nodeNameFromMember {
+			if machine.Status.NodeRef.IsDefined() && machine.Status.NodeRef.Name == nodeNameFromMember {
 				found = true
 				break
 			}

@@ -21,7 +21,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 
 	bootstrapv1beta1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta1"
 	"github.com/k3s-io/cluster-api-k3s/pkg/errors"
@@ -107,7 +107,7 @@ type KThreesControlPlaneMachineTemplate struct {
 	// Standard object's metadata.
 	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
 	// +optional
-	ObjectMeta clusterv1.ObjectMeta `json:"metadata,omitempty"`
+	ObjectMeta clusterv1beta1.ObjectMeta `json:"metadata,omitempty"`
 }
 
 // RemediationStrategy allows to define how control plane machine remediation happens.
@@ -212,7 +212,7 @@ type KThreesControlPlaneStatus struct {
 
 	// Conditions defines current service state of the KThreesControlPlane.
 	// +optional
-	Conditions clusterv1.Conditions `json:"conditions,omitempty"`
+	Conditions clusterv1beta1.Conditions `json:"conditions,omitempty"`
 
 	// LastRemediation stores info about last remediation performed.
 	// +optional
@@ -254,11 +254,11 @@ type KThreesControlPlane struct {
 	Status KThreesControlPlaneStatus `json:"status,omitempty"`
 }
 
-func (in *KThreesControlPlane) GetConditions() clusterv1.Conditions {
+func (in *KThreesControlPlane) GetConditions() clusterv1beta1.Conditions {
 	return in.Status.Conditions
 }
 
-func (in *KThreesControlPlane) SetConditions(conditions clusterv1.Conditions) {
+func (in *KThreesControlPlane) SetConditions(conditions clusterv1beta1.Conditions) {
 	in.Status.Conditions = conditions
 }
 
