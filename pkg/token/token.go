@@ -9,7 +9,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
@@ -93,13 +93,13 @@ func generateAndStore(ctx context.Context, ctrlclient client.Client, clusterKey 
 			Name:      name(clusterKey.Name),
 			Namespace: clusterKey.Namespace,
 			Labels: map[string]string{
-				clusterv1.ClusterNameLabel: clusterKey.Name,
+				clusterv1beta1.ClusterNameLabel: clusterKey.Name,
 			},
 		},
 		Data: map[string][]byte{
 			"value": []byte(tokn),
 		},
-		Type: clusterv1.ClusterSecretType,
+		Type: clusterv1beta1.ClusterSecretType,
 	}
 
 	//nolint:errcheck
