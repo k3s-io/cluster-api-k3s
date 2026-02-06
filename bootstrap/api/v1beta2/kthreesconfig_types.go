@@ -18,7 +18,7 @@ package v1beta2
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 )
 
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
@@ -195,7 +195,7 @@ type KThreesConfigStatus struct {
 
 	// Conditions defines current service state of the KThreesConfig.
 	// +optional
-	Conditions clusterv1.Conditions `json:"conditions,omitempty"`
+	Conditions clusterv1beta1.Conditions `json:"conditions,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -211,11 +211,11 @@ type KThreesConfig struct {
 	Status KThreesConfigStatus `json:"status,omitempty"`
 }
 
-func (c *KThreesConfig) GetConditions() clusterv1.Conditions {
+func (c *KThreesConfig) GetConditions() clusterv1beta1.Conditions {
 	return c.Status.Conditions
 }
 
-func (c *KThreesConfig) SetConditions(conditions clusterv1.Conditions) {
+func (c *KThreesConfig) SetConditions(conditions clusterv1beta1.Conditions) {
 	c.Status.Conditions = conditions
 }
 

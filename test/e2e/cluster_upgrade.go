@@ -159,7 +159,7 @@ func ClusterUpgradeSpec(ctx context.Context, inputGetter func() ClusterUpgradeSp
 			WaitForMachineDeployments:    input.E2EConfig.GetIntervals(specName, "wait-worker-nodes"),
 		}, result)
 
-		if result.Cluster.Spec.Topology != nil {
+		if result.Cluster.Spec.Topology.IsDefined() {
 			// Cluster is using ClusterClass, upgrade via topology.
 			By("Upgrading the Cluster topology")
 			mgmtClient := input.BootstrapClusterProxy.GetClient()

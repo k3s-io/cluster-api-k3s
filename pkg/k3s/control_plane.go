@@ -28,8 +28,11 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apiserver/pkg/storage/names"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	"k8s.io/utils/ptr"
+	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/controllers/external"
+	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/collections"
 	"sigs.k8s.io/cluster-api/util/failuredomains"
 	"sigs.k8s.io/cluster-api/util/patch"
@@ -113,11 +116,32 @@ func NewControlPlane(ctx context.Context, client client.Client, cluster *cluster
 }
 
 // FailureDomains returns a slice of failure domain objects synced from the infrastructure provider into Cluster.Status.
-func (c *ControlPlane) FailureDomains() clusterv1.FailureDomains {
+func (c *ControlPlane) FailureDomains() []clusterv1.FailureDomain {
 	if c.Cluster.Status.FailureDomains == nil {
-		return clusterv1.FailureDomains{}
+		return []clusterv1.FailureDomain{}
 	}
 	return c.Cluster.Status.FailureDomains
+}
+
+// FailureDomainName returns a slice of failure domain objects synced from the infrastructure provider into Cluster.Status.
+func (c *ControlPlane) FailureDomainNames() []string {
+	ret := []string{}
+	for _, fd := range c.Cluster.Status.FailureDomains {
+		ret = append(ret, fd.Name)
+	}
+	return ret
+}
+
+// ControlPlaneFailureDomains returns a slice of failure domain objects synced from the infrastructure provider into Cluster.Status
+// that have been marked for control planes.
+func (c *ControlPlane) ControlPlaneFailureDomains() []clusterv1.FailureDomain {
+	ret := []clusterv1.FailureDomain{}
+	for _, fd := range c.Cluster.Status.FailureDomains {
+		if ptr.Deref(fd.ControlPlane, false) {
+			ret = append(ret, fd)
+		}
+	}
+	return ret
 }
 
 // Version returns the KThreesControlPlane's version.
@@ -159,17 +183,18 @@ func (c *ControlPlane) MachineInFailureDomainWithMostMachines(ctx context.Contex
 // MachineWithDeleteAnnotation returns a machine that has been annotated with DeleteMachineAnnotation key.
 func (c *ControlPlane) MachineWithDeleteAnnotation(machines collections.Machines) collections.Machines {
 	// See if there are any machines with DeleteMachineAnnotation key.
-	annotatedMachines := machines.Filter(collections.HasAnnotationKey(clusterv1.DeleteMachineAnnotation))
+	annotatedMachines := machines.Filter(collections.HasAnnotationKey(clusterv1beta1.DeleteMachineAnnotation))
 	// If there are, return list of annotated machines.
 	return annotatedMachines
 }
 
 // FailureDomainWithMostMachines returns a fd which exists both in machines and control-plane machines and has the most
 // control-plane machines on it.
-func (c *ControlPlane) FailureDomainWithMostMachines(ctx context.Context, machines collections.Machines) *string {
+func (c *ControlPlane) FailureDomainWithMostMachines(ctx context.Context, machines collections.Machines) string {
 	// See if there are any Machines that are not in currently defined failure domains first.
 	notInFailureDomains := machines.Filter(
-		collections.Not(collections.InFailureDomains(c.FailureDomains().FilterControlPlane().GetIDs()...)),
+		collections.Not(collections.InFailureDomains(c.FailureDomainNames()...)),
+		collections.Not(FilterControlPlane()),
 	)
 	if len(notInFailureDomains) > 0 {
 		// return the failure domain for the oldest Machine not in the current list of failure domains
@@ -177,15 +202,15 @@ func (c *ControlPlane) FailureDomainWithMostMachines(ctx context.Context, machin
 		// in the cluster status.
 		return notInFailureDomains.Oldest().Spec.FailureDomain
 	}
-	return failuredomains.PickMost(ctx, c.Cluster.Status.FailureDomains.FilterControlPlane(), c.Machines, machines)
+	return failuredomains.PickMost(ctx, c.ControlPlaneFailureDomains(), c.Machines, machines)
 }
 
 // NextFailureDomainForScaleUp returns the failure domain with the fewest number of up-to-date machines.
-func (c *ControlPlane) NextFailureDomainForScaleUp(ctx context.Context) *string {
-	if len(c.Cluster.Status.FailureDomains.FilterControlPlane()) == 0 {
-		return nil
+func (c *ControlPlane) NextFailureDomainForScaleUp(ctx context.Context) string {
+	if len(c.ControlPlaneFailureDomains()) == 0 {
+		return ""
 	}
-	return failuredomains.PickFewest(ctx, c.FailureDomains().FilterControlPlane(), c.Machines, c.UpToDateMachines())
+	return failuredomains.PickFewest(ctx, c.ControlPlaneFailureDomains(), c.Machines, c.UpToDateMachines())
 }
 
 // InitialControlPlaneConfig returns a new KThreesConfigSpec that is to be used for an initializing control plane.
@@ -228,15 +253,15 @@ func ControlPlaneLabelsForCluster(clusterName string, machineTemplate controlpla
 	for key, value := range machineTemplate.ObjectMeta.Labels {
 		labels[key] = value
 	}
-	labels[clusterv1.ClusterNameLabel] = clusterName
-	labels[clusterv1.MachineControlPlaneNameLabel] = ""
-	labels[clusterv1.MachineControlPlaneLabel] = ""
+	labels[clusterv1beta1.ClusterNameLabel] = clusterName
+	labels[clusterv1beta1.MachineControlPlaneNameLabel] = ""
+	labels[clusterv1beta1.MachineControlPlaneLabel] = ""
 	return labels
 }
 
 // NewMachine returns a machine configured to be a part of the control plane.
-func (c *ControlPlane) NewMachine(infraRef, bootstrapRef *corev1.ObjectReference, failureDomain *string) *clusterv1.Machine {
-	return &clusterv1.Machine{
+func (c *ControlPlane) NewMachine(infraRef, bootstrapRef *corev1.ObjectReference, failureDomain *string) *clusterv1beta1.Machine {
+	return &clusterv1beta1.Machine{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      names.SimpleNameGenerator.GenerateName(c.KCP.Name + "-"),
 			Namespace: c.KCP.Namespace,
@@ -245,11 +270,11 @@ func (c *ControlPlane) NewMachine(infraRef, bootstrapRef *corev1.ObjectReference
 				*metav1.NewControllerRef(c.KCP, controlplanev1.GroupVersion.WithKind("KThreesControlPlane")),
 			},
 		},
-		Spec: clusterv1.MachineSpec{
+		Spec: clusterv1beta1.MachineSpec{
 			ClusterName:       c.Cluster.Name,
 			Version:           c.Version(),
 			InfrastructureRef: *infraRef,
-			Bootstrap: clusterv1.Bootstrap{
+			Bootstrap: clusterv1beta1.Bootstrap{
 				ConfigRef: bootstrapRef,
 			},
 			FailureDomain: failureDomain,
@@ -282,10 +307,15 @@ func (c *ControlPlane) MachinesNeedingRollout() collections.Machines {
 	// Ignore machines to be deleted.
 	machines := c.Machines.Filter(collections.Not(collections.HasDeletionTimestamp))
 
+	rolloutAfter := c.KCP.Spec.RolloutAfter
+	if rolloutAfter == nil {
+		rolloutAfter = &metav1.Time{}
+	}
+
 	// Return machines if they are scheduled for rollout or if with an outdated configuration.
 	return machines.AnyFilter(
 		// Machines that are scheduled for rollout (KCP.Spec.RolloutAfter set, the RolloutAfter deadline is expired, and the machine was created before the deadline).
-		collections.ShouldRolloutAfter(&c.reconciliationTime, c.KCP.Spec.RolloutAfter),
+		collections.ShouldRolloutAfter(&c.reconciliationTime, *rolloutAfter),
 		// Machines that do not match with KCP config.
 		collections.Not(machinefilters.MatchesKCPConfiguration(c.InfraResources, c.KthreesConfigs, c.KCP)),
 	)
@@ -301,7 +331,7 @@ func (c *ControlPlane) UpToDateMachines() collections.Machines {
 func getInfraResources(ctx context.Context, cl client.Client, machines collections.Machines) (map[string]*unstructured.Unstructured, error) {
 	result := map[string]*unstructured.Unstructured{}
 	for _, m := range machines {
-		infraObj, err := external.Get(ctx, cl, &m.Spec.InfrastructureRef)
+		infraObj, err := external.GetObjectFromContractVersionedRef(ctx, cl, m.Spec.InfrastructureRef, m.Namespace)
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				continue
@@ -318,7 +348,7 @@ func getKThreesConfigs(ctx context.Context, cl client.Client, machines collectio
 	result := map[string]*bootstrapv1.KThreesConfig{}
 	for _, m := range machines {
 		bootstrapRef := m.Spec.Bootstrap.ConfigRef
-		if bootstrapRef == nil {
+		if !bootstrapRef.IsDefined() {
 			continue
 		}
 		machineConfig := &bootstrapv1.KThreesConfig{}
@@ -360,9 +390,9 @@ func (c *ControlPlane) PatchMachines(ctx context.Context) error {
 	for i := range c.Machines {
 		machine := c.Machines[i]
 		if helper, ok := c.machinesPatchHelpers[machine.Name]; ok {
-			if err := helper.Patch(ctx, machine, patch.WithOwnedConditions{Conditions: []clusterv1.ConditionType{
-				controlplanev1.MachineAgentHealthyCondition,
-				controlplanev1.MachineEtcdMemberHealthyCondition,
+			if err := helper.Patch(ctx, machine, patch.WithOwnedConditions{Conditions: []string{
+				controlplanev1.MachineAgentHealthyV1Beta2Condition,
+				controlplanev1.MachineEtcdMemberHealthyV1Beta2Condition,
 			}}); err != nil {
 				errList = append(errList, fmt.Errorf("failed to patch machine %s: %w", machine.Name, err))
 			}
@@ -382,4 +412,8 @@ func (c *ControlPlane) SetPatchHelpers(patchHelpers map[string]*patch.Helper) {
 	for machineName, patchHelper := range patchHelpers {
 		c.machinesPatchHelpers[machineName] = patchHelper
 	}
+}
+
+func FilterControlPlane() collections.Func {
+	return util.IsControlPlaneMachine
 }
