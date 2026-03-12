@@ -4,12 +4,12 @@ This document describes how to use kind and [Tilt][tilt] for a simplified workfl
 Also, visit the [Cluster API documentation on Tilt][cluster_api_tilt] for more information on how to set up your development environment.
 
 [tilt]: https://tilt.dev
-[cluster_api_tilt]: https://cluster-api.sigs.k8s.io/developer/tilt.html
+[cluster_api_tilt]: https://cluster-api.sigs.k8s.io/developer/core/tilt
 [capd]: https://github.com/kubernetes-sigs/cluster-api/tree/main/test/infrastructure/docker
 
 ## Getting started
 
-1. You need to follow the [Prerequisites in Cluster API documentation on Tilt](https://cluster-api.sigs.k8s.io/developer/tilt.html#prerequisites) to have everything installed.
+1. You need to follow the [Prerequisites in Cluster API documentation on Tilt](https://cluster-api.sigs.k8s.io/developer/core/tilt#prerequisites) to have everything installed.
 
 2. Get the source for cluster-api repo
   
@@ -33,7 +33,7 @@ Also, visit the [Cluster API documentation on Tilt][cluster_api_tilt] for more i
 
 4. Create the `tilt-settings.yaml` file and place it in your local copy of `cluster-api`. Here is an example:
     ```yaml
-    # refer to https://cluster-api.sigs.k8s.io/developer/tilt.html for documentation
+    # refer to https://cluster-api.sigs.k8s.io/developer/core/tilt for documentation
     allowed_contexts:
     - kind-capi-test
     trigger_mode: manual  # set to auto to enable auto-rebuilding

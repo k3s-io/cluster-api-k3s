@@ -1,7 +1,7 @@
 # e2e test
 The e2e test use the [Cluster API test framework](https://pkg.go.dev/sigs.k8s.io/cluster-api/test/framework?tab=doc) and use the [CAPD](https://github.com/kubernetes-sigs/cluster-api/tree/main/test/infrastructure/docker) as the infrastructure provider. Please make sure you have [Docker](https://docs.docker.com/install/) and [kind](https://kind.sigs.k8s.io/) installed.
 
-You could refer to the [Testing Cluster API](https://cluster-api.sigs.k8s.io/developer/testing) for more information.
+You could refer to the [Testing Cluster API](https://cluster-api.sigs.k8s.io/developer/core/testing) for more information.
 
 ## Run the e2e test
 The e2e image will be built with tag `dev`. You should build the image first before running the test.
@@ -15,7 +15,7 @@ To run a specific e2e test, such as `[PR-Blocking]`, use the `GINKGO_FOCUS` envi
 make GINKGO_FOCUS="\\[PR-Blocking\\]" test-e2e  # only run e2e test with `[PR-Blocking]` in its spec name
 ```
 ## Develop an e2e test
-You could refer to [Developing E2E tests](https://cluster-api.sigs.k8s.io/developer/e2e) for a complete guide for developing e2e tests.
+You could refer to [Developing E2E tests](https://cluster-api.sigs.k8s.io/developer/core/e2e) for a complete guide for developing e2e tests.
 
 A guide for developing a k3s e2e test:
 
