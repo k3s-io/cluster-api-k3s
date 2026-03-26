@@ -124,14 +124,15 @@ func ClusterUpgradeSpec(ctx context.Context, inputGetter func() ClusterUpgradeSp
 
 	AfterEach(func() {
 		cleanInput := cleanupInput{
-			SpecName:        specName,
-			Cluster:         result.Cluster,
-			ClusterProxy:    input.BootstrapClusterProxy,
-			Namespace:       namespace,
-			CancelWatches:   cancelWatches,
-			IntervalsGetter: input.E2EConfig.GetIntervals,
-			SkipCleanup:     input.SkipCleanup,
-			ArtifactFolder:  input.ArtifactFolder,
+			SpecName:             specName,
+			Cluster:              result.Cluster,
+			ClusterProxy:         input.BootstrapClusterProxy,
+			ClusterctlConfigPath: input.ClusterctlConfigPath,
+			Namespace:            namespace,
+			CancelWatches:        cancelWatches,
+			IntervalsGetter:      input.E2EConfig.GetIntervals,
+			SkipCleanup:          input.SkipCleanup,
+			ArtifactFolder:       input.ArtifactFolder,
 		}
 
 		dumpSpecResourcesAndCleanup(ctx, cleanInput)

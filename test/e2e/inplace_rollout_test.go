@@ -30,6 +30,7 @@ import (
 	"golang.org/x/exp/rand"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
@@ -204,7 +205,7 @@ func modifyControlPlaneViaClusterAndWait(ctx context.Context, input modifyContro
 			}
 
 			if controlPlaneTopology.Deletion.NodeDrainTimeoutSeconds != nil {
-				nodeDrainTimeout := m.Spec.Deletion.NodeDeletionTimeoutSeconds
+				nodeDrainTimeout := m.Spec.Deletion.NodeDrainTimeoutSeconds
 				g.Expect(nodeDrainTimeout).To(Equal(controlPlaneTopology.Deletion.NodeDrainTimeoutSeconds))
 			}
 
@@ -236,17 +237,20 @@ func assertControlPlaneTopologyFields(g Gomega, controlPlane *controlplanev1.KTh
 
 	if controlPlaneTopology.Deletion.NodeDrainTimeoutSeconds != nil {
 		nodeDrainTimeout := controlPlane.Spec.MachineTemplate.NodeDrainTimeout
-		g.Expect(nodeDrainTimeout).To(Equal(controlPlaneTopology.Deletion.NodeDrainTimeoutSeconds))
+		expected := metav1.Duration{Duration: time.Duration(*controlPlaneTopology.Deletion.NodeDrainTimeoutSeconds) * time.Second}
+		g.Expect(nodeDrainTimeout).To(Equal(&expected))
 	}
 
 	if controlPlaneTopology.Deletion.NodeDeletionTimeoutSeconds != nil {
 		nodeDeletionTimeout := controlPlane.Spec.MachineTemplate.NodeDeletionTimeout
-		g.Expect(nodeDeletionTimeout).To(Equal(controlPlaneTopology.Deletion.NodeDeletionTimeoutSeconds))
+		expected := metav1.Duration{Duration: time.Duration(*controlPlaneTopology.Deletion.NodeDeletionTimeoutSeconds) * time.Second}
+		g.Expect(nodeDeletionTimeout).To(Equal(&expected))
 	}
 
 	if controlPlaneTopology.Deletion.NodeVolumeDetachTimeoutSeconds != nil {
 		nodeVolumeDetachTimeout := controlPlane.Spec.MachineTemplate.NodeVolumeDetachTimeout
-		g.Expect(nodeVolumeDetachTimeout).To(Equal(controlPlaneTopology.Deletion.NodeVolumeDetachTimeoutSeconds))
+		expected := metav1.Duration{Duration: time.Duration(*controlPlaneTopology.Deletion.NodeVolumeDetachTimeoutSeconds) * time.Second}
+		g.Expect(nodeVolumeDetachTimeout).To(Equal(&expected))
 	}
 }
 

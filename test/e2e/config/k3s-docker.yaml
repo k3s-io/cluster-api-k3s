@@ -64,6 +64,7 @@ providers:
       # is modified
       - name: v0.3.99 # next; use manifest from source files
         value: "../../../bootstrap/config/default"
+        contract: v1beta2
         files:
           - sourcePath: "../../../metadata.yaml"
             targetName: "metadata.yaml"
@@ -79,6 +80,7 @@ providers:
             targetName: "metadata.yaml"
       - name: v0.3.99 # next; use manifest from source files
         value: "../../../controlplane/config/default"
+        contract: v1beta2
         files:
           - sourcePath: "../../../metadata.yaml"
             targetName: "metadata.yaml"
