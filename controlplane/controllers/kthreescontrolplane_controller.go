@@ -165,8 +165,11 @@ func (r *KThreesControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 
 	// Always attempt to Patch the KThreesControlPlane object and status after each reconciliation.
 	if patchErr := patchKThreesControlPlane(ctx, patchHelper, kcp); patchErr != nil {
-		logger.Error(err, "Failed to patch KThreesControlPlane")
-		err = kerrors.NewAggregate([]error{err, patchErr})
+		// Ignore not-found: the KCP may have been deleted (finalizer removed) just before we patch.
+		if !apierrors.IsNotFound(patchErr) {
+			logger.Error(err, "Failed to patch KThreesControlPlane")
+			err = kerrors.NewAggregate([]error{err, patchErr})
+		}
 	}
 
 	// Only requeue if there is no error, Requeue or RequeueAfter and the object does not have a deletion timestamp.

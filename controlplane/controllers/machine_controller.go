@@ -14,7 +14,7 @@ import (
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/annotations"
 	"sigs.k8s.io/cluster-api/util/collections"
-	"sigs.k8s.io/cluster-api/util/conditions"
+	v1beta1conditions "sigs.k8s.io/cluster-api/util/conditions/deprecated/v1beta1"
 	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/cluster-api/util/predicates"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -96,7 +96,7 @@ func (r *MachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// if machine registered PreTerminate hook, wait for capi asks to resolve PreTerminateDeleteHook
 	if annotations.HasWithPrefix(clusterv1beta2.PreTerminateDeleteHookAnnotationPrefix, m.ObjectMeta.Annotations) &&
 		m.ObjectMeta.Annotations[clusterv1beta2.PreTerminateDeleteHookAnnotationPrefix] == k3sHookName {
-		if !conditions.IsFalse(m, string(clusterv1beta2.PreTerminateDeleteHookSucceededV1Beta1Condition)) {
+		if !v1beta1conditions.IsFalse(m, clusterv1beta2.PreTerminateDeleteHookSucceededV1Beta1Condition) {
 			logger.Info("wait for machine drain and detech volume operation complete.")
 			return ctrl.Result{}, nil
 		}
