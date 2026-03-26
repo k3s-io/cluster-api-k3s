@@ -36,7 +36,8 @@ import (
 
 const (
 	kubeProxyKey              = "kube-proxy"
-	labelNodeRoleControlPlane = "node-role.kubernetes.io/master"
+	labelNodeRoleMaster       = "node-role.kubernetes.io/master"
+	labelNodeRoleControlPlane = "node-role.kubernetes.io/control-plane"
 	k3sServingSecretKey       = "k3s-serving"
 )
 
@@ -82,13 +83,31 @@ type ClusterStatus struct {
 
 func (w *Workload) getControlPlaneNodes(ctx context.Context) (*corev1.NodeList, error) {
 	nodes := &corev1.NodeList{}
-	labels := map[string]string{
-		labelNodeRoleControlPlane: "true",
-	}
-	if err := w.Client.List(ctx, nodes, ctrlclient.MatchingLabels(labels)); err != nil {
+	if err := w.Client.List(ctx, nodes); err != nil {
 		return nil, err
 	}
-	return nodes, nil
+
+	controlPlaneNodes := &corev1.NodeList{}
+	for i := range nodes.Items {
+		node := nodes.Items[i]
+		// support both old and current control-plane role labels across Kubernetes versions.
+		if hasControlPlaneRoleLabel(node.Labels) {
+			controlPlaneNodes.Items = append(controlPlaneNodes.Items, node)
+		}
+	}
+
+	return controlPlaneNodes, nil
+}
+
+func hasControlPlaneRoleLabel(labels map[string]string) bool {
+	if labels == nil {
+		return false
+	}
+
+	_, hasMaster := labels[labelNodeRoleMaster]
+	_, hasControlPlane := labels[labelNodeRoleControlPlane]
+
+	return hasMaster || hasControlPlane
 }
 
 // ClusterStatus returns the status of the cluster.
