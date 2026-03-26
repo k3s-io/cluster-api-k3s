@@ -56,7 +56,6 @@ import (
 	pkgcontract "github.com/k3s-io/cluster-api-k3s/pkg/contract"
 	k3s "github.com/k3s-io/cluster-api-k3s/pkg/k3s"
 	"github.com/k3s-io/cluster-api-k3s/pkg/kubeconfig"
-	"github.com/k3s-io/cluster-api-k3s/pkg/machinefilters"
 	"github.com/k3s-io/cluster-api-k3s/pkg/secret"
 	"github.com/k3s-io/cluster-api-k3s/pkg/token"
 	"github.com/k3s-io/cluster-api-k3s/pkg/util/contract"
@@ -156,10 +155,10 @@ func (r *KThreesControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 	// Always attempt to update status.
 	if updateErr := r.updateStatus(ctx, kcp, cluster); updateErr != nil {
 		var connFailure *k3s.RemoteClusterConnectionError
-		if errors.As(err, &connFailure) {
+		if errors.As(updateErr, &connFailure) {
 			logger.Info("Could not connect to workload cluster to fetch status", "err", updateErr.Error())
 		} else {
-			logger.Error(err, "Failed to update KThreesControlPlane Status")
+			logger.Error(updateErr, "Failed to update KThreesControlPlane Status")
 			err = kerrors.NewAggregate([]error{err, updateErr})
 		}
 	}
@@ -228,9 +227,11 @@ func (r *KThreesControlPlaneReconciler) reconcileDelete(ctx context.Context, clu
 	// source ref (reason@machine/name) so the problem can be easily tracked down to its source machine.
 	// However, during delete we are hiding the counter (1 of x) because it does not make sense given that
 	// all the machines are deleted in parallel.
-	conditionGetters := make([]v1beta1conditions.Getter, len(ownedMachines.ConditionGetters()))
-	for i, getter := range ownedMachines.ConditionGetters() {
-		conditionGetters[i] = getter.(v1beta1conditions.Getter)
+	conditionGetters := make([]v1beta1conditions.Getter, 0, len(ownedMachines.ConditionGetters()))
+	for _, getter := range ownedMachines.ConditionGetters() {
+		if typeGetter, ok := getter.(v1beta1conditions.Getter); ok {
+			conditionGetters = append(conditionGetters, typeGetter)
+		}
 	}
 	v1beta1conditions.SetAggregate(kcp, controlplanev1beta2.MachinesReadyCondition, conditionGetters, v1beta1conditions.AddSourceRef(), v1beta1conditions.WithStepCounterIf(false))
 
@@ -295,13 +296,13 @@ func patchKThreesControlPlane(ctx context.Context, patchHelper *v1beta1patch.Hel
 func (r *KThreesControlPlaneReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, log *logr.Logger, concurrency int) error {
 	c, err := ctrl.NewControllerManagedBy(mgr).
 		For(&controlplanev1beta2.KThreesControlPlane{}).
-		Owns(&clusterv1beta1.Machine{}).
+		Owns(&clusterv1beta2.Machine{}).
 		WithOptions(controller.Options{
 			MaxConcurrentReconciles: concurrency,
 		}).
 		WithEventFilter(predicates.ResourceNotPaused(mgr.GetScheme(), r.Log)).
 		Watches(
-			&clusterv1beta1.Cluster{},
+			&clusterv1beta2.Cluster{},
 			handler.EnqueueRequestsFromMapFunc(r.ClusterToKThreesControlPlane(ctx, log)),
 			builder.WithPredicates(
 				predicates.ClusterPausedTransitionsOrInfrastructureProvisioned(mgr.GetScheme(), r.Log),
@@ -339,15 +340,15 @@ func (r *KThreesControlPlaneReconciler) SetupWithManager(ctx context.Context, mg
 // for KThreesControlPlane based on updates to a Cluster.
 func (r *KThreesControlPlaneReconciler) ClusterToKThreesControlPlane(ctx context.Context, log *logr.Logger) handler.MapFunc {
 	return func(ctx context.Context, o client.Object) []ctrl.Request {
-		c, ok := o.(*clusterv1beta1.Cluster)
+		c, ok := o.(*clusterv1beta2.Cluster)
 		if !ok {
 			r.Log.Error(nil, fmt.Sprintf("Expected a Cluster but got a %T", o))
 			return nil
 		}
 
 		controlPlaneRef := c.Spec.ControlPlaneRef
-		if controlPlaneRef != nil && controlPlaneRef.Kind == "KThreesControlPlane" {
-			return []ctrl.Request{{NamespacedName: client.ObjectKey{Namespace: controlPlaneRef.Namespace, Name: controlPlaneRef.Name}}}
+		if controlPlaneRef.Kind == "KThreesControlPlane" {
+			return []ctrl.Request{{NamespacedName: client.ObjectKey{Namespace: c.Namespace, Name: controlPlaneRef.Name}}}
 		}
 
 		return nil
@@ -389,8 +390,11 @@ func (r *KThreesControlPlaneReconciler) updateStatus(ctx context.Context, kcp *c
 		return nil
 	}
 
-	machinesWithAgentHealthy := controlPlane.Machines.Filter(machinefilters.AgentHealthy())
-	lowestVersion := machinesWithAgentHealthy.LowestVersion()
+	// if no machines are healthy, we want to report the version of the cluster based on the machines we have,
+	// otherwise it can stuck in an unknown version state for a long time without reporting anything.
+	// Lowest version could be empty if there are no machines, and status would not be updated correctly
+	// contributing to the cluster being stuck in provisioning without reporting anything.
+	lowestVersion := controlPlane.Machines.LowestVersion()
 	if lowestVersion != "" {
 		controlPlane.KCP.Status.Version = ptr.To(lowestVersion)
 	}
@@ -418,7 +422,7 @@ func (r *KThreesControlPlaneReconciler) updateStatus(ctx context.Context, kcp *c
 	}
 	status, err := workloadCluster.ClusterStatus(ctx)
 	if err != nil {
-		return err
+		return &k3s.RemoteClusterConnectionError{Name: util.ObjectKey(cluster).String(), Err: err}
 	}
 
 	logger.Info("ClusterStatus", "workload", status)
@@ -535,11 +539,17 @@ func (r *KThreesControlPlaneReconciler) reconcile(ctx context.Context, cluster *
 
 	// Aggregate the operational state of all the machines; while aggregating we are adding the
 	// source ref (reason@machine/name) so the problem can be easily tracked down to its source machine.
-	conditionGetters := make([]v1beta1conditions.Getter, len(ownedMachines.ConditionGetters()))
-	for i, getter := range ownedMachines.ConditionGetters() {
-		conditionGetters[i] = getter.(v1beta1conditions.Getter)
+	conditionGetters := make([]v1beta1conditions.Getter, 0, len(ownedMachines.ConditionGetters()))
+	for _, getter := range ownedMachines.ConditionGetters() {
+		// we want to make sure the controller can handle this scenario gracefully, e.g., v1beta1 machines that do not implement
+		// the new conditions getter interface should not cause the controller to fail but instead just be ignored in the aggregate conditions.
+		if typeGetter, ok := getter.(v1beta1conditions.Getter); ok {
+			conditionGetters = append(conditionGetters, typeGetter)
+		}
 	}
-	v1beta1conditions.SetAggregate(controlPlane.KCP, controlplanev1beta2.MachinesReadyCondition, conditionGetters, v1beta1conditions.AddSourceRef(), v1beta1conditions.WithStepCounterIf(false))
+	if len(conditionGetters) > 0 {
+		v1beta1conditions.SetAggregate(controlPlane.KCP, controlplanev1beta2.MachinesReadyCondition, conditionGetters, v1beta1conditions.AddSourceRef(), v1beta1conditions.WithStepCounterIf(false))
+	}
 
 	// Updates conditions reporting the status of static pods and the status of the etcd cluster.
 	// NOTE: Conditions reporting KCP operation progress like e.g. Resized or SpecUpToDate are inlined with the rest of the execution.
@@ -767,13 +777,13 @@ func (r *KThreesControlPlaneReconciler) syncMachines(ctx context.Context, contro
 				return fmt.Errorf("failed to get api version for bootstrap config: %w", err)
 			}
 
-			// Note: Set the GroupVersionKind because updateExternalObject depends on it.
-			// Construct the GVK from the APIGroup and Kind of the ConfigRef
-			gvk := schema.GroupVersionKind{
-				Group:   m.Spec.Bootstrap.ConfigRef.APIGroup,
-				Kind:    m.Spec.Bootstrap.ConfigRef.Kind,
-				Version: version,
+			// version string returned by the discovery API is a full group/version string (e.g. "bootstrap.cluster.x-k8s.io/v1beta2"),
+			// but we need to split it into group and version to construct the GVK of the KThreesConfig object.
+			groupVersion, err := schema.ParseGroupVersion(version)
+			if err != nil {
+				return fmt.Errorf("failed to parse api version for bootstrap config: %w", err)
 			}
+			gvk := groupVersion.WithKind(m.Spec.Bootstrap.ConfigRef.Kind)
 			kthreesConfigs.SetGroupVersionKind(gvk)
 			// Cleanup managed fields of all KThreesConfigs to drop ownership of labels and annotations
 			// from "manager". We do this so that KThreesConfigs that are created using the Create method
