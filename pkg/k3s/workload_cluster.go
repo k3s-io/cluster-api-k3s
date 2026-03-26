@@ -263,6 +263,7 @@ func (w *Workload) UpdateAgentConditions(ctx context.Context, controlPlane *Cont
 				conditions.Set(machine, metav1.Condition{
 					Type:   controlplanev1.MachineAgentHealthyV1Beta2Condition,
 					Status: metav1.ConditionTrue,
+					Reason: controlplanev1.NodeReadyReason,
 				})
 			}
 		}
@@ -518,6 +519,7 @@ func (w *Workload) updateManagedEtcdConditions(ctx context.Context, controlPlane
 		conditions.Set(machine, metav1.Condition{
 			Type:   string(controlplanev1.MachineEtcdMemberHealthyCondition),
 			Status: metav1.ConditionTrue,
+			Reason: controlplanev1.EtcdMemberHealthyReason,
 		})
 	}
 
