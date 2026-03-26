@@ -34,7 +34,7 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
 	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
-	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
+	clusterv1beta2 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/controllers/external"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/annotations"
@@ -52,7 +52,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
+	controlplanev1beta2 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
 	pkgcontract "github.com/k3s-io/cluster-api-k3s/pkg/contract"
 	k3s "github.com/k3s-io/cluster-api-k3s/pkg/k3s"
 	"github.com/k3s-io/cluster-api-k3s/pkg/kubeconfig"
@@ -90,7 +90,7 @@ func (r *KThreesControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 	logger := r.Log.WithValues("namespace", req.Namespace, "kthreesControlPlane", req.Name)
 
 	// Fetch the KThreesControlPlane instance.
-	kcp := &controlplanev1.KThreesControlPlane{}
+	kcp := &controlplanev1beta2.KThreesControlPlane{}
 	if err := r.Client.Get(ctx, req.NamespacedName, kcp); err != nil {
 		if apierrors.IsNotFound(err) {
 			return reconcile.Result{}, nil
@@ -128,8 +128,8 @@ func (r *KThreesControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 	}
 
 	// Add finalizer first if not exist to avoid the race condition between init and delete
-	if !controllerutil.ContainsFinalizer(kcp, controlplanev1.KThreesControlPlaneFinalizer) {
-		controllerutil.AddFinalizer(kcp, controlplanev1.KThreesControlPlaneFinalizer)
+	if !controllerutil.ContainsFinalizer(kcp, controlplanev1beta2.KThreesControlPlaneFinalizer) {
+		controllerutil.AddFinalizer(kcp, controlplanev1beta2.KThreesControlPlaneFinalizer)
 
 		// patch and return right away instead of reusing the main defer,
 		// because the main defer may take too much time to get cluster status
@@ -184,7 +184,7 @@ func (r *KThreesControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 		// status without waiting for a full resync (by default 10 minutes).
 		// Otherwise this condition can lead to a delay in provisioning MachineDeployments when MachineSet preflight checks are enabled.
 		// The alternative solution to this requeue would be watching the relevant pods inside each workload cluster which would be very expensive.
-		if v1beta1conditions.IsFalse(kcp, controlplanev1.ControlPlaneComponentsHealthyCondition) {
+		if v1beta1conditions.IsFalse(kcp, controlplanev1beta2.ControlPlaneComponentsHealthyCondition) {
 			res = ctrl.Result{RequeueAfter: 20 * time.Second}
 		}
 	}
@@ -195,7 +195,7 @@ func (r *KThreesControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.
 // reconcileDelete handles KThreesControlPlane deletion.
 // The implementation does not take non-control plane workloads into consideration. This may or may not change in the future.
 // Please see https://github.com/kubernetes-sigs/cluster-api/issues/2064.
-func (r *KThreesControlPlaneReconciler) reconcileDelete(ctx context.Context, cluster *clusterv1.Cluster, kcp *controlplanev1.KThreesControlPlane) (ctrl.Result, error) {
+func (r *KThreesControlPlaneReconciler) reconcileDelete(ctx context.Context, cluster *clusterv1beta2.Cluster, kcp *controlplanev1beta2.KThreesControlPlane) (ctrl.Result, error) {
 	logger := r.Log.WithValues("namespace", kcp.Namespace, "KThreesControlPlane", kcp.Name, "cluster", cluster.Name)
 	logger.Info("Reconcile KThreesControlPlane deletion")
 
@@ -208,7 +208,7 @@ func (r *KThreesControlPlaneReconciler) reconcileDelete(ctx context.Context, clu
 
 	// If no control plane machines remain, remove the finalizer
 	if len(ownedMachines) == 0 {
-		controllerutil.RemoveFinalizer(kcp, controlplanev1.KThreesControlPlaneFinalizer)
+		controllerutil.RemoveFinalizer(kcp, controlplanev1beta2.KThreesControlPlaneFinalizer)
 		return reconcile.Result{}, nil
 	}
 
@@ -232,12 +232,12 @@ func (r *KThreesControlPlaneReconciler) reconcileDelete(ctx context.Context, clu
 	for i, getter := range ownedMachines.ConditionGetters() {
 		conditionGetters[i] = getter.(v1beta1conditions.Getter)
 	}
-	v1beta1conditions.SetAggregate(kcp, controlplanev1.MachinesReadyCondition, conditionGetters, v1beta1conditions.AddSourceRef(), v1beta1conditions.WithStepCounterIf(false))
+	v1beta1conditions.SetAggregate(kcp, controlplanev1beta2.MachinesReadyCondition, conditionGetters, v1beta1conditions.AddSourceRef(), v1beta1conditions.WithStepCounterIf(false))
 
 	// Verify that only control plane machines remain
 	if len(allMachines) != len(ownedMachines) {
 		logger.Info("Waiting for worker nodes to be deleted first")
-		v1beta1conditions.MarkFalse(kcp, controlplanev1.ResizedCondition, clusterv1beta1.DeletingReason, clusterv1beta1.ConditionSeverityInfo, "Waiting for worker nodes to be deleted first")
+		v1beta1conditions.MarkFalse(kcp, controlplanev1beta2.ResizedCondition, clusterv1beta1.DeletingReason, clusterv1beta1.ConditionSeverityInfo, "Waiting for worker nodes to be deleted first")
 		return ctrl.Result{RequeueAfter: deleteRequeueAfter}, nil
 	}
 
@@ -258,20 +258,20 @@ func (r *KThreesControlPlaneReconciler) reconcileDelete(ctx context.Context, clu
 			"Failed to delete control plane Machines for cluster %s/%s control plane: %v", cluster.Namespace, cluster.Name, err)
 		return reconcile.Result{}, err
 	}
-	v1beta1conditions.MarkFalse(kcp, controlplanev1.ResizedCondition, clusterv1beta1.DeletingReason, clusterv1beta1.ConditionSeverityInfo, "")
+	v1beta1conditions.MarkFalse(kcp, controlplanev1beta2.ResizedCondition, clusterv1beta1.DeletingReason, clusterv1beta1.ConditionSeverityInfo, "")
 	return ctrl.Result{RequeueAfter: deleteRequeueAfter}, nil
 }
 
-func patchKThreesControlPlane(ctx context.Context, patchHelper *v1beta1patch.Helper, kcp *controlplanev1.KThreesControlPlane) error {
+func patchKThreesControlPlane(ctx context.Context, patchHelper *v1beta1patch.Helper, kcp *controlplanev1beta2.KThreesControlPlane) error {
 	// Always update the readyCondition by summarizing the state of other conditions.
 	v1beta1conditions.SetSummary(kcp,
 		v1beta1conditions.WithConditions(
-			controlplanev1.MachinesSpecUpToDateCondition,
-			controlplanev1.ResizedCondition,
-			controlplanev1.MachinesReadyCondition,
-			controlplanev1.AvailableCondition,
-			controlplanev1.CertificatesAvailableCondition,
-			controlplanev1.TokenAvailableCondition,
+			controlplanev1beta2.MachinesSpecUpToDateCondition,
+			controlplanev1beta2.ResizedCondition,
+			controlplanev1beta2.MachinesReadyCondition,
+			controlplanev1beta2.AvailableCondition,
+			controlplanev1beta2.CertificatesAvailableCondition,
+			controlplanev1beta2.TokenAvailableCondition,
 		),
 	)
 
@@ -281,12 +281,12 @@ func patchKThreesControlPlane(ctx context.Context, patchHelper *v1beta1patch.Hel
 		kcp,
 		v1beta1patch.WithOwnedConditions{Conditions: []clusterv1beta1.ConditionType{
 			clusterv1beta1.ReadyCondition,
-			controlplanev1.MachinesSpecUpToDateCondition,
-			controlplanev1.ResizedCondition,
-			controlplanev1.MachinesReadyCondition,
-			controlplanev1.AvailableCondition,
-			controlplanev1.CertificatesAvailableCondition,
-			controlplanev1.TokenAvailableCondition,
+			controlplanev1beta2.MachinesSpecUpToDateCondition,
+			controlplanev1beta2.ResizedCondition,
+			controlplanev1beta2.MachinesReadyCondition,
+			controlplanev1beta2.AvailableCondition,
+			controlplanev1beta2.CertificatesAvailableCondition,
+			controlplanev1beta2.TokenAvailableCondition,
 		}},
 		v1beta1patch.WithStatusObservedGeneration{},
 	)
@@ -294,7 +294,7 @@ func patchKThreesControlPlane(ctx context.Context, patchHelper *v1beta1patch.Hel
 
 func (r *KThreesControlPlaneReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, log *logr.Logger, concurrency int) error {
 	c, err := ctrl.NewControllerManagedBy(mgr).
-		For(&controlplanev1.KThreesControlPlane{}).
+		For(&controlplanev1beta2.KThreesControlPlane{}).
 		Owns(&clusterv1beta1.Machine{}).
 		WithOptions(controller.Options{
 			MaxConcurrentReconciles: concurrency,
@@ -356,7 +356,7 @@ func (r *KThreesControlPlaneReconciler) ClusterToKThreesControlPlane(ctx context
 
 // updateStatus is called after every reconcilitation loop in a defer statement to always make sure we have the
 // resource status subresourcs up-to-date.
-func (r *KThreesControlPlaneReconciler) updateStatus(ctx context.Context, kcp *controlplanev1.KThreesControlPlane, cluster *clusterv1.Cluster) error {
+func (r *KThreesControlPlaneReconciler) updateStatus(ctx context.Context, kcp *controlplanev1beta2.KThreesControlPlane, cluster *clusterv1beta2.Cluster) error {
 	selector := collections.ControlPlaneSelectorForCluster(cluster.Name)
 	// Copy label selector to its status counterpart in string format.
 	// This is necessary for CRDs including scale subresources.
@@ -398,17 +398,17 @@ func (r *KThreesControlPlaneReconciler) updateStatus(ctx context.Context, kcp *c
 	switch {
 	// We are scaling up
 	case replicas < desiredReplicas:
-		v1beta1conditions.MarkFalse(kcp, controlplanev1.ResizedCondition, controlplanev1.ScalingUpReason, clusterv1beta1.ConditionSeverityWarning, "Scaling up control plane to %d replicas (actual %d)", desiredReplicas, replicas)
+		v1beta1conditions.MarkFalse(kcp, controlplanev1beta2.ResizedCondition, controlplanev1beta2.ScalingUpReason, clusterv1beta1.ConditionSeverityWarning, "Scaling up control plane to %d replicas (actual %d)", desiredReplicas, replicas)
 	// We are scaling down
 	case replicas > desiredReplicas:
-		v1beta1conditions.MarkFalse(kcp, controlplanev1.ResizedCondition, controlplanev1.ScalingDownReason, clusterv1beta1.ConditionSeverityWarning, "Scaling down control plane to %d replicas (actual %d)", desiredReplicas, replicas)
+		v1beta1conditions.MarkFalse(kcp, controlplanev1beta2.ResizedCondition, controlplanev1beta2.ScalingDownReason, clusterv1beta1.ConditionSeverityWarning, "Scaling down control plane to %d replicas (actual %d)", desiredReplicas, replicas)
 	default:
 		// make sure last resize operation is marked as completed.
 		// NOTE: we are checking the number of machines ready so we report resize completed only when the machines
 		// are actually provisioned (vs reporting completed immediately after the last machine object is created).
 		readyMachines := ownedMachines.Filter(collections.IsReady())
 		if int32(len(readyMachines)) == replicas {
-			v1beta1conditions.MarkTrue(kcp, controlplanev1.ResizedCondition)
+			v1beta1conditions.MarkTrue(kcp, controlplanev1beta2.ResizedCondition)
 		}
 	}
 
@@ -432,7 +432,7 @@ func (r *KThreesControlPlaneReconciler) updateStatus(ctx context.Context, kcp *c
 
 	if kcp.Status.ReadyReplicas > 0 {
 		kcp.Status.Ready = true
-		v1beta1conditions.MarkTrue(kcp, controlplanev1.AvailableCondition)
+		v1beta1conditions.MarkTrue(kcp, controlplanev1beta2.AvailableCondition)
 	}
 
 	// Surface lastRemediation data in status.
@@ -440,7 +440,7 @@ func (r *KThreesControlPlaneReconciler) updateStatus(ctx context.Context, kcp *c
 	// most recent of the remediation we are keeping track on machines.
 	var lastRemediation *RemediationData
 
-	if v, ok := controlPlane.KCP.Annotations[controlplanev1.RemediationInProgressAnnotation]; ok {
+	if v, ok := controlPlane.KCP.Annotations[controlplanev1beta2.RemediationInProgressAnnotation]; ok {
 		remediationData, err := RemediationDataFromAnnotation(v)
 		if err != nil {
 			return err
@@ -448,7 +448,7 @@ func (r *KThreesControlPlaneReconciler) updateStatus(ctx context.Context, kcp *c
 		lastRemediation = remediationData
 	} else {
 		for _, m := range controlPlane.Machines.UnsortedList() {
-			if v, ok := m.Annotations[controlplanev1.RemediationForAnnotation]; ok {
+			if v, ok := m.Annotations[controlplanev1beta2.RemediationForAnnotation]; ok {
 				remediationData, err := RemediationDataFromAnnotation(v)
 				if err != nil {
 					return err
@@ -468,7 +468,7 @@ func (r *KThreesControlPlaneReconciler) updateStatus(ctx context.Context, kcp *c
 }
 
 // reconcile handles KThreesControlPlane reconciliation.
-func (r *KThreesControlPlaneReconciler) reconcile(ctx context.Context, cluster *clusterv1.Cluster, kcp *controlplanev1.KThreesControlPlane) (ctrl.Result, error) {
+func (r *KThreesControlPlaneReconciler) reconcile(ctx context.Context, cluster *clusterv1beta2.Cluster, kcp *controlplanev1beta2.KThreesControlPlane) (ctrl.Result, error) {
 	logger := r.Log.WithValues("namespace", kcp.Namespace, "KThreesControlPlane", kcp.Name, "cluster", cluster.Name)
 	logger.Info("Reconcile KThreesControlPlane")
 
@@ -478,19 +478,19 @@ func (r *KThreesControlPlaneReconciler) reconcile(ctx context.Context, cluster *
 	}
 
 	certificates := secret.NewCertificatesForInitialControlPlane(&kcp.Spec.KThreesConfigSpec)
-	controllerRef := metav1.NewControllerRef(kcp, controlplanev1.GroupVersion.WithKind("KThreesControlPlane"))
+	controllerRef := metav1.NewControllerRef(kcp, controlplanev1beta2.GroupVersion.WithKind("KThreesControlPlane"))
 	if err := certificates.LookupOrGenerate(ctx, r.Client, util.ObjectKey(cluster), *controllerRef); err != nil {
 		logger.Error(err, "unable to lookup or create cluster certificates")
-		v1beta1conditions.MarkFalse(kcp, controlplanev1.CertificatesAvailableCondition, controlplanev1.CertificatesGenerationFailedReason, clusterv1beta1.ConditionSeverityWarning, "failed to lookup or create cluster certificates: %s", err.Error())
+		v1beta1conditions.MarkFalse(kcp, controlplanev1beta2.CertificatesAvailableCondition, controlplanev1beta2.CertificatesGenerationFailedReason, clusterv1beta1.ConditionSeverityWarning, "failed to lookup or create cluster certificates: %s", err.Error())
 		return reconcile.Result{}, err
 	}
-	v1beta1conditions.MarkTrue(kcp, controlplanev1.CertificatesAvailableCondition)
+	v1beta1conditions.MarkTrue(kcp, controlplanev1beta2.CertificatesAvailableCondition)
 
 	if err := token.Reconcile(ctx, r.Client, client.ObjectKeyFromObject(cluster), kcp); err != nil {
-		v1beta1conditions.MarkFalse(kcp, controlplanev1.TokenAvailableCondition, controlplanev1.TokenGenerationFailedReason, clusterv1beta1.ConditionSeverityWarning, "failed to reconcile token: %s", err.Error())
+		v1beta1conditions.MarkFalse(kcp, controlplanev1beta2.TokenAvailableCondition, controlplanev1beta2.TokenGenerationFailedReason, clusterv1beta1.ConditionSeverityWarning, "failed to reconcile token: %s", err.Error())
 		return reconcile.Result{}, err
 	}
-	v1beta1conditions.MarkTrue(kcp, controlplanev1.TokenAvailableCondition)
+	v1beta1conditions.MarkTrue(kcp, controlplanev1beta2.TokenAvailableCondition)
 
 	// If ControlPlaneEndpoint is not set, return early
 	if !cluster.Spec.ControlPlaneEndpoint.IsValid() {
@@ -539,7 +539,7 @@ func (r *KThreesControlPlaneReconciler) reconcile(ctx context.Context, cluster *
 	for i, getter := range ownedMachines.ConditionGetters() {
 		conditionGetters[i] = getter.(v1beta1conditions.Getter)
 	}
-	v1beta1conditions.SetAggregate(controlPlane.KCP, controlplanev1.MachinesReadyCondition, conditionGetters, v1beta1conditions.AddSourceRef(), v1beta1conditions.WithStepCounterIf(false))
+	v1beta1conditions.SetAggregate(controlPlane.KCP, controlplanev1beta2.MachinesReadyCondition, conditionGetters, v1beta1conditions.AddSourceRef(), v1beta1conditions.WithStepCounterIf(false))
 
 	// Updates conditions reporting the status of static pods and the status of the etcd cluster.
 	// NOTE: Conditions reporting KCP operation progress like e.g. Resized or SpecUpToDate are inlined with the rest of the execution.
@@ -564,14 +564,14 @@ func (r *KThreesControlPlaneReconciler) reconcile(ctx context.Context, cluster *
 	switch {
 	case len(needRollout) > 0:
 		logger.Info("Rolling out Control Plane machines", "needRollout", needRollout.Names())
-		v1beta1conditions.MarkFalse(controlPlane.KCP, controlplanev1.MachinesSpecUpToDateCondition, controlplanev1.RollingUpdateInProgressReason, clusterv1beta1.ConditionSeverityWarning, "Rolling %d replicas with outdated spec (%d replicas up to date)", len(needRollout), len(controlPlane.Machines)-len(needRollout))
+		v1beta1conditions.MarkFalse(controlPlane.KCP, controlplanev1beta2.MachinesSpecUpToDateCondition, controlplanev1beta2.RollingUpdateInProgressReason, clusterv1beta1.ConditionSeverityWarning, "Rolling %d replicas with outdated spec (%d replicas up to date)", len(needRollout), len(controlPlane.Machines)-len(needRollout))
 		return r.upgradeControlPlane(ctx, cluster, kcp, controlPlane, needRollout)
 	default:
 		// make sure last upgrade operation is marked as completed.
 		// NOTE: we are checking the condition already exists in order to avoid to set this condition at the first
 		// reconciliation/before a rolling upgrade actually starts.
-		if v1beta1conditions.Has(controlPlane.KCP, controlplanev1.MachinesSpecUpToDateCondition) {
-			v1beta1conditions.MarkTrue(controlPlane.KCP, controlplanev1.MachinesSpecUpToDateCondition)
+		if v1beta1conditions.Has(controlPlane.KCP, controlplanev1beta2.MachinesSpecUpToDateCondition) {
+			v1beta1conditions.MarkTrue(controlPlane.KCP, controlplanev1beta2.MachinesSpecUpToDateCondition)
 		}
 	}
 
@@ -584,7 +584,7 @@ func (r *KThreesControlPlaneReconciler) reconcile(ctx context.Context, cluster *
 	case numMachines < desiredReplicas && numMachines == 0:
 		// Create new Machine w/ init
 		logger.Info("Initializing control plane", "Desired", desiredReplicas, "Existing", numMachines)
-		v1beta1conditions.MarkFalse(controlPlane.KCP, controlplanev1.AvailableCondition, controlplanev1.WaitingForKthreesServerReason, clusterv1beta1.ConditionSeverityInfo, "")
+		v1beta1conditions.MarkFalse(controlPlane.KCP, controlplanev1beta2.AvailableCondition, controlplanev1beta2.WaitingForKthreesServerReason, clusterv1beta1.ConditionSeverityInfo, "")
 		return r.initializeControlPlane(ctx, cluster, kcp, controlPlane)
 	// We are scaling up
 	case numMachines < desiredReplicas && numMachines > 0:
@@ -621,7 +621,7 @@ func (r *KThreesControlPlaneReconciler) reconcile(ctx context.Context, cluster *
 	return reconcile.Result{}, nil
 }
 
-func (r *KThreesControlPlaneReconciler) reconcileExternalReference(ctx context.Context, cluster *clusterv1.Cluster, ref corev1.ObjectReference) error {
+func (r *KThreesControlPlaneReconciler) reconcileExternalReference(ctx context.Context, cluster *clusterv1beta2.Cluster, ref corev1.ObjectReference) error {
 	if !strings.HasSuffix(ref.Kind, clusterv1beta1.TemplateSuffix) {
 		return nil
 	}
@@ -648,12 +648,12 @@ func (r *KThreesControlPlaneReconciler) reconcileExternalReference(ctx context.C
 	return patchHelper.Patch(ctx, obj)
 }
 
-func (r *KThreesControlPlaneReconciler) reconcileKubeconfig(ctx context.Context, clusterName client.ObjectKey, endpoint clusterv1.APIEndpoint, kcp *controlplanev1.KThreesControlPlane) (ctrl.Result, error) {
+func (r *KThreesControlPlaneReconciler) reconcileKubeconfig(ctx context.Context, clusterName client.ObjectKey, endpoint clusterv1beta2.APIEndpoint, kcp *controlplanev1beta2.KThreesControlPlane) (ctrl.Result, error) {
 	if endpoint.IsZero() {
 		return reconcile.Result{}, nil
 	}
 
-	controllerOwnerRef := *metav1.NewControllerRef(kcp, controlplanev1.GroupVersion.WithKind("KThreesControlPlane"))
+	controllerOwnerRef := *metav1.NewControllerRef(kcp, controlplanev1beta2.GroupVersion.WithKind("KThreesControlPlane"))
 	configSecret, err := secret.GetFromNamespacedName(ctx, r.Client, clusterName, secret.Kubeconfig)
 	switch {
 	case apierrors.IsNotFound(err):
@@ -849,7 +849,7 @@ func (r *KThreesControlPlaneReconciler) reconcileEtcdMembers(ctx context.Context
 
 	// Potential inconsistencies between the list of members and the list of machines/nodes are
 	// surfaced using the EtcdClusterHealthyCondition; if this condition is true, meaning no inconsistencies exists, return early.
-	if v1beta1conditions.IsTrue(controlPlane.KCP, controlplanev1.EtcdClusterHealthyCondition) {
+	if v1beta1conditions.IsTrue(controlPlane.KCP, controlplanev1beta2.EtcdClusterHealthyCondition) {
 		return nil
 	}
 
@@ -873,8 +873,8 @@ func (r *KThreesControlPlaneReconciler) reconcileEtcdMembers(ctx context.Context
 
 func (r *KThreesControlPlaneReconciler) upgradeControlPlane(
 	ctx context.Context,
-	cluster *clusterv1.Cluster,
-	kcp *controlplanev1.KThreesControlPlane,
+	cluster *clusterv1beta2.Cluster,
+	kcp *controlplanev1beta2.KThreesControlPlane,
 	controlPlane *k3s.ControlPlane,
 	machinesRequireUpgrade collections.Machines,
 ) (ctrl.Result, error) {
