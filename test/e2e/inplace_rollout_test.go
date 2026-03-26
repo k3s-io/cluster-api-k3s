@@ -77,14 +77,15 @@ var _ = Describe("Inplace mutable fields rollout test [ClusterClass]", func() {
 
 	AfterEach(func() {
 		cleanInput := cleanupInput{
-			SpecName:        specName,
-			Cluster:         result.Cluster,
-			ClusterProxy:    bootstrapClusterProxy,
-			Namespace:       namespace,
-			CancelWatches:   cancelWatches,
-			IntervalsGetter: e2eConfig.GetIntervals,
-			SkipCleanup:     skipCleanup,
-			ArtifactFolder:  artifactFolder,
+			SpecName:             specName,
+			Cluster:              result.Cluster,
+			ClusterProxy:         bootstrapClusterProxy,
+			ClusterctlConfigPath: clusterctlConfigPath,
+			Namespace:            namespace,
+			CancelWatches:        cancelWatches,
+			IntervalsGetter:      e2eConfig.GetIntervals,
+			SkipCleanup:          skipCleanup,
+			ArtifactFolder:       artifactFolder,
 		}
 
 		dumpSpecResourcesAndCleanup(ctx, cleanInput)
