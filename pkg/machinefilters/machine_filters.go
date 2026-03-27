@@ -20,7 +20,8 @@ import (
 	"reflect"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/util/collections"
 	"sigs.k8s.io/cluster-api/util/conditions"
 
@@ -52,8 +53,8 @@ func MatchesTemplateClonedFrom(infraConfigs map[string]*unstructured.Unstructure
 			return true
 		}
 
-		clonedFromName, ok1 := infraObj.GetAnnotations()[clusterv1.TemplateClonedFromNameAnnotation]
-		clonedFromGroupKind, ok2 := infraObj.GetAnnotations()[clusterv1.TemplateClonedFromGroupKindAnnotation]
+		clonedFromName, ok1 := infraObj.GetAnnotations()[clusterv1beta1.TemplateClonedFromNameAnnotation]
+		clonedFromGroupKind, ok2 := infraObj.GetAnnotations()[clusterv1beta1.TemplateClonedFromGroupKindAnnotation]
 		if !ok1 || !ok2 {
 			// All kcp cloned infra machines should have this annotation.
 			// Missing the annotation may be due to older version machines or adopted machines.
@@ -76,10 +77,10 @@ func MatchesKubernetesVersion(kubernetesVersion string) Func {
 		if machine == nil {
 			return false
 		}
-		if machine.Spec.Version == nil {
+		if machine.Spec.Version == "" {
 			return false
 		}
-		return *machine.Spec.Version == kubernetesVersion
+		return machine.Spec.Version == kubernetesVersion
 	}
 }
 
@@ -91,7 +92,7 @@ func MatchesKThreesBootstrapConfig(machineConfigs map[string]*bootstrapv1.KThree
 		}
 
 		bootstrapRef := machine.Spec.Bootstrap.ConfigRef
-		if bootstrapRef == nil {
+		if !bootstrapRef.IsDefined() {
 			// Missing bootstrap reference should not be considered as unmatching.
 			// This is a safety precaution to avoid selecting machines that are broken, which in the future should be remediated separately.
 			return true
@@ -121,6 +122,6 @@ func AgentHealthy() Func {
 		if machine == nil {
 			return false
 		}
-		return conditions.IsTrue(machine, controlplanev1.MachineAgentHealthyCondition)
+		return conditions.IsTrue(machine, controlplanev1.MachineAgentHealthyV1Beta2Condition)
 	}
 }

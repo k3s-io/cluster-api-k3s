@@ -13,7 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/clientcmd/api"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/certs"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -122,10 +122,10 @@ func New(clusterName, endpoint string, clientCACert *x509.Certificate, clientCAK
 }
 
 // CreateSecret creates the Kubeconfig secret for the given cluster.
-func CreateSecret(ctx context.Context, c client.Client, cluster *clusterv1.Cluster) error {
+func CreateSecret(ctx context.Context, c client.Client, cluster *clusterv1beta1.Cluster) error {
 	name := util.ObjectKey(cluster)
 	return CreateSecretWithOwner(ctx, c, name, cluster.Spec.ControlPlaneEndpoint.String(), metav1.OwnerReference{
-		APIVersion: clusterv1.GroupVersion.String(),
+		APIVersion: clusterv1beta1.GroupVersion.String(),
 		Kind:       "Cluster",
 		Name:       cluster.Name,
 		UID:        cluster.UID,
@@ -144,10 +144,10 @@ func CreateSecretWithOwner(ctx context.Context, c client.Client, clusterName cli
 }
 
 // GenerateSecret returns a Kubernetes secret for the given Cluster and kubeconfig data.
-func GenerateSecret(cluster *clusterv1.Cluster, data []byte) *corev1.Secret {
+func GenerateSecret(cluster *clusterv1beta1.Cluster, data []byte) *corev1.Secret {
 	name := util.ObjectKey(cluster)
 	return GenerateSecretWithOwner(name, data, metav1.OwnerReference{
-		APIVersion: clusterv1.GroupVersion.String(),
+		APIVersion: clusterv1beta1.GroupVersion.String(),
 		Kind:       "Cluster",
 		Name:       cluster.Name,
 		UID:        cluster.UID,
@@ -161,7 +161,7 @@ func GenerateSecretWithOwner(clusterName client.ObjectKey, data []byte, owner me
 			Name:      secret.Name(clusterName.Name, secret.Kubeconfig),
 			Namespace: clusterName.Namespace,
 			Labels: map[string]string{
-				clusterv1.ClusterNameLabel: clusterName.Name,
+				clusterv1beta1.ClusterNameLabel: clusterName.Name,
 			},
 			OwnerReferences: []metav1.OwnerReference{
 				owner,

@@ -27,10 +27,13 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apiserver/pkg/storage/names"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	"k8s.io/utils/ptr"
+	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/controllers/external"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/collections"
@@ -143,7 +146,7 @@ func (r *KThreesControlPlaneReconciler) scaleDownControlPlane(
 		}
 
 		mAnnotations := machineToDelete.GetAnnotations()
-		mAnnotations[clusterv1.PreTerminateDeleteHookAnnotationPrefix] = k3sHookName
+		mAnnotations[clusterv1beta1.PreTerminateDeleteHookAnnotationPrefix] = k3sHookName
 		machineToDelete.SetAnnotations(mAnnotations)
 
 		if err := patchHelper.Patch(ctx, machineToDelete); err != nil {
@@ -187,10 +190,10 @@ func (r *KThreesControlPlaneReconciler) preflightChecks(_ context.Context, contr
 	}
 
 	// Check machine health conditions; if there are conditions with False or Unknown, then wait.
-	allMachineHealthConditions := []clusterv1.ConditionType{controlplanev1.MachineAgentHealthyCondition}
+	allMachineHealthConditions := []string{controlplanev1.MachineAgentHealthyV1Beta2Condition}
 	if controlPlane.IsEtcdManaged() {
 		allMachineHealthConditions = append(allMachineHealthConditions,
-			controlplanev1.MachineEtcdMemberHealthyCondition,
+			controlplanev1.MachineEtcdMemberHealthyV1Beta2Condition,
 		)
 	}
 
@@ -225,16 +228,16 @@ loopmachines:
 	return ctrl.Result{}, nil
 }
 
-func preflightCheckCondition(kind string, obj conditions.Getter, condition clusterv1.ConditionType) error {
+func preflightCheckCondition(kind string, obj conditions.Getter, condition string) error {
 	c := conditions.Get(obj, condition)
 	if c == nil {
-		return fmt.Errorf("%s %s does not have %s condition: %w", kind, obj.GetName(), condition, ErrPreConditionFailed)
+		return fmt.Errorf("%s does not have %s condition: %w", kind, condition, ErrPreConditionFailed)
 	}
-	if c.Status == corev1.ConditionFalse {
-		return fmt.Errorf("%s %s reports %s condition is false (%s, %s): %w", kind, obj.GetName(), condition, c.Severity, c.Message, ErrPreConditionFailed)
+	if c.Status == metav1.ConditionFalse {
+		return fmt.Errorf("%s reports %s condition is false (%s): %w", kind, condition, c.Message, ErrPreConditionFailed)
 	}
-	if c.Status == corev1.ConditionUnknown {
-		return fmt.Errorf("%s %s reports %s condition is unknown (%s): %w", kind, obj.GetName(), condition, c.Message, ErrPreConditionFailed)
+	if c.Status == metav1.ConditionUnknown {
+		return fmt.Errorf("%s reports %s condition is unknown (%s): %w", kind, condition, c.Message, ErrPreConditionFailed)
 	}
 
 	return nil
@@ -253,7 +256,7 @@ func selectMachineForScaleDown(ctx context.Context, controlPlane *k3s.ControlPla
 	return controlPlane.MachineInFailureDomainWithMostMachines(ctx, machines)
 }
 
-func (r *KThreesControlPlaneReconciler) cloneConfigsAndGenerateMachine(ctx context.Context, cluster *clusterv1.Cluster, kcp *controlplanev1.KThreesControlPlane, bootstrapSpec *bootstrapv1.KThreesConfigSpec, failureDomain *string) error {
+func (r *KThreesControlPlaneReconciler) cloneConfigsAndGenerateMachine(ctx context.Context, cluster *clusterv1.Cluster, kcp *controlplanev1.KThreesControlPlane, bootstrapSpec *bootstrapv1.KThreesConfigSpec, failureDomain string) error {
 	var errs []error
 
 	// Compute desired Machine
@@ -272,7 +275,7 @@ func (r *KThreesControlPlaneReconciler) cloneConfigsAndGenerateMachine(ctx conte
 	}
 
 	// Clone the infrastructure template
-	infraRef, err := external.CreateFromTemplate(ctx, &external.CreateFromTemplateInput{
+	_, infraRef, err := external.CreateFromTemplate(ctx, &external.CreateFromTemplateInput{
 		Client:      r.Client,
 		TemplateRef: &kcp.Spec.MachineTemplate.InfrastructureRef,
 		Namespace:   kcp.Namespace,
@@ -284,7 +287,7 @@ func (r *KThreesControlPlaneReconciler) cloneConfigsAndGenerateMachine(ctx conte
 		// Safe to return early here since no resources have been created yet.
 		return fmt.Errorf("failed to clone infrastructure template: %w", err)
 	}
-	machine.Spec.InfrastructureRef = *infraRef
+	machine.Spec.InfrastructureRef = infraRef
 
 	// Clone the bootstrap configuration
 	bootstrapRef, err := r.generateKThreesConfig(ctx, kcp, cluster, bootstrapSpec)
@@ -294,7 +297,7 @@ func (r *KThreesControlPlaneReconciler) cloneConfigsAndGenerateMachine(ctx conte
 
 	// Only proceed to generating the Machine if we haven't encountered an error
 	if len(errs) == 0 {
-		machine.Spec.Bootstrap.ConfigRef = bootstrapRef
+		machine.Spec.Bootstrap.ConfigRef = *bootstrapRef
 		if err := r.createMachine(ctx, kcp, machine); err != nil {
 			errs = append(errs, errors.Wrap(err, "failed to create Machine"))
 		}
@@ -302,7 +305,7 @@ func (r *KThreesControlPlaneReconciler) cloneConfigsAndGenerateMachine(ctx conte
 
 	// If we encountered any errors, attempt to clean up any dangling resources
 	if len(errs) > 0 {
-		if err := r.cleanupFromGeneration(ctx, infraRef, bootstrapRef); err != nil {
+		if err := r.cleanupFromGeneration(ctx, machine.Namespace, &infraRef, bootstrapRef); err != nil {
 			errs = append(errs, fmt.Errorf("failed to cleanup generated resources: %w", err))
 		}
 
@@ -312,18 +315,21 @@ func (r *KThreesControlPlaneReconciler) cloneConfigsAndGenerateMachine(ctx conte
 	return nil
 }
 
-func (r *KThreesControlPlaneReconciler) cleanupFromGeneration(ctx context.Context, remoteRefs ...*corev1.ObjectReference) error {
+func (r *KThreesControlPlaneReconciler) cleanupFromGeneration(ctx context.Context, namespace string, remoteRefs ...*clusterv1.ContractVersionedObjectReference) error {
 	var errs []error
 
 	for _, ref := range remoteRefs {
 		if ref != nil {
-			config := &unstructured.Unstructured{}
-			config.SetKind(ref.Kind)
-			config.SetAPIVersion(ref.APIVersion)
-			config.SetNamespace(ref.Namespace)
-			config.SetName(ref.Name)
+			obj, err := external.GetObjectFromContractVersionedRef(ctx, r.Client, *ref, namespace)
+			if err != nil {
+				if apierrors.IsNotFound(err) {
+					continue
+				}
+				errs = append(errs, fmt.Errorf("failed to retrieve generated resource: %w", err))
+				continue
+			}
 
-			if err := r.Client.Delete(ctx, config); err != nil && !apierrors.IsNotFound(err) {
+			if err := r.Client.Delete(ctx, obj); err != nil && !apierrors.IsNotFound(err) {
 				errs = append(errs, fmt.Errorf("failed to cleanup generated resources after error: %w", err))
 			}
 		}
@@ -332,7 +338,7 @@ func (r *KThreesControlPlaneReconciler) cleanupFromGeneration(ctx context.Contex
 	return kerrors.NewAggregate(errs)
 }
 
-func (r *KThreesControlPlaneReconciler) generateKThreesConfig(ctx context.Context, kcp *controlplanev1.KThreesControlPlane, cluster *clusterv1.Cluster, spec *bootstrapv1.KThreesConfigSpec) (*corev1.ObjectReference, error) {
+func (r *KThreesControlPlaneReconciler) generateKThreesConfig(ctx context.Context, kcp *controlplanev1.KThreesControlPlane, cluster *clusterv1.Cluster, spec *bootstrapv1.KThreesConfigSpec) (*clusterv1.ContractVersionedObjectReference, error) {
 	// Create an owner reference without a controller reference because the owning controller is the machine controller
 	owner := metav1.OwnerReference{
 		APIVersion: controlplanev1.GroupVersion.String(),
@@ -355,21 +361,19 @@ func (r *KThreesControlPlaneReconciler) generateKThreesConfig(ctx context.Contex
 		return nil, fmt.Errorf("failed to create bootstrap configuration: %w", err)
 	}
 
-	bootstrapRef := &corev1.ObjectReference{
-		APIVersion: bootstrapv1.GroupVersion.String(),
-		Kind:       "KThreesConfig",
-		Name:       bootstrapConfig.GetName(),
-		Namespace:  bootstrapConfig.GetNamespace(),
-		UID:        bootstrapConfig.GetUID(),
+	bootstrapRef := &clusterv1.ContractVersionedObjectReference{
+		APIGroup: bootstrapv1.GroupVersion.Group,
+		Kind:     "KThreesConfig",
+		Name:     bootstrapConfig.GetName(),
 	}
 
 	return bootstrapRef, nil
 }
 
 // updateExternalObject updates the external object with the labels and annotations from KCP.
-func (r *KThreesControlPlaneReconciler) updateExternalObject(ctx context.Context, obj client.Object, kcp *controlplanev1.KThreesControlPlane, cluster *clusterv1.Cluster) error {
+func (r *KThreesControlPlaneReconciler) updateExternalObject(ctx context.Context, obj client.Object, objGVK schema.GroupVersionKind, kcp *controlplanev1.KThreesControlPlane, cluster *clusterv1.Cluster) error {
 	updatedObject := &unstructured.Unstructured{}
-	updatedObject.SetGroupVersionKind(obj.GetObjectKind().GroupVersionKind())
+	updatedObject.SetGroupVersionKind(objGVK)
 	updatedObject.SetNamespace(obj.GetNamespace())
 	updatedObject.SetName(obj.GetName())
 	// Set the UID to ensure that Server-Side-Apply only performs an update
@@ -419,7 +423,7 @@ func (r *KThreesControlPlaneReconciler) updateMachine(ctx context.Context, machi
 // is a create or update. Example: for a new Machine we have to calculate a new name,
 // while for an existing Machine we have to use the name of the existing Machine.
 // Also, for an existing Machine, we will not copy its labels, as they are not managed by the KThreesControlPlane controller.
-func (r *KThreesControlPlaneReconciler) computeDesiredMachine(kcp *controlplanev1.KThreesControlPlane, cluster *clusterv1.Cluster, failureDomain *string, existingMachine *clusterv1.Machine) (*clusterv1.Machine, error) {
+func (r *KThreesControlPlaneReconciler) computeDesiredMachine(kcp *controlplanev1.KThreesControlPlane, cluster *clusterv1.Cluster, failureDomain string, existingMachine *clusterv1.Machine) (*clusterv1.Machine, error) {
 	var machineName string
 	var machineUID types.UID
 	var version *string
@@ -447,7 +451,7 @@ func (r *KThreesControlPlaneReconciler) computeDesiredMachine(kcp *controlplanev
 		// Updating an existing machine
 		machineName = existingMachine.Name
 		machineUID = existingMachine.UID
-		version = existingMachine.Spec.Version
+		version = ptr.To(existingMachine.Spec.Version)
 
 		// For existing machine only set the ClusterConfiguration annotation if the machine already has it.
 		// We should not add the annotation if it was missing in the first place because we do not have enough
@@ -475,13 +479,20 @@ func (r *KThreesControlPlaneReconciler) computeDesiredMachine(kcp *controlplanev
 			},
 		},
 		Spec: clusterv1.MachineSpec{
-			ClusterName:             cluster.Name,
-			Version:                 version,
-			FailureDomain:           failureDomain,
-			NodeDrainTimeout:        kcp.Spec.MachineTemplate.NodeDrainTimeout,
-			NodeVolumeDetachTimeout: kcp.Spec.MachineTemplate.NodeVolumeDetachTimeout,
-			NodeDeletionTimeout:     kcp.Spec.MachineTemplate.NodeDeletionTimeout,
+			ClusterName:   cluster.Name,
+			Version:       ptr.Deref(version, ""),
+			FailureDomain: failureDomain,
+			Deletion:      clusterv1.MachineDeletionSpec{},
 		},
+	}
+	if kcp.Spec.MachineTemplate.NodeDrainTimeout != nil {
+		desiredMachine.Spec.Deletion.NodeDrainTimeoutSeconds = ptr.To(int32(kcp.Spec.MachineTemplate.NodeDrainTimeout.Seconds()))
+	}
+	if kcp.Spec.MachineTemplate.NodeVolumeDetachTimeout != nil {
+		desiredMachine.Spec.Deletion.NodeVolumeDetachTimeoutSeconds = ptr.To(int32(kcp.Spec.MachineTemplate.NodeVolumeDetachTimeout.Seconds()))
+	}
+	if kcp.Spec.MachineTemplate.NodeDeletionTimeout != nil {
+		desiredMachine.Spec.Deletion.NodeDeletionTimeoutSeconds = ptr.To(int32(kcp.Spec.MachineTemplate.NodeDeletionTimeout.Seconds()))
 	}
 
 	// Set annotations

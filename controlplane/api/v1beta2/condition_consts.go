@@ -16,19 +16,19 @@ limitations under the License.
 
 package v1beta2
 
-import clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+import clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 
 // Conditions and condition Reasons for the KThreesControlPlane object.
 
 const (
 	// MachinesReady reports an aggregate of current status of the machines controlled by the KThreesControlPlane.
-	MachinesReadyCondition clusterv1.ConditionType = "MachinesReady"
+	MachinesReadyCondition clusterv1beta1.ConditionType = "MachinesReady"
 )
 
 const (
 	// CertificatesAvailableCondition documents that cluster certificates were generated as part of the
 	// processing of a KThreesControlPlane object.
-	CertificatesAvailableCondition clusterv1.ConditionType = "CertificatesAvailable"
+	CertificatesAvailableCondition clusterv1beta1.ConditionType = "CertificatesAvailable"
 
 	// CertificatesGenerationFailedReason (Severity=Warning) documents a KThreesControlPlane controller detecting
 	// an error while generating certificates; those kind of errors are usually temporary and the controller
@@ -39,7 +39,7 @@ const (
 const (
 	// AvailableCondition documents that the first control plane instance has completed the server init operation
 	// and so the control plane is available and an API server instance is ready for processing requests.
-	AvailableCondition clusterv1.ConditionType = "Available"
+	AvailableCondition clusterv1beta1.ConditionType = "Available"
 
 	// WaitingForKthreesServerReason (Severity=Info) documents a KThreesControlPlane object waiting for the first
 	// control plane instance to complete the k3s server operation.
@@ -49,7 +49,7 @@ const (
 const (
 	// MachinesSpecUpToDateCondition documents that the spec of the machines controlled by the KThreesControlPlane
 	// is up to date. Whe this condition is false, the KThreesControlPlane is executing a rolling upgrade.
-	MachinesSpecUpToDateCondition clusterv1.ConditionType = "MachinesSpecUpToDate"
+	MachinesSpecUpToDateCondition clusterv1beta1.ConditionType = "MachinesSpecUpToDate"
 
 	// RollingUpdateInProgressReason (Severity=Warning) documents a KThreesControlPlane object executing a
 	// rolling upgrade for aligning the machines spec to the desired state.
@@ -58,7 +58,7 @@ const (
 
 const (
 	// ResizedCondition documents a KThreesControlPlane that is resizing the set of controlled machines.
-	ResizedCondition clusterv1.ConditionType = "Resized"
+	ResizedCondition clusterv1beta1.ConditionType = "Resized"
 
 	// ScalingUpReason (Severity=Info) documents a KThreesControlPlane that is increasing the number of replicas.
 	ScalingUpReason = "ScalingUp"
@@ -69,7 +69,7 @@ const (
 
 const (
 	// ControlPlaneComponentsHealthyCondition reports the overall status of the k3s server.
-	ControlPlaneComponentsHealthyCondition clusterv1.ConditionType = "ControlPlaneComponentsHealthy"
+	ControlPlaneComponentsHealthyCondition clusterv1beta1.ConditionType = "ControlPlaneComponentsHealthy"
 
 	// ControlPlaneComponentsUnhealthyReason (Severity=Error) documents a control plane component not healthy.
 	ControlPlaneComponentsUnhealthyReason = "ControlPlaneComponentsUnhealthy"
@@ -81,7 +81,9 @@ const (
 	ControlPlaneComponentsInspectionFailedReason = "ControlPlaneComponentsInspectionFailed"
 
 	// MachineAgentHealthyCondition reports a machine's k3s agent's operational status.
-	MachineAgentHealthyCondition clusterv1.ConditionType = "AgentHealthy"
+	MachineAgentHealthyCondition clusterv1beta1.ConditionType = "AgentHealthy"
+
+	MachineAgentHealthyV1Beta2Condition = "AgentHealthy"
 
 	// PodProvisioningReason (Severity=Info) documents a pod waiting to be provisioned i.e., Pod is in "Pending" phase.
 	PodProvisioningReason = "PodProvisioning"
@@ -99,7 +101,7 @@ const (
 
 const (
 	// EtcdClusterHealthyCondition documents the overall etcd cluster's health.
-	EtcdClusterHealthyCondition clusterv1.ConditionType = "EtcdClusterHealthyCondition"
+	EtcdClusterHealthyCondition clusterv1beta1.ConditionType = "EtcdClusterHealthyCondition"
 
 	// EtcdClusterInspectionFailedReason documents a failure in inspecting the etcd cluster status.
 	EtcdClusterInspectionFailedReason = "EtcdClusterInspectionFailed"
@@ -112,7 +114,9 @@ const (
 
 	// MachineEtcdMemberHealthyCondition report the machine's etcd member's health status.
 	// NOTE: This conditions exists only if a stacked etcd cluster is used.
-	MachineEtcdMemberHealthyCondition clusterv1.ConditionType = "EtcdMemberHealthy"
+	MachineEtcdMemberHealthyCondition clusterv1beta1.ConditionType = "EtcdMemberHealthy"
+
+	MachineEtcdMemberHealthyV1Beta2Condition = "EtcdMemberHealthy"
 
 	// EtcdMemberInspectionFailedReason documents a failure in inspecting the etcd member status.
 	EtcdMemberInspectionFailedReason = "MemberInspectionFailed"
@@ -123,7 +127,7 @@ const (
 
 const (
 	// TokenAvailableCondition documents whether the token required for nodes to join the cluster is available.
-	TokenAvailableCondition clusterv1.ConditionType = "TokenAvailable"
+	TokenAvailableCondition clusterv1beta1.ConditionType = "TokenAvailable"
 
 	// TokenGenerationFailedReason documents that the token required for nodes to join the cluster could not be generated.
 	TokenGenerationFailedReason = "TokenGenerationFailed"

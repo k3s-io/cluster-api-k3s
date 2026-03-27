@@ -30,13 +30,12 @@ import (
 	"golang.org/x/exp/rand"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
 
 	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/test/framework"
 	"sigs.k8s.io/cluster-api/test/framework/clusterctl"
 	"sigs.k8s.io/cluster-api/util"
@@ -126,9 +125,11 @@ var _ = Describe("Inplace mutable fields rollout test [ClusterClass]", func() {
 					topology.Metadata.Annotations = map[string]string{
 						"Cluster.topology.controlPlane.newAnnotation": "Cluster.topology.controlPlane.newAnnotationValue",
 					}
-					topology.NodeDrainTimeout = &metav1.Duration{Duration: time.Duration(rand.Intn(20)) * time.Second}        //nolint:gosec
-					topology.NodeDeletionTimeout = &metav1.Duration{Duration: time.Duration(rand.Intn(20)) * time.Second}     //nolint:gosec
-					topology.NodeVolumeDetachTimeout = &metav1.Duration{Duration: time.Duration(rand.Intn(20)) * time.Second} //nolint:gosec
+					topology.Deletion = clusterv1.ControlPlaneTopologyMachineDeletionSpec{
+						NodeDrainTimeoutSeconds:        ptr.To(int32(rand.Intn(20))),
+						NodeVolumeDetachTimeoutSeconds: ptr.To(int32(rand.Intn(20))),
+						NodeDeletionTimeoutSeconds:     ptr.To(int32(rand.Intn(20))),
+					}
 				},
 				WaitForControlPlane: e2eConfig.GetIntervals(specName, "wait-control-plane"),
 			})
@@ -202,20 +203,21 @@ func modifyControlPlaneViaClusterAndWait(ctx context.Context, input modifyContro
 				g.Expect(metadata.Annotations).To(HaveKeyWithValue(k, v))
 			}
 
-			if controlPlaneTopology.NodeDrainTimeout != nil {
-				nodeDrainTimeout := m.Spec.NodeDrainTimeout
-				g.Expect(nodeDrainTimeout).To(Equal(controlPlaneTopology.NodeDrainTimeout))
+			if controlPlaneTopology.Deletion.NodeDrainTimeoutSeconds != nil {
+				nodeDrainTimeout := m.Spec.Deletion.NodeDeletionTimeoutSeconds
+				g.Expect(nodeDrainTimeout).To(Equal(controlPlaneTopology.Deletion.NodeDrainTimeoutSeconds))
 			}
 
-			if controlPlaneTopology.NodeDeletionTimeout != nil {
-				nodeDeletionTimeout := m.Spec.NodeDeletionTimeout
-				g.Expect(nodeDeletionTimeout).To(Equal(controlPlaneTopology.NodeDeletionTimeout))
+			if controlPlaneTopology.Deletion.NodeDeletionTimeoutSeconds != nil {
+				nodeDeletionTimeout := m.Spec.Deletion.NodeDeletionTimeoutSeconds
+				g.Expect(nodeDeletionTimeout).To(Equal(controlPlaneTopology.Deletion.NodeDeletionTimeoutSeconds))
 			}
 
-			if controlPlaneTopology.NodeVolumeDetachTimeout != nil {
-				nodeVolumeDetachTimeout := m.Spec.NodeVolumeDetachTimeout
-				g.Expect(nodeVolumeDetachTimeout).To(Equal(controlPlaneTopology.NodeVolumeDetachTimeout))
+			if controlPlaneTopology.Deletion.NodeVolumeDetachTimeoutSeconds != nil {
+				nodeVolumeDetachTimeout := m.Spec.Deletion.NodeVolumeDetachTimeoutSeconds
+				g.Expect(nodeVolumeDetachTimeout).To(Equal(controlPlaneTopology.Deletion.NodeVolumeDetachTimeoutSeconds))
 			}
+
 		}
 	}, input.WaitForControlPlane...).Should(Succeed())
 }
@@ -232,19 +234,19 @@ func assertControlPlaneTopologyFields(g Gomega, controlPlane *controlplanev1.KTh
 		g.Expect(metadata.Annotations).To(HaveKeyWithValue(k, v))
 	}
 
-	if controlPlaneTopology.NodeDrainTimeout != nil {
+	if controlPlaneTopology.Deletion.NodeDrainTimeoutSeconds != nil {
 		nodeDrainTimeout := controlPlane.Spec.MachineTemplate.NodeDrainTimeout
-		g.Expect(nodeDrainTimeout).To(Equal(controlPlaneTopology.NodeDrainTimeout))
+		g.Expect(nodeDrainTimeout).To(Equal(controlPlaneTopology.Deletion.NodeDrainTimeoutSeconds))
 	}
 
-	if controlPlaneTopology.NodeDeletionTimeout != nil {
+	if controlPlaneTopology.Deletion.NodeDeletionTimeoutSeconds != nil {
 		nodeDeletionTimeout := controlPlane.Spec.MachineTemplate.NodeDeletionTimeout
-		g.Expect(nodeDeletionTimeout).To(Equal(controlPlaneTopology.NodeDeletionTimeout))
+		g.Expect(nodeDeletionTimeout).To(Equal(controlPlaneTopology.Deletion.NodeDeletionTimeoutSeconds))
 	}
 
-	if controlPlaneTopology.NodeVolumeDetachTimeout != nil {
+	if controlPlaneTopology.Deletion.NodeVolumeDetachTimeoutSeconds != nil {
 		nodeVolumeDetachTimeout := controlPlane.Spec.MachineTemplate.NodeVolumeDetachTimeout
-		g.Expect(nodeVolumeDetachTimeout).To(Equal(controlPlaneTopology.NodeVolumeDetachTimeout))
+		g.Expect(nodeVolumeDetachTimeout).To(Equal(controlPlaneTopology.Deletion.NodeVolumeDetachTimeoutSeconds))
 	}
 }
 

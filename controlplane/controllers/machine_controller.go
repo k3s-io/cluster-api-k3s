@@ -9,7 +9,8 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog/v2"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/controllers/external"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/annotations"
@@ -46,7 +47,7 @@ type MachineReconciler struct {
 
 func (r *MachineReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, log *logr.Logger, concurrency int) error {
 	_, err := ctrl.NewControllerManagedBy(mgr).
-		For(&clusterv1.Machine{}).
+		For(&clusterv1beta1.Machine{}).
 		WithOptions(controller.Options{
 			MaxConcurrentReconciles: concurrency,
 		}).
@@ -94,9 +95,9 @@ func (r *MachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	// if machine registered PreTerminate hook, wait for capi asks to resolve PreTerminateDeleteHook
-	if annotations.HasWithPrefix(clusterv1.PreTerminateDeleteHookAnnotationPrefix, m.ObjectMeta.Annotations) &&
-		m.ObjectMeta.Annotations[clusterv1.PreTerminateDeleteHookAnnotationPrefix] == k3sHookName {
-		if !conditions.IsFalse(m, clusterv1.PreTerminateDeleteHookSucceededCondition) {
+	if annotations.HasWithPrefix(clusterv1beta1.PreTerminateDeleteHookAnnotationPrefix, m.ObjectMeta.Annotations) &&
+		m.ObjectMeta.Annotations[clusterv1beta1.PreTerminateDeleteHookAnnotationPrefix] == k3sHookName {
+		if !conditions.IsFalse(m, string(clusterv1beta1.PreTerminateDeleteHookSucceededCondition)) {
 			logger.Info("wait for machine drain and detech volume operation complete.")
 			return ctrl.Result{}, nil
 		}
@@ -113,7 +114,7 @@ func (r *MachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			switch err {
 			case errNoControlPlaneNodes, errNilNodeRef, errClusterIsBeingDeleted, errControlPlaneIsBeingDeleted:
 				nodeName := ""
-				if m.Status.NodeRef != nil {
+				if m.Status.NodeRef.IsDefined() {
 					nodeName = m.Status.NodeRef.Name
 				}
 				logger.Info("Skipping removal for etcd member associated with Machine as it is not needed", "Node", klog.KRef("", nodeName), "cause", err.Error())
@@ -140,7 +141,7 @@ func (r *MachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			}
 
 			nodeName := ""
-			if m.Status.NodeRef != nil {
+			if m.Status.NodeRef.IsDefined() {
 				nodeName = m.Status.NodeRef.Name
 			}
 
@@ -153,7 +154,7 @@ func (r *MachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 
 		mAnnotations := m.GetAnnotations()
-		delete(mAnnotations, clusterv1.PreTerminateDeleteHookAnnotationPrefix)
+		delete(mAnnotations, clusterv1beta1.PreTerminateDeleteHookAnnotationPrefix)
 		m.SetAnnotations(mAnnotations)
 		if err := patchHelper.Patch(ctx, m); err != nil {
 			return ctrl.Result{}, errors.Wrapf(err, "failed patch machine")
@@ -174,14 +175,14 @@ func (r *MachineReconciler) isRemoveEtcdMemberNeeded(ctx context.Context, cluste
 	}
 
 	// Cannot remove etcd member if the node doesn't exist.
-	if machine.Status.NodeRef == nil {
+	if !machine.Status.NodeRef.IsDefined() {
 		return errNilNodeRef
 	}
 
 	// controlPlaneRef is an optional field in the Cluster so skip the external
 	// managed control plane check if it is nil
-	if cluster.Spec.ControlPlaneRef != nil {
-		controlPlane, err := external.Get(ctx, r.Client, cluster.Spec.ControlPlaneRef)
+	if cluster.Spec.ControlPlaneRef.IsDefined() {
+		controlPlane, err := external.GetObjectFromContractVersionedRef(ctx, r.Client, cluster.Spec.ControlPlaneRef, cluster.Namespace)
 		if apierrors.IsNotFound(err) {
 			// If control plane object in the reference does not exist, log and skip check for
 			// external managed control plane

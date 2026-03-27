@@ -1,5 +1,5 @@
 run:
-  go: "1.23"
+  go: "1.24"
   timeout: 10m
 
 issue:
@@ -13,42 +13,42 @@ linters:
   fast: true
   disable-all: true
   enable:
-  - asciicheck
-  - bodyclose
-  - copyloopvar
-  - depguard
-  - dogsled
-  - errcheck
-  - gci
-  - goconst
-  - gocritic
-  - gocyclo
-  - godot
-  - gofmt
-  - goimports
-  - goprintffuncname
-  - gosec
-  - gosimple
-  - govet
-  - importas
-  - ineffassign
-  - misspell
-  - nakedret
-  - nilerr
-  - noctx
-  - nolintlint
-  - prealloc
-  - predeclared
-  - revive
-  - rowserrcheck
-  - staticcheck
-  - stylecheck
-  - thelper
-  - typecheck
-  - unconvert
-  - unparam
-  - unused
-  - whitespace
+    - asciicheck
+    - bodyclose
+    - copyloopvar
+    - depguard
+    - dogsled
+    - errcheck
+    - gci
+    - goconst
+    - gocritic
+    - gocyclo
+    - godot
+    - gofmt
+    - goimports
+    - goprintffuncname
+    - gosec
+    - gosimple
+    - govet
+    - importas
+    - ineffassign
+    - misspell
+    - nakedret
+    - nilerr
+    - noctx
+    - nolintlint
+    - prealloc
+    - predeclared
+    - revive
+    - rowserrcheck
+    - staticcheck
+    - stylecheck
+    - thelper
+    - typecheck
+    - unconvert
+    - unparam
+    - unused
+    - whitespace
 
 linters-settings:
   depguard:
@@ -60,14 +60,14 @@ linters-settings:
           - github.com/coredns/corefile-migration/migration
           - github.com/pkg/errors
           - github.com/davecgh/go-spew/spew
-          
+
           - k8s.io/api
           - k8s.io/apimachinery/pkg
           - k8s.io/apiserver
           - k8s.io/client-go
           - k8s.io/klog/v2
           - k8s.io/utils/ptr
-          
+
           - github.com/onsi/ginkgo
           - github.com/onsi/gomega
 
@@ -99,13 +99,13 @@ linters-settings:
     #   all          - for all comments.
     scope: toplevel
     exclude:
-    - '^ \+.*'
-    - '^ ANCHOR.*'
+      - '^ \+.*'
+      - "^ ANCHOR.*"
   gosec:
     excludes:
-    - G307 # Deferring unsafe method "Close" on type "\*os.File"
-    - G108 # Profiling endpoint is automatically exposed on /debug/pprof
-    - G115 # integer overflow conversion int -> int32
+      - G307 # Deferring unsafe method "Close" on type "\*os.File"
+      - G108 # Profiling endpoint is automatically exposed on /debug/pprof
+      - G115 # integer overflow conversion int -> int32
   importas:
     # Do not allow unaliased imports of aliased packages.
     # Default: false
@@ -143,7 +143,7 @@ linters-settings:
         # Support string case: `camel`, `pascal`, `kebab`, `snake`, `goCamel`, `goPascal`, `goKebab`, `goSnake`, `upper`, `lower`, `header`
         json: goCamel
   unused:
-    go: "1.23"
+    go: "1.24"
 
 issues:
   exclude-rules:
@@ -162,3 +162,15 @@ issues:
     - linters:
         - govet
       text: "non-constant format string in call to sigs\\.k8s\\.io\\/cluster-api\\/util\\/conditions\\."
+    - linters:
+        - staticcheck
+      path: .*\.go$
+      text: 'SA1019: "sigs.k8s.io\/cluster-api/api/core/v1beta1" is deprecated: This package is deprecated and is going to be removed when support for v1beta1 will be dropped.'
+    - linters:
+        - staticcheck
+      path: .*\.go$
+      text: 'SA1019: "sigs.k8s.io/cluster-api/util/deprecated/.*" is deprecated: This package is deprecated and is going to be removed when support for v1beta1 will be dropped.'
+    - linters:
+        - staticcheck
+      path: .*\.go$
+      text: 'SA1019: version.ParseMajorMinorPatch is deprecated: This function is deprecated and will be removed in an upcoming release of Cluster API. Please use semver.Parse instead.'

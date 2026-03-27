@@ -22,7 +22,7 @@ import (
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/util/patch"
 	ctrl "sigs.k8s.io/controller-runtime"
 
@@ -101,7 +101,7 @@ loopmembers:
 // RemoveEtcdMemberForMachine removes the etcd member from the target cluster's etcd cluster, and returns true if the member has been removed.
 // Removing the last remaining member of the cluster is not supported.
 func (w *Workload) RemoveEtcdMemberForMachine(ctx context.Context, machine *clusterv1.Machine) (bool, error) {
-	if machine == nil || machine.Status.NodeRef == nil {
+	if machine == nil || !machine.Status.NodeRef.IsDefined() {
 		// Nothing to do, no node for Machine
 		return true, nil
 	}
@@ -191,13 +191,13 @@ func (w *Workload) removeMemberForNode(ctx context.Context, name string) (bool, 
 
 // ForwardEtcdLeadership forwards etcd leadership to the first follower.
 func (w *Workload) ForwardEtcdLeadership(ctx context.Context, machine *clusterv1.Machine, leaderCandidate *clusterv1.Machine) error {
-	if machine == nil || machine.Status.NodeRef == nil {
+	if machine == nil || !machine.Status.NodeRef.IsDefined() {
 		return nil
 	}
 	if leaderCandidate == nil {
 		return errors.New("leader candidate cannot be nil")
 	}
-	if leaderCandidate.Status.NodeRef == nil {
+	if !leaderCandidate.Status.NodeRef.IsDefined() {
 		return errors.New("leader has no node reference")
 	}
 
