@@ -344,13 +344,13 @@ $(GINKGO): # Build ginkgo from tools folder.
 	GOBIN=$(TOOLS_BIN_DIR) $(GO_INSTALL) $(GINKGO_PKG) $(GINKGO_BIN) $(GINKGO_VER)
 
 ## HACK replace with $(GO_INSTALL) once https://github.com/kubernetes-sigs/kustomize/issues/947 is fixed
-## There is no checksum of the install_kustomize.sh script, so downloading form the commit hash is the most secure we can be at the moment.
+## There is no checksum of the install_kustomize.sh script, so downloading from the commit hash is the most secure we can be at the moment.
 $(KUSTOMIZE): ## Put kustomize into tools folder.
 	mkdir -p $(TOOLS_BIN_DIR)
 	rm -f $(TOOLS_BIN_DIR)/$(KUSTOMIZE_BIN)*
 	curl -fsSL -o $(TOOLS_BIN_DIR)/install_kustomize.sh "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/$(KUSTOMIZE_COMMIT)/hack/install_kustomize.sh"
 	chmod +x $(TOOLS_BIN_DIR)/install_kustomize.sh
-	bash -s $(TOOLS_BIN_DIR)/install_kustomize.sh $(KUSTOMIZE_VER:v%=%) $(TOOLS_BIN_DIR)
+	bash $(TOOLS_BIN_DIR)/install_kustomize.sh $(KUSTOMIZE_VER:v%=%) $(TOOLS_BIN_DIR)
 	rm -f $(TOOLS_BIN_DIR)/install_kustomize.sh
 	mv "$(TOOLS_BIN_DIR)/$(KUSTOMIZE_BIN)" $(KUSTOMIZE)
 	ln -sf $(KUSTOMIZE) "$(TOOLS_BIN_DIR)/$(KUSTOMIZE_BIN)"

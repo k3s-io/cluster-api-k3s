@@ -16,7 +16,7 @@ RUN curl -L -o /var/lib/rancher/k3s/agent/images/k3s-airgap-images-amd64.tar.zst
 COPY $ALPINE_SOCAT_TARBALL_PATH /var/lib/rancher/k3s/agent/images/
 
 # Download install script to $INSTALL_SCRIPT_PATH
-RUN install -d $INSTALL_SCRIPT_PATH
+RUN install -d "$(dirname "${INSTALL_SCRIPT_PATH}")"
 RUN curl -L -o $INSTALL_SCRIPT_PATH "https://raw.githubusercontent.com/k3s-io/k3s/${K3S_VERSION_COMMIT}/install.sh" && \
     echo "${K3S_INSTALL_SCRIPT_SUM}  $INSTALL_SCRIPT_PATH" | sha256sum -c
 RUN chmod +x $INSTALL_SCRIPT_PATH
