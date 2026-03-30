@@ -21,7 +21,8 @@ SHELL:=/usr/bin/env bash
 .DEFAULT_GOAL:=help
 
 GO_VERSION ?= 1.23.8
-GO_CONTAINER_IMAGE ?= docker.io/library/golang:$(GO_VERSION)
+GO_SHA ?= sha256:ec5612bbd9e96d5b80a8b968cea06a4a9b985fe200ff6da784bf607063273c59
+GO_CONTAINER_IMAGE ?= docker.io/library/golang:$(GO_VERSION)@$(GO_SHA)
 
 ARCH ?= $(shell go env GOARCH)
 
@@ -86,6 +87,7 @@ GOLANGCI_LINT := $(TOOLS_BIN_DIR)/$(GOLANGCI_LINT_BIN)-$(GOLANGCI_LINT_VER)
 # Keep at 4.0.4 until we figure out how to get later verisons to not mangle the calico yamls
 # HACK bump latest version once https://github.com/kubernetes-sigs/kustomize/issues/947 is fixed
 KUSTOMIZE_VER := v5.6.0
+KUSTOMIZE_COMMIT := 95db4aa0edd1afb988cd10465ce15f7546ebbbdc
 KUSTOMIZE_BIN := kustomize
 KUSTOMIZE := $(TOOLS_BIN_DIR)/$(KUSTOMIZE_BIN)-$(KUSTOMIZE_VER)
 
@@ -327,8 +329,10 @@ fmt:
 ## --------------------------------------
 .PHONY: envtest
 envtest: $(ENVTEST) ## Download envtest-setup locally if necessary.
+# f9589b9f2b9dddf8532b432bb8315f2820ab9971 = v0.23.3
+# https://github.com/rancher/rancher-security/issues/1539
 $(ENVTEST): $(TOOLS_BIN_DIR)
-	test -s $(TOOLS_BIN_DIR)/setup-envtest || GOBIN=$(TOOLS_BIN_DIR) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
+	test -s $(TOOLS_BIN_DIR)/setup-envtest || GOBIN=$(TOOLS_BIN_DIR) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@f9589b9f2b9dddf8532b432bb8315f2820ab9971
 
 $(ENVSUBST): ## Build envsubst from tools folder.
 	GOBIN=$(TOOLS_BIN_DIR) $(GO_INSTALL) github.com/drone/envsubst/v2/cmd/envsubst $(ENVSUBST_BIN) $(ENVSUBST_VER)
@@ -340,10 +344,14 @@ $(GINKGO): # Build ginkgo from tools folder.
 	GOBIN=$(TOOLS_BIN_DIR) $(GO_INSTALL) $(GINKGO_PKG) $(GINKGO_BIN) $(GINKGO_VER)
 
 ## HACK replace with $(GO_INSTALL) once https://github.com/kubernetes-sigs/kustomize/issues/947 is fixed
+## There is no checksum of the install_kustomize.sh script, so downloading form the commit hash is the most secure we can be at the moment.
 $(KUSTOMIZE): ## Put kustomize into tools folder.
 	mkdir -p $(TOOLS_BIN_DIR)
 	rm -f $(TOOLS_BIN_DIR)/$(KUSTOMIZE_BIN)*
-	curl -fsSL "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash -s -- $(KUSTOMIZE_VER:v%=%) $(TOOLS_BIN_DIR)
+	curl -fsSL -o $(TOOLS_BIN_DIR)/install_kustomize.sh "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/$(KUSTOMIZE_COMMIT)/hack/install_kustomize.sh"
+	chmod +x $(TOOLS_BIN_DIR)/install_kustomize.sh
+	bash -s $(TOOLS_BIN_DIR)/install_kustomize.sh $(KUSTOMIZE_VER:v%=%) $(TOOLS_BIN_DIR)
+	rm -f $(TOOLS_BIN_DIR)/install_kustomize.sh
 	mv "$(TOOLS_BIN_DIR)/$(KUSTOMIZE_BIN)" $(KUSTOMIZE)
 	ln -sf $(KUSTOMIZE) "$(TOOLS_BIN_DIR)/$(KUSTOMIZE_BIN)"
 

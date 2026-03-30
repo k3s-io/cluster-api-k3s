@@ -13,26 +13,26 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Free Disk Space
-        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1 https://github.com/jlumbroso/free-disk-space/tags
         with:
           tool-cache: false
           docker-images: false
       - name: Checkout code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2 https://github.com/actions/checkout/tags
       - name: Install Go
-        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0 https://github.com/actions/setup-go/tags
         with:
           go-version-file: go.mod
           cache: true
       - name: Build e2e image
         run: make docker-build-e2e
       - name: Install kind
-        run: go install sigs.k8s.io/kind@v0.26.0
+        run: go install sigs.k8s.io/kind@c5f516c8b2c4927232074381c980467e393cf965 # v0.26.0 https://github.com/kubernetes-sigs/kind/tags
       - name: Run E2E tests
         run: make GINKGO_FOCUS="\\[PR-Blocking\\]" test-e2e
       - name: Archive artifacts
         if: always()
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0 https://github.com/actions/upload-artifact/tags
         with:
           name: e2e-artifacts
           path: _artifacts
