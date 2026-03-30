@@ -329,10 +329,10 @@ fmt:
 ## --------------------------------------
 .PHONY: envtest
 envtest: $(ENVTEST) ## Download envtest-setup locally if necessary.
-# f9589b9f2b9dddf8532b432bb8315f2820ab9971 = v0.23.3
+# 0f7927c52ef41f261195054ec7f01902357e2c33 = v0.20.4 (latest version supporting Go 1.23)
 # https://github.com/rancher/rancher-security/issues/1539
 $(ENVTEST): $(TOOLS_BIN_DIR)
-	test -s $(TOOLS_BIN_DIR)/setup-envtest || GOBIN=$(TOOLS_BIN_DIR) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@f9589b9f2b9dddf8532b432bb8315f2820ab9971
+	test -s $(TOOLS_BIN_DIR)/setup-envtest || GOBIN=$(TOOLS_BIN_DIR) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@0f7927c52ef41f261195054ec7f01902357e2c33
 
 $(ENVSUBST): ## Build envsubst from tools folder.
 	GOBIN=$(TOOLS_BIN_DIR) $(GO_INSTALL) github.com/drone/envsubst/v2/cmd/envsubst $(ENVSUBST_BIN) $(ENVSUBST_VER)
