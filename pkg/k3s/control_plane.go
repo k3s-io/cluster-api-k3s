@@ -123,7 +123,7 @@ func (c *ControlPlane) FailureDomains() []clusterv1.FailureDomain {
 	return c.Cluster.Status.FailureDomains
 }
 
-// FailureDomainName returns a slice of failure domain objects synced from the infrastructure provider into Cluster.Status.
+// FailureDomainName returns a slice of failure domain names synced from the infrastructure provider into Cluster.Status.
 func (c *ControlPlane) FailureDomainNames() []string {
 	ret := []string{}
 	for _, fd := range c.Cluster.Status.FailureDomains {

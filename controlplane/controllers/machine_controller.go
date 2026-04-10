@@ -97,7 +97,7 @@ func (r *MachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if annotations.HasWithPrefix(clusterv1.PreTerminateDeleteHookAnnotationPrefix, m.ObjectMeta.Annotations) &&
 		m.ObjectMeta.Annotations[clusterv1.PreTerminateDeleteHookAnnotationPrefix] == k3sHookName {
 		if !v1beta1conditions.IsFalse(m, clusterv1.PreTerminateDeleteHookSucceededV1Beta1Condition) {
-			logger.Info("wait for machine drain and detech volume operation complete.")
+			logger.Info("wait for machine drain and detach volume operation complete.")
 			return ctrl.Result{}, nil
 		}
 
