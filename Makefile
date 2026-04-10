@@ -86,6 +86,7 @@ GOLANGCI_LINT := $(TOOLS_BIN_DIR)/$(GOLANGCI_LINT_BIN)-$(GOLANGCI_LINT_VER)
 # Keep at 4.0.4 until we figure out how to get later verisons to not mangle the calico yamls
 # HACK bump latest version once https://github.com/kubernetes-sigs/kustomize/issues/947 is fixed
 KUSTOMIZE_VER := v5.6.0
+KUSTOMIZE_COMMIT := 95db4aa0edd1afb988cd10465ce15f7546ebbbdc
 KUSTOMIZE_BIN := kustomize
 KUSTOMIZE := $(TOOLS_BIN_DIR)/$(KUSTOMIZE_BIN)-$(KUSTOMIZE_VER)
 
@@ -327,8 +328,10 @@ fmt:
 ## --------------------------------------
 .PHONY: envtest
 envtest: $(ENVTEST) ## Download envtest-setup locally if necessary.
+# 0f7927c52ef41f261195054ec7f01902357e2c33 = v0.20.4 (latest version supporting Go 1.23)
+# https://github.com/rancher/rancher-security/issues/1539
 $(ENVTEST): $(TOOLS_BIN_DIR)
-	test -s $(TOOLS_BIN_DIR)/setup-envtest || GOBIN=$(TOOLS_BIN_DIR) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
+	test -s $(TOOLS_BIN_DIR)/setup-envtest || GOBIN=$(TOOLS_BIN_DIR) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@0f7927c52ef41f261195054ec7f01902357e2c33
 
 $(ENVSUBST): ## Build envsubst from tools folder.
 	GOBIN=$(TOOLS_BIN_DIR) $(GO_INSTALL) github.com/drone/envsubst/v2/cmd/envsubst $(ENVSUBST_BIN) $(ENVSUBST_VER)
@@ -340,10 +343,14 @@ $(GINKGO): # Build ginkgo from tools folder.
 	GOBIN=$(TOOLS_BIN_DIR) $(GO_INSTALL) $(GINKGO_PKG) $(GINKGO_BIN) $(GINKGO_VER)
 
 ## HACK replace with $(GO_INSTALL) once https://github.com/kubernetes-sigs/kustomize/issues/947 is fixed
+## There is no checksum of the install_kustomize.sh script, so downloading from the commit hash is the most secure we can be at the moment.
 $(KUSTOMIZE): ## Put kustomize into tools folder.
 	mkdir -p $(TOOLS_BIN_DIR)
 	rm -f $(TOOLS_BIN_DIR)/$(KUSTOMIZE_BIN)*
-	curl -fsSL "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash -s -- $(KUSTOMIZE_VER:v%=%) $(TOOLS_BIN_DIR)
+	curl -fsSL -o $(TOOLS_BIN_DIR)/install_kustomize.sh "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/$(KUSTOMIZE_COMMIT)/hack/install_kustomize.sh"
+	chmod +x $(TOOLS_BIN_DIR)/install_kustomize.sh
+	bash $(TOOLS_BIN_DIR)/install_kustomize.sh $(KUSTOMIZE_VER:v%=%) $(TOOLS_BIN_DIR)
+	rm -f $(TOOLS_BIN_DIR)/install_kustomize.sh
 	mv "$(TOOLS_BIN_DIR)/$(KUSTOMIZE_BIN)" $(KUSTOMIZE)
 	ln -sf $(KUSTOMIZE) "$(TOOLS_BIN_DIR)/$(KUSTOMIZE_BIN)"
 
