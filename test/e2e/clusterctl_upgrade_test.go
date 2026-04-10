@@ -90,7 +90,7 @@ var _ = Describe("When testing clusterctl upgrades using ClusterClass (v0.2.0=>c
 			MgmtFlavor:                  "topology",
 			WorkloadFlavor:              "topology",
 			UseKindForManagementCluster: true,
-			InitWithProvidersContract:   "v1beta2",
+			InitWithProvidersContract:   "v1beta1",
 			// Configuration for the provider upgrades.
 			Upgrades: []capi_e2e.ClusterctlUpgradeSpecInputUpgrade{
 				{

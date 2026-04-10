@@ -9,7 +9,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog/v2"
-	clusterv1beta2 "sigs.k8s.io/cluster-api/api/core/v1beta2"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/controllers/external"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/annotations"
@@ -46,7 +46,7 @@ type MachineReconciler struct {
 
 func (r *MachineReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, log *logr.Logger, concurrency int) error {
 	_, err := ctrl.NewControllerManagedBy(mgr).
-		For(&clusterv1beta2.Machine{}).
+		For(&clusterv1.Machine{}).
 		WithOptions(controller.Options{
 			MaxConcurrentReconciles: concurrency,
 		}).
@@ -77,7 +77,7 @@ func (r *MachineReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manag
 func (r *MachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := r.Log.WithValues("namespace", req.Namespace, "machine", req.Name)
 
-	m := &clusterv1beta2.Machine{}
+	m := &clusterv1.Machine{}
 	if err := r.Client.Get(ctx, req.NamespacedName, m); err != nil {
 		if apierrors.IsNotFound(err) {
 			// Object not found, return.  Created objects are automatically garbage collected.
@@ -94,9 +94,9 @@ func (r *MachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	// if machine registered PreTerminate hook, wait for capi asks to resolve PreTerminateDeleteHook
-	if annotations.HasWithPrefix(clusterv1beta2.PreTerminateDeleteHookAnnotationPrefix, m.ObjectMeta.Annotations) &&
-		m.ObjectMeta.Annotations[clusterv1beta2.PreTerminateDeleteHookAnnotationPrefix] == k3sHookName {
-		if !v1beta1conditions.IsFalse(m, clusterv1beta2.PreTerminateDeleteHookSucceededV1Beta1Condition) {
+	if annotations.HasWithPrefix(clusterv1.PreTerminateDeleteHookAnnotationPrefix, m.ObjectMeta.Annotations) &&
+		m.ObjectMeta.Annotations[clusterv1.PreTerminateDeleteHookAnnotationPrefix] == k3sHookName {
+		if !v1beta1conditions.IsFalse(m, clusterv1.PreTerminateDeleteHookSucceededV1Beta1Condition) {
 			logger.Info("wait for machine drain and detech volume operation complete.")
 			return ctrl.Result{}, nil
 		}
@@ -153,7 +153,7 @@ func (r *MachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 
 		mAnnotations := m.GetAnnotations()
-		delete(mAnnotations, clusterv1beta2.PreTerminateDeleteHookAnnotationPrefix)
+		delete(mAnnotations, clusterv1.PreTerminateDeleteHookAnnotationPrefix)
 		m.SetAnnotations(mAnnotations)
 		if err := patchHelper.Patch(ctx, m); err != nil {
 			return ctrl.Result{}, errors.Wrapf(err, "failed patch machine")
@@ -166,7 +166,7 @@ func (r *MachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 // isRemoveEtcdMemberNeeded returns nil if the Machine's NodeRef is not nil
 // and if the Machine is not the last control plane node in the cluster
 // and if the Cluster/KThreesControlplane associated with the Machine is not deleted.
-func (r *MachineReconciler) isRemoveEtcdMemberNeeded(ctx context.Context, cluster *clusterv1beta2.Cluster, machine *clusterv1beta2.Machine) error {
+func (r *MachineReconciler) isRemoveEtcdMemberNeeded(ctx context.Context, cluster *clusterv1.Cluster, machine *clusterv1.Machine) error {
 	log := ctrl.LoggerFrom(ctx)
 	// Return early if the cluster is being deleted.
 	if !cluster.DeletionTimestamp.IsZero() {
