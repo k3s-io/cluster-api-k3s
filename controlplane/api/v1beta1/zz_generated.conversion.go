@@ -30,7 +30,7 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	conversion "k8s.io/apimachinery/pkg/conversion"
 	runtime "k8s.io/apimachinery/pkg/runtime"
-	clusterapiapiv1beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	corev1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 )
 
 func init() {
@@ -257,7 +257,7 @@ func autoConvert_v1beta1_KThreesControlPlaneStatus_To_v1beta2_KThreesControlPlan
 	out.FailureReason = errors.KThreesControlPlaneStatusError(in.FailureReason)
 	out.FailureMessage = (*string)(unsafe.Pointer(in.FailureMessage))
 	out.ObservedGeneration = in.ObservedGeneration
-	out.Conditions = *(*clusterapiapiv1beta1.Conditions)(unsafe.Pointer(&in.Conditions))
+	out.Conditions = *(*corev1beta1.Conditions)(unsafe.Pointer(&in.Conditions))
 	out.LastRemediation = (*v1beta2.LastRemediationStatus)(unsafe.Pointer(in.LastRemediation))
 	return nil
 }
@@ -279,7 +279,7 @@ func autoConvert_v1beta2_KThreesControlPlaneStatus_To_v1beta1_KThreesControlPlan
 	out.FailureReason = errors.KThreesControlPlaneStatusError(in.FailureReason)
 	out.FailureMessage = (*string)(unsafe.Pointer(in.FailureMessage))
 	out.ObservedGeneration = in.ObservedGeneration
-	out.Conditions = *(*clusterapiapiv1beta1.Conditions)(unsafe.Pointer(&in.Conditions))
+	out.Conditions = *(*corev1beta1.Conditions)(unsafe.Pointer(&in.Conditions))
 	out.LastRemediation = (*LastRemediationStatus)(unsafe.Pointer(in.LastRemediation))
 	return nil
 }

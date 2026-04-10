@@ -107,21 +107,6 @@ func (c *EtcdClientGenerator) forFirstAvailableNode(ctx context.Context, nodeNam
 		return nil, errors.New("invalid argument: forLeader can't be called with an empty list of nodes")
 	}
 
-	clientset, err := kubernetes.NewForConfig(c.restConfig)
-	if err != nil {
-		return nil, errors.Wrap(err, "unable to create client to target cluster")
-	}
-
-	pods, err := clientset.CoreV1().Pods("kube-system").List(ctx, metav1.ListOptions{LabelSelector: "app=etcd-proxy"})
-	if err != nil {
-		return nil, errors.Wrap(err, "unable to list etcd-proxy pods in target cluster")
-	}
-
-	etcdmap := make(map[string]string)
-	for _, pod := range pods.Items {
-		etcdmap[pod.Spec.NodeName] = pod.Name
-	}
-
 	// Loop through the existing control plane nodes.
 	var errs []error
 	for _, name := range nodeNames {
@@ -133,6 +118,9 @@ func (c *EtcdClientGenerator) forFirstAvailableNode(ctx context.Context, nodeNam
 
 		client, err := c.createClient(ctx, podName)
 		if err != nil {
+			// Invalidate the pod map so the next attempt re-lists pods in case
+			// the pod was recycled between the list and the connection attempt.
+			c.etcdPodMap = nil
 			errs = append(errs, err)
 			continue
 		}

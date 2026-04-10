@@ -5,9 +5,9 @@ import (
 
 	. "github.com/onsi/gomega"
 	"google.golang.org/protobuf/proto"
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 
 	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
 	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
@@ -52,7 +52,7 @@ func TestMatchesKThreesBootstrapConfig(t *testing.T) {
 		m := &clusterv1.Machine{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       "KThreesConfig",
-				APIVersion: clusterv1.GroupVersion.String(),
+				APIVersion: clusterv1beta1.GroupVersion.String(),
 			},
 			ObjectMeta: metav1.ObjectMeta{
 				Namespace: "default",
@@ -60,11 +60,10 @@ func TestMatchesKThreesBootstrapConfig(t *testing.T) {
 			},
 			Spec: clusterv1.MachineSpec{
 				Bootstrap: clusterv1.Bootstrap{
-					ConfigRef: &corev1.ObjectReference{
-						Kind:       "KThreesConfig",
-						Namespace:  "default",
-						Name:       "test",
-						APIVersion: bootstrapv1.GroupVersion.String(),
+					ConfigRef: clusterv1.ContractVersionedObjectReference{
+						Kind:     "KThreesConfig",
+						Name:     "test",
+						APIGroup: bootstrapv1.GroupVersion.Group,
 					},
 				},
 			},
@@ -103,7 +102,7 @@ func TestMatchesKThreesBootstrapConfig(t *testing.T) {
 		m := &clusterv1.Machine{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       "KThreesConfig",
-				APIVersion: clusterv1.GroupVersion.String(),
+				APIVersion: clusterv1beta1.GroupVersion.String(),
 			},
 			ObjectMeta: metav1.ObjectMeta{
 				Namespace: "default",
@@ -111,11 +110,10 @@ func TestMatchesKThreesBootstrapConfig(t *testing.T) {
 			},
 			Spec: clusterv1.MachineSpec{
 				Bootstrap: clusterv1.Bootstrap{
-					ConfigRef: &corev1.ObjectReference{
-						Kind:       "KThreesConfig",
-						Namespace:  "default",
-						Name:       "test",
-						APIVersion: bootstrapv1.GroupVersion.String(),
+					ConfigRef: clusterv1.ContractVersionedObjectReference{
+						Kind:     "KThreesConfig",
+						Name:     "test",
+						APIGroup: bootstrapv1.GroupVersion.Group,
 					},
 				},
 			},
@@ -158,7 +156,7 @@ func TestMatchesKThreesBootstrapConfig(t *testing.T) {
 				Replicas: proto.Int32(3),
 				Version:  "v1.13.14+k3s1",
 				MachineTemplate: controlplanev1.KThreesControlPlaneMachineTemplate{
-					ObjectMeta: clusterv1.ObjectMeta{
+					ObjectMeta: clusterv1beta1.ObjectMeta{
 						Labels: map[string]string{"test-label": "test-value"},
 					},
 				},
@@ -169,7 +167,7 @@ func TestMatchesKThreesBootstrapConfig(t *testing.T) {
 		m := &clusterv1.Machine{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       "KThreesConfig",
-				APIVersion: clusterv1.GroupVersion.String(),
+				APIVersion: clusterv1beta1.GroupVersion.String(),
 			},
 			ObjectMeta: metav1.ObjectMeta{
 				Namespace: "default",
@@ -177,11 +175,10 @@ func TestMatchesKThreesBootstrapConfig(t *testing.T) {
 			},
 			Spec: clusterv1.MachineSpec{
 				Bootstrap: clusterv1.Bootstrap{
-					ConfigRef: &corev1.ObjectReference{
-						Kind:       "KThreesConfig",
-						Namespace:  "default",
-						Name:       "test",
-						APIVersion: bootstrapv1.GroupVersion.String(),
+					ConfigRef: clusterv1.ContractVersionedObjectReference{
+						Kind:     "KThreesConfig",
+						Name:     "test",
+						APIGroup: bootstrapv1.GroupVersion.Group,
 					},
 				},
 			},
@@ -225,7 +222,7 @@ func TestMatchesKThreesBootstrapConfig(t *testing.T) {
 		kcp := &controlplanev1.KThreesControlPlane{
 			Spec: controlplanev1.KThreesControlPlaneSpec{
 				MachineTemplate: controlplanev1.KThreesControlPlaneMachineTemplate{
-					ObjectMeta: clusterv1.ObjectMeta{
+					ObjectMeta: clusterv1beta1.ObjectMeta{
 						Annotations: map[string]string{
 							"test": "annotation",
 						},
@@ -242,7 +239,7 @@ func TestMatchesKThreesBootstrapConfig(t *testing.T) {
 		m := &clusterv1.Machine{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       "KThreesConfig",
-				APIVersion: clusterv1.GroupVersion.String(),
+				APIVersion: clusterv1beta1.GroupVersion.String(),
 			},
 			ObjectMeta: metav1.ObjectMeta{
 				Namespace: "default",
@@ -250,11 +247,10 @@ func TestMatchesKThreesBootstrapConfig(t *testing.T) {
 			},
 			Spec: clusterv1.MachineSpec{
 				Bootstrap: clusterv1.Bootstrap{
-					ConfigRef: &corev1.ObjectReference{
-						Kind:       "KThreesConfig",
-						Namespace:  "default",
-						Name:       "test",
-						APIVersion: bootstrapv1.GroupVersion.String(),
+					ConfigRef: clusterv1.ContractVersionedObjectReference{
+						Kind:     "KThreesConfig",
+						Name:     "test",
+						APIGroup: bootstrapv1.GroupVersion.Group,
 					},
 				},
 			},

@@ -11,7 +11,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/kubernetes/scheme"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/controllers/remote"
 	"sigs.k8s.io/cluster-api/util/collections"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -59,7 +60,7 @@ func (m *Management) List(ctx context.Context, list client.ObjectList, opts ...c
 // If no filter is supplied then all machines associated with the target cluster are returned.
 func (m *Management) GetMachinesForCluster(ctx context.Context, cluster client.ObjectKey, filters ...collections.Func) (collections.Machines, error) {
 	selector := map[string]string{
-		clusterv1.ClusterNameLabel: cluster.Name,
+		clusterv1beta1.ClusterNameLabel: cluster.Name,
 	}
 	ml := &clusterv1.MachineList{}
 	if err := m.Client.List(ctx, ml, client.InNamespace(cluster.Namespace), client.MatchingLabels(selector)); err != nil {

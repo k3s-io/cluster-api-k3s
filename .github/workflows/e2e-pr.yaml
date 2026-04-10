@@ -3,6 +3,11 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
   workflow_dispatch:
+    inputs:
+      ginkgo_focus:
+        description: "Ginkgo focus filter"
+        required: false
+        default: '\\[PR-Blocking\\]'
 
 permissions: {}
 
@@ -54,7 +59,7 @@ jobs:
       - name: Install kind
         run: go install sigs.k8s.io/kind@c5f516c8b2c4927232074381c980467e393cf965 # v0.26.0 https://github.com/kubernetes-sigs/kind/tags
       - name: Run E2E tests
-        run: make GINKGO_FOCUS="\\[PR-Blocking\\]" test-e2e
+        run: make GINKGO_FOCUS="${{ github.event.inputs.ginkgo_focus || '\\[PR-Blocking\\]' }}" test-e2e
       - name: Archive artifacts
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0 https://github.com/actions/upload-artifact/tags

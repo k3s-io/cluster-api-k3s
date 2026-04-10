@@ -27,7 +27,8 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -47,7 +48,7 @@ func NewControlPlaneInitMutex(client client.Client) *ControlPlaneInitMutex {
 }
 
 // Lock allows a control plane node to be the first and only node to run k3s init.
-func (c *ControlPlaneInitMutex) Lock(ctx context.Context, cluster *clusterv1.Cluster, machine *clusterv1.Machine) bool {
+func (c *ControlPlaneInitMutex) Lock(ctx context.Context, cluster *clusterv1.Cluster, machine *clusterv1beta1.Machine) bool {
 	sema := newSemaphore()
 	cmName := configMapName(cluster.Name)
 	log := ctrl.LoggerFrom(ctx, "ConfigMap", klog.KRef(cluster.Namespace, cmName))
@@ -76,7 +77,7 @@ func (c *ControlPlaneInitMutex) Lock(ctx context.Context, cluster *clusterv1.Clu
 		if err := c.client.Get(ctx, client.ObjectKey{
 			Namespace: cluster.Namespace,
 			Name:      info.MachineName,
-		}, &clusterv1.Machine{}); err != nil {
+		}, &clusterv1beta1.Machine{}); err != nil {
 			log.Error(err, "Failed to get machine holding init lock")
 			if apierrors.IsNotFound(err) {
 				c.Unlock(ctx, cluster)
@@ -176,11 +177,11 @@ func (s *semaphore) setMetadata(cluster *clusterv1.Cluster) {
 		Namespace: cluster.Namespace,
 		Name:      configMapName(cluster.Name),
 		Labels: map[string]string{
-			clusterv1.ClusterNameLabel: cluster.Name,
+			clusterv1beta1.ClusterNameLabel: cluster.Name,
 		},
 		OwnerReferences: []metav1.OwnerReference{
 			{
-				APIVersion: clusterv1.GroupVersion.String(),
+				APIVersion: clusterv1beta1.GroupVersion.String(),
 				Kind:       "Cluster",
 				Name:       cluster.Name,
 				UID:        cluster.UID,

@@ -18,3 +18,5 @@ _artifacts/
 
 # E2E test templates
 test/e2e/data/infrastructure-docker/cluster-template*.yaml
+
+.vscode/
