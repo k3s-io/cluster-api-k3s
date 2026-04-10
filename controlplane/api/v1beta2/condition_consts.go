@@ -85,6 +85,9 @@ const (
 
 	MachineAgentHealthyV1Beta2Condition = "AgentHealthy"
 
+	// NodeReadyReason documents that the node hosting this machine is in Ready state.
+	NodeReadyReason = "NodeReady"
+
 	// PodProvisioningReason (Severity=Info) documents a pod waiting to be provisioned i.e., Pod is in "Pending" phase.
 	PodProvisioningReason = "PodProvisioning"
 
@@ -123,6 +126,9 @@ const (
 
 	// EtcdMemberUnhealthyReason (Severity=Error) documents a Machine's etcd member is unhealthy.
 	EtcdMemberUnhealthyReason = "EtcdMemberUnhealthy"
+
+	// EtcdMemberHealthyReason documents that the etcd member on this machine is healthy.
+	EtcdMemberHealthyReason = "EtcdMemberHealthy"
 )
 
 const (

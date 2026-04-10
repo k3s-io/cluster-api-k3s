@@ -15,11 +15,3 @@ spec:
               drop: ["ALL"]
             seccompProfile:
               type: RuntimeDefault
-        - name: kube-rbac-proxy
-          securityContext:
-            runAsNonRoot: true
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop: ["ALL"]
-            seccompProfile:
-              type: RuntimeDefault

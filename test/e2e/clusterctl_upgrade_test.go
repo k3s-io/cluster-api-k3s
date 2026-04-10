@@ -83,7 +83,6 @@ var _ = Describe("When testing clusterctl upgrades using ClusterClass (v0.2.0=>c
 			InitWithBootstrapProviders:      []string{fmt.Sprintf(providerKThreesPrefix, version)},
 			InitWithControlPlaneProviders:   []string{fmt.Sprintf(providerKThreesPrefix, version)},
 			InitWithInfrastructureProviders: []string{fmt.Sprintf(providerDockerPrefix, capiCoreVersion)},
-			InitWithProvidersContract:       "v1beta1",
 			// InitWithKubernetesVersion is for the management cluster, WorkloadKubernetesVersion is for the workload cluster.
 			// Hardcoding the versions as later versions of k3s might not be compatible with the older versions of CAPI k3s.
 			InitWithKubernetesVersion:   "v1.30.0",
@@ -91,6 +90,7 @@ var _ = Describe("When testing clusterctl upgrades using ClusterClass (v0.2.0=>c
 			MgmtFlavor:                  "topology",
 			WorkloadFlavor:              "topology",
 			UseKindForManagementCluster: true,
+			InitWithProvidersContract:   "v1beta1",
 			// Configuration for the provider upgrades.
 			Upgrades: []capi_e2e.ClusterctlUpgradeSpecInputUpgrade{
 				{

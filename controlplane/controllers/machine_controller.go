@@ -9,13 +9,12 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog/v2"
-	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/controllers/external"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/annotations"
 	"sigs.k8s.io/cluster-api/util/collections"
-	"sigs.k8s.io/cluster-api/util/conditions"
+	v1beta1conditions "sigs.k8s.io/cluster-api/util/conditions/deprecated/v1beta1"
 	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/cluster-api/util/predicates"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -47,7 +46,7 @@ type MachineReconciler struct {
 
 func (r *MachineReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, log *logr.Logger, concurrency int) error {
 	_, err := ctrl.NewControllerManagedBy(mgr).
-		For(&clusterv1beta1.Machine{}).
+		For(&clusterv1.Machine{}).
 		WithOptions(controller.Options{
 			MaxConcurrentReconciles: concurrency,
 		}).
@@ -95,9 +94,9 @@ func (r *MachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	// if machine registered PreTerminate hook, wait for capi asks to resolve PreTerminateDeleteHook
-	if annotations.HasWithPrefix(clusterv1beta1.PreTerminateDeleteHookAnnotationPrefix, m.ObjectMeta.Annotations) &&
-		m.ObjectMeta.Annotations[clusterv1beta1.PreTerminateDeleteHookAnnotationPrefix] == k3sHookName {
-		if !conditions.IsFalse(m, string(clusterv1beta1.PreTerminateDeleteHookSucceededCondition)) {
+	if annotations.HasWithPrefix(clusterv1.PreTerminateDeleteHookAnnotationPrefix, m.ObjectMeta.Annotations) &&
+		m.ObjectMeta.Annotations[clusterv1.PreTerminateDeleteHookAnnotationPrefix] == k3sHookName {
+		if !v1beta1conditions.IsFalse(m, clusterv1.PreTerminateDeleteHookSucceededV1Beta1Condition) {
 			logger.Info("wait for machine drain and detech volume operation complete.")
 			return ctrl.Result{}, nil
 		}
@@ -154,7 +153,7 @@ func (r *MachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 
 		mAnnotations := m.GetAnnotations()
-		delete(mAnnotations, clusterv1beta1.PreTerminateDeleteHookAnnotationPrefix)
+		delete(mAnnotations, clusterv1.PreTerminateDeleteHookAnnotationPrefix)
 		m.SetAnnotations(mAnnotations)
 		if err := patchHelper.Patch(ctx, m); err != nil {
 			return ctrl.Result{}, errors.Wrapf(err, "failed patch machine")

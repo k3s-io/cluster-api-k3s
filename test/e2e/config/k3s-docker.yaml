@@ -51,6 +51,7 @@ providers:
       # Older release is added for k3s provider upgrading test (clusterctl_upgrade_test),
       # all other tests will use the k3s build from source
       # to init the management cluster.
+      # Note: replacements patch the deprecated gcr.io/kubebuilder kube-rbac-proxy image.
       - name: "v0.2.0"
         value: "https://github.com/k3s-io/cluster-api-k3s/releases/download/v0.2.0/bootstrap-components.yaml"
         type: "url"
@@ -58,12 +59,16 @@ providers:
         files:
           - sourcePath: "../data/shared/k3s/v0.2/metadata.yaml"
             targetName: "metadata.yaml"
+        replacements:
+          - old: "gcr.io/kubebuilder/kube-rbac-proxy"
+            new: "quay.io/brancz/kube-rbac-proxy"
       # By default, will only use the latest version defined in
       # ${ProjectRoot}/metadata.yaml (this one) to init the management cluster
       # this version should be updated when ${ProjectRoot}/metadata.yaml
       # is modified
       - name: v0.3.99 # next; use manifest from source files
         value: "../../../bootstrap/config/default"
+        contract: v1beta2
         files:
           - sourcePath: "../../../metadata.yaml"
             targetName: "metadata.yaml"
@@ -77,16 +82,20 @@ providers:
         files:
           - sourcePath: "../data/shared/k3s/v0.2/metadata.yaml"
             targetName: "metadata.yaml"
+        replacements:
+          - old: "gcr.io/kubebuilder/kube-rbac-proxy"
+            new: "quay.io/brancz/kube-rbac-proxy"
       - name: v0.3.99 # next; use manifest from source files
         value: "../../../controlplane/config/default"
+        contract: v1beta2
         files:
           - sourcePath: "../../../metadata.yaml"
             targetName: "metadata.yaml"
 
 variables:
   KUBERNETES_VERSION_MANAGEMENT: "v1.33.0"
-  KUBERNETES_VERSION: "v1.31.8+k3s1"
-  KUBERNETES_VERSION_UPGRADE_TO: "v1.32.4+k3s1"
+  KUBERNETES_VERSION: "v1.33.5+k3s1"
+  KUBERNETES_VERSION_UPGRADE_TO: "v1.34.5+k3s1"
   IP_FAMILY: "IPv4"
   KIND_IMAGE_VERSION: "v1.33.0"
   # Used during clusterctl upgrade test

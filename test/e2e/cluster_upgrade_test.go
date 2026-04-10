@@ -24,7 +24,7 @@ import (
 	"k8s.io/utils/ptr"
 )
 
-var _ = Describe("Workload cluster upgrade [K3s-Upgrade]", func() {
+var _ = Describe("Workload cluster upgrade K3s-Upgrade", func() {
 	Context("Upgrading a cluster with 1 control plane", func() {
 		ClusterUpgradeSpec(ctx, func() ClusterUpgradeSpecInput {
 			return ClusterUpgradeSpecInput{
