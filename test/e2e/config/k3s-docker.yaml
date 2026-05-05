@@ -85,11 +85,11 @@ providers:
       # ${ProjectRoot}/metadata.yaml (this one) to init the management cluster
       # this version should be updated when ${ProjectRoot}/metadata.yaml
       # is modified
-      - name: v0.3.99 # next; use manifest from source files
+      - name: v9.9.99 # next; use manifest from source files
         value: "../../../bootstrap/config/default"
-        contract: v1beta2
+        contract: v1beta1
         files:
-          - sourcePath: "../../../metadata.yaml"
+          - sourcePath: "../data/shared/k3s/v1alpha1_provider/metadata.yaml"
             targetName: "metadata.yaml"
   - name: k3s
     type: ControlPlaneProvider
@@ -104,11 +104,11 @@ providers:
         replacements:
           - old: "gcr.io/kubebuilder/kube-rbac-proxy"
             new: "quay.io/brancz/kube-rbac-proxy"
-      - name: v0.3.99 # next; use manifest from source files
+      - name: v9.9.99 # next; use manifest from source files
         value: "../../../controlplane/config/default"
         contract: v1beta2
         files:
-          - sourcePath: "../../../metadata.yaml"
+          - sourcePath: "../data/shared/k3s/v1alpha1_provider/metadata.yaml"
             targetName: "metadata.yaml"
 
 variables:
@@ -120,7 +120,7 @@ variables:
   # Used during clusterctl upgrade test
   CAPI_CORE_VERSION: "1.10.1"
   CAPI_CORE_CURRENT_VERSION: "1.11.5"
-  K3S_CAPI_CURRENT_VERSION: "0.3.99"
+  K3S_CAPI_CURRENT_VERSION: "9.9.99"
   # Enabling the feature flags by setting the env variables.
   CLUSTER_TOPOLOGY: "true"
   EXP_MACHINE_POOL: "true"
