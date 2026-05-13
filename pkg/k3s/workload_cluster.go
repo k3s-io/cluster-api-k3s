@@ -33,9 +33,13 @@ import (
 )
 
 const (
-	kubeProxyKey              = "kube-proxy"
-	labelNodeRoleControlPlane = "node-role.kubernetes.io/master"
-	k3sServingSecretKey       = "k3s-serving"
+	kubeProxyKey = "kube-proxy"
+	// Modern K3s sets only the canonical control-plane label; older K3s
+	// (and clusters bootstrapped under it) still use the deprecated master
+	// label. Both are matched so old and new clusters work.
+	labelNodeRoleControlPlane           = "node-role.kubernetes.io/control-plane"
+	labelNodeRoleControlPlaneDeprecated = "node-role.kubernetes.io/master"
+	k3sServingSecretKey                 = "k3s-serving"
 )
 
 var ErrControlPlaneMinNodes = errors.New("cluster has fewer than 2 control plane nodes; removing an etcd member is not supported")
@@ -78,15 +82,29 @@ type ClusterStatus struct {
 	HasK3sServingSecret bool
 }
 
+// getControlPlaneNodes lists workload-cluster nodes matching either the modern
+// or deprecated control-plane role label. Two filtered List calls are needed
+// because Kubernetes label selectors cannot OR across different keys; results
+// are deduplicated because a node may transiently carry both labels during an
+// upgrade.
 func (w *Workload) getControlPlaneNodes(ctx context.Context) (*corev1.NodeList, error) {
-	nodes := &corev1.NodeList{}
-	labels := map[string]string{
-		labelNodeRoleControlPlane: "true",
+	out := &corev1.NodeList{}
+	seen := sets.New[string]()
+	for _, key := range []string{labelNodeRoleControlPlane, labelNodeRoleControlPlaneDeprecated} {
+		nodes := &corev1.NodeList{}
+		if err := w.Client.List(ctx, nodes, ctrlclient.MatchingLabels{key: "true"}); err != nil {
+			return nil, err
+		}
+		for i := range nodes.Items {
+			n := nodes.Items[i]
+			if seen.Has(n.Name) {
+				continue
+			}
+			seen.Insert(n.Name)
+			out.Items = append(out.Items, n)
+		}
 	}
-	if err := w.Client.List(ctx, nodes, ctrlclient.MatchingLabels(labels)); err != nil {
-		return nil, err
-	}
-	return nodes, nil
+	return out, nil
 }
 
 // ClusterStatus returns the status of the cluster.
