@@ -15,8 +15,8 @@ providers:
   - name: cluster-api
     type: CoreProvider
     versions:
-      - name: v1.11.5
-        value: https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.11.5/core-components.yaml
+      - name: v1.12.9
+        value: https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.12.9/core-components.yaml
         type: url
         contract: v1beta2
         files:
@@ -36,10 +36,10 @@ providers:
   - name: docker
     type: InfrastructureProvider
     versions:
-      # Will use the latest version defined in ../data/shared/v1beta1/metadata.yaml
+      # Will use the latest version defined in ../data/shared/v1beta2/metadata.yaml
       # to init the management cluster
-      - name: v1.11.5 # used during e2e-test
-        value: https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.11.5/infrastructure-components-development.yaml
+      - name: v1.12.9 # used during e2e-test
+        value: https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.12.9/infrastructure-components-development.yaml
         type: url
         contract: v1beta2
         files:
@@ -119,7 +119,7 @@ variables:
   KIND_IMAGE_VERSION: "v1.33.0"
   # Used during clusterctl upgrade test
   CAPI_CORE_VERSION: "1.10.1"
-  CAPI_CORE_CURRENT_VERSION: "1.11.5"
+  CAPI_CORE_CURRENT_VERSION: "1.12.9"
   K3S_CAPI_CURRENT_VERSION: "9.9.99"
   # Enabling the feature flags by setting the env variables.
   CLUSTER_TOPOLOGY: "true"
@@ -136,6 +136,8 @@ intervals:
   default/wait-delete-cluster: ["3m", "10s"]
   default/wait-machine-upgrade: ["30m", "10s"]
   default/wait-machine-pool-upgrade: ["30m", "10s"]
+  default/wait-control-plane-upgrade: ["15m", "10s"]
+  default/wait-machine-deployment-upgrade: ["10m", "10s"]
   default/wait-nodes-ready: ["10m", "10s"]
   default/wait-machine-remediation: ["5m", "10s"]
   default/wait-autoscaler: ["5m", "10s"]
