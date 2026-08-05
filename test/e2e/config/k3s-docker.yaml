@@ -24,8 +24,8 @@ providers:
         replacements:
           - old: "imagePullPolicy: Always"
             new: "imagePullPolicy: IfNotPresent"
-      - name: v1.10.1
-        value: https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.10.1/core-components.yaml
+      - name: v1.11.11
+        value: https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.11.11/core-components.yaml
         type: url
         contract: v1beta1
         files:
@@ -47,8 +47,8 @@ providers:
         replacements:
           - old: "imagePullPolicy: Always"
             new: "imagePullPolicy: IfNotPresent"
-      - name: v1.10.1 # used during clusterctl upgrade test
-        value: https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.10.1/infrastructure-components-development.yaml
+      - name: v1.11.11 # used during clusterctl upgrade test
+        value: https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.11.11/infrastructure-components-development.yaml
         type: url
         contract: v1beta1
         files:
@@ -116,9 +116,9 @@ variables:
   KUBERNETES_VERSION: "v1.33.5+k3s1"
   KUBERNETES_VERSION_UPGRADE_TO: "v1.34.5+k3s1"
   IP_FAMILY: "IPv4"
-  KIND_IMAGE_VERSION: "v1.33.0"
+  KIND_IMAGE_VERSION: "v1.34.3"
   # Used during clusterctl upgrade test
-  CAPI_CORE_VERSION: "1.10.1"
+  CAPI_CORE_VERSION: "1.11.11"
   CAPI_CORE_CURRENT_VERSION: "1.12.9"
   K3S_CAPI_CURRENT_VERSION: "9.9.99"
   # Enabling the feature flags by setting the env variables.
