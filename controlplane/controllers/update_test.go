@@ -49,6 +49,7 @@ func TestRollingUpdate(t *testing.T) {
 		current         int
 		desired         int32
 		maxSurge        int
+		omitMaxSurge    bool
 		outdated        []int
 		enabled         bool
 		mutateResult    func(*k3s.UpToDateResult)
@@ -65,6 +66,14 @@ func TestRollingUpdate(t *testing.T) {
 			outdated:   []int{0},
 			enabled:    true,
 			wantAction: "scale-up",
+		},
+		{
+			name:         "omitted maxSurge defaults to one",
+			current:      3,
+			desired:      3,
+			omitMaxSurge: true,
+			outdated:     []int{0},
+			wantAction:   "scale-up",
 		},
 		{
 			name:       "single-node maxSurge zero may scale up while feature is disabled",
@@ -146,6 +155,9 @@ func TestRollingUpdate(t *testing.T) {
 			g := NewWithT(t)
 			utilfeature.SetFeatureGateDuringTest(t, feature.Gates, feature.InPlaceUpdates, tt.enabled)
 			controlPlane, cluster, kcp, machinesNeedingRollout, results, c := newRolloutControlPlane(t, tt.current, tt.desired, tt.maxSurge, tt.outdated, false)
+			if tt.omitMaxSurge {
+				kcp.Spec.RolloutStrategy.RollingUpdate.MaxSurge = nil
+			}
 			for _, index := range tt.outdated {
 				result := results[fmt.Sprintf("machine-%d", index)]
 				if tt.mutateResult != nil {

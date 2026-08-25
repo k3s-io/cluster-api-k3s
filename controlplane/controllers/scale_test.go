@@ -23,6 +23,8 @@ import (
 
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
+	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/util/collections"
 	"sigs.k8s.io/cluster-api/util/conditions"
@@ -70,6 +72,94 @@ func TestSelectMachineForInPlaceUpdateOrScaleDownPrioritizesUnhealthyEtcdMember(
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(selected.Name).To(Equal(unhealthy.Name))
 	g.Expect(selected.Name).NotTo(Equal(healthy.Name))
+}
+
+func TestSelectMachineForInPlaceUpdateOrScaleDownPriority(t *testing.T) {
+	tests := []struct {
+		name      string
+		machines  []*clusterv1.Machine
+		outdated  []string
+		want      string
+		mutate    func(map[string]*clusterv1.Machine)
+		configure func(*k3s.ControlPlane)
+	}{
+		{
+			name:     "outdated Machine with delete annotation",
+			machines: []*clusterv1.Machine{rolloutMachine("outdated-annotated", 2), rolloutMachine("outdated", 1), rolloutMachine("current-annotated", 0)},
+			outdated: []string{"outdated-annotated", "outdated"},
+			want:     "outdated-annotated",
+			mutate: func(machines map[string]*clusterv1.Machine) {
+				machines["outdated-annotated"].Annotations = map[string]string{clusterv1beta1.DeleteMachineAnnotation: ""}
+				machines["current-annotated"].Annotations = map[string]string{clusterv1beta1.DeleteMachineAnnotation: ""}
+			},
+		},
+		{
+			name:     "any Machine with delete annotation before remaining outdated Machines",
+			machines: []*clusterv1.Machine{rolloutMachine("outdated", 0), rolloutMachine("current-annotated", 1)},
+			outdated: []string{"outdated"},
+			want:     "current-annotated",
+			mutate: func(machines map[string]*clusterv1.Machine) {
+				machines["current-annotated"].Annotations = map[string]string{clusterv1beta1.DeleteMachineAnnotation: ""}
+			},
+		},
+		{
+			name:     "oldest remaining outdated Machine",
+			machines: []*clusterv1.Machine{rolloutMachine("oldest-outdated", 0), rolloutMachine("newest-outdated", 1), rolloutMachine("current", 2)},
+			outdated: []string{"oldest-outdated", "newest-outdated"},
+			want:     "oldest-outdated",
+		},
+		{
+			name:     "oldest Machine when no outdated Machine remains",
+			machines: []*clusterv1.Machine{rolloutMachine("oldest", 0), rolloutMachine("newest", 1)},
+			want:     "oldest",
+		},
+		{
+			name:     "oldest candidate in the failure domain with most Machines",
+			machines: []*clusterv1.Machine{rolloutMachine("zone-a-oldest", 0), rolloutMachine("zone-a-newest", 2), rolloutMachine("zone-b-oldest", 1)},
+			outdated: []string{"zone-a-oldest", "zone-a-newest", "zone-b-oldest"},
+			want:     "zone-a-oldest",
+			mutate: func(machines map[string]*clusterv1.Machine) {
+				machines["zone-a-oldest"].Spec.FailureDomain = "zone-a"
+				machines["zone-a-newest"].Spec.FailureDomain = "zone-a"
+				machines["zone-b-oldest"].Spec.FailureDomain = "zone-b"
+			},
+			configure: func(controlPlane *k3s.ControlPlane) {
+				controlPlane.Cluster.Status.FailureDomains = []clusterv1.FailureDomain{
+					{Name: "zone-a", ControlPlane: ptr.To(true)},
+					{Name: "zone-b", ControlPlane: ptr.To(true)},
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := NewWithT(t)
+			machineMap := map[string]*clusterv1.Machine{}
+			for _, machine := range tt.machines {
+				machineMap[machine.Name] = machine
+			}
+			if tt.mutate != nil {
+				tt.mutate(machineMap)
+			}
+			controlPlane := &k3s.ControlPlane{
+				KCP:      &controlplanev1.KThreesControlPlane{},
+				Cluster:  &clusterv1.Cluster{},
+				Machines: collections.FromMachines(tt.machines...),
+			}
+			if tt.configure != nil {
+				tt.configure(controlPlane)
+			}
+			outdated := collections.Machines{}
+			for _, name := range tt.outdated {
+				outdated[name] = machineMap[name]
+			}
+
+			selected, err := selectMachineForInPlaceUpdateOrScaleDown(context.Background(), controlPlane, outdated)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(selected.Name).To(Equal(tt.want))
+		})
+	}
 }
 
 func rolloutMachine(name string, minute int) *clusterv1.Machine {

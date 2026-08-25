@@ -93,6 +93,12 @@ func TestTriggerInPlaceUpdateRetriesAfterEveryWriteBoundary(t *testing.T) {
 			r := &KThreesControlPlaneReconciler{Client: trackingClient, recorder: record.NewFakeRecorder(10)}
 
 			g.Expect(r.triggerInPlaceUpdate(context.Background(), machine, result)).To(MatchError(ContainSubstring("injected patch failure")))
+			assertTriggerState(t, baseClient, machine, result, triggerState{
+				marked:         failAt > 1,
+				infraUpdated:   failAt > 2,
+				configUpdated:  failAt > 3,
+				machineUpdated: failAt > 4,
+			})
 
 			trackingClient.failAt = 0
 			trackingClient.patchCalls = 0
@@ -108,6 +114,56 @@ func TestTriggerInPlaceUpdateRetriesAfterEveryWriteBoundary(t *testing.T) {
 			g.Expect(baseClient.Get(context.Background(), client.ObjectKeyFromObject(machine), storedMachine)).To(Succeed())
 			g.Expect(storedMachine.Spec.Version).To(Equal("v1.31.2+k3s1"))
 			g.Expect(hooks.IsPending(runtimehooksv1.UpdateMachine, storedMachine)).To(BeTrue())
+		})
+	}
+}
+
+func TestTriggerInPlaceUpdateRetriesAfterCacheBarrierFailures(t *testing.T) {
+	tests := []struct {
+		name      string
+		failGetAt int
+		wantState triggerState
+	}{
+		{
+			name:      "failure after marking Machine update in progress",
+			failGetAt: 1,
+			wantState: triggerState{marked: true},
+		},
+		{
+			name:      "failure after marking UpdateMachine hook pending",
+			failGetAt: 2,
+			wantState: triggerState{
+				marked:         true,
+				infraUpdated:   true,
+				configUpdated:  true,
+				machineUpdated: true,
+				hookPending:    true,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := NewWithT(t)
+			machine, result, baseClient := triggerFixtures(t)
+			trackingClient := &patchTrackingClient{Client: baseClient, failGetAt: tt.failGetAt}
+			r := &KThreesControlPlaneReconciler{Client: trackingClient, recorder: record.NewFakeRecorder(10)}
+
+			g.Expect(r.triggerInPlaceUpdate(context.Background(), machine, result)).To(MatchError(ContainSubstring("injected cache barrier failure")))
+			assertTriggerState(t, baseClient, machine, result, tt.wantState)
+
+			trackingClient.failGetAt = 0
+			trackingClient.getCalls = 0
+			latestMachine := &clusterv1.Machine{}
+			g.Expect(baseClient.Get(context.Background(), client.ObjectKeyFromObject(machine), latestMachine)).To(Succeed())
+			g.Expect(r.triggerInPlaceUpdate(context.Background(), latestMachine, result)).To(Succeed())
+			assertTriggerState(t, baseClient, machine, result, triggerState{
+				marked:         true,
+				infraUpdated:   true,
+				configUpdated:  true,
+				machineUpdated: true,
+				hookPending:    true,
+			})
 		})
 	}
 }
@@ -250,10 +306,70 @@ func triggerFixtures(t *testing.T) (*clusterv1.Machine, k3s.UpToDateResult, clie
 	}, c
 }
 
+type triggerState struct {
+	marked         bool
+	infraUpdated   bool
+	configUpdated  bool
+	machineUpdated bool
+	hookPending    bool
+}
+
+func assertTriggerState(
+	t *testing.T,
+	c client.Client,
+	machine *clusterv1.Machine,
+	result k3s.UpToDateResult,
+	want triggerState,
+) {
+	t.Helper()
+	g := NewWithT(t)
+	ctx := context.Background()
+
+	actualMachine := &clusterv1.Machine{}
+	g.Expect(c.Get(ctx, client.ObjectKeyFromObject(machine), actualMachine)).To(Succeed())
+	if want.marked {
+		g.Expect(actualMachine.Annotations).To(HaveKey(clusterv1.UpdateInProgressAnnotation), "Machine update-in-progress annotation")
+	} else {
+		g.Expect(actualMachine.Annotations).NotTo(HaveKey(clusterv1.UpdateInProgressAnnotation), "Machine update-in-progress annotation")
+	}
+	if want.machineUpdated {
+		g.Expect(actualMachine.Spec.Version).To(Equal(result.DesiredMachine.Spec.Version))
+	} else {
+		g.Expect(actualMachine.Spec.Version).To(Equal(machine.Spec.Version))
+	}
+	g.Expect(hooks.IsPending(runtimehooksv1.UpdateMachine, actualMachine)).To(Equal(want.hookPending))
+
+	actualInfra := &unstructured.Unstructured{}
+	actualInfra.SetAPIVersion(result.DesiredInfraMachine.GetAPIVersion())
+	actualInfra.SetKind(result.DesiredInfraMachine.GetKind())
+	g.Expect(c.Get(ctx, client.ObjectKeyFromObject(result.DesiredInfraMachine), actualInfra)).To(Succeed())
+	infraSize, _, err := unstructured.NestedString(actualInfra.Object, "spec", "size")
+	g.Expect(err).NotTo(HaveOccurred())
+	if want.infraUpdated {
+		g.Expect(infraSize).To(Equal("large"))
+		g.Expect(actualInfra.GetAnnotations()).To(HaveKey(clusterv1.UpdateInProgressAnnotation))
+	} else {
+		g.Expect(infraSize).To(Equal("small"))
+		g.Expect(actualInfra.GetAnnotations()).NotTo(HaveKey(clusterv1.UpdateInProgressAnnotation))
+	}
+
+	actualConfig := &bootstrapv1.KThreesConfig{}
+	g.Expect(c.Get(ctx, client.ObjectKeyFromObject(result.DesiredKThreesConfig), actualConfig)).To(Succeed())
+	if want.configUpdated {
+		g.Expect(actualConfig.Spec.PostK3sCommands).To(Equal([]string{"new"}))
+		g.Expect(actualConfig.Annotations).To(HaveKey(clusterv1.UpdateInProgressAnnotation))
+	} else {
+		g.Expect(actualConfig.Spec.PostK3sCommands).To(BeEmpty())
+		g.Expect(actualConfig.Annotations).NotTo(HaveKey(clusterv1.UpdateInProgressAnnotation))
+	}
+}
+
 type patchTrackingClient struct {
 	client.Client
 	failAt       int
 	patchCalls   int
+	failGetAt    int
+	getCalls     int
 	patchedKinds []string
 	operations   []string
 }
@@ -279,6 +395,7 @@ func (c *patchTrackingClient) Patch(ctx context.Context, object client.Object, p
 }
 
 func (c *patchTrackingClient) Get(ctx context.Context, key client.ObjectKey, object client.Object, opts ...client.GetOption) error {
+	c.getCalls++
 	kind := object.GetObjectKind().GroupVersionKind().Kind
 	if kind == "" {
 		switch object.(type) {
@@ -289,5 +406,8 @@ func (c *patchTrackingClient) Get(ctx context.Context, key client.ObjectKey, obj
 		}
 	}
 	c.operations = append(c.operations, "get:"+kind)
+	if c.failGetAt == c.getCalls {
+		return errors.New("injected cache barrier failure")
+	}
 	return c.Client.Get(ctx, key, object, opts...)
 }

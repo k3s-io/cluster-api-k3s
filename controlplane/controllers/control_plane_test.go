@@ -29,6 +29,7 @@ import (
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/util/collections"
 	"sigs.k8s.io/cluster-api/util/conditions"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
@@ -55,6 +56,14 @@ func TestReconcileMachineUpToDateCondition(t *testing.T) {
 		{
 			name:       "in-place update in progress",
 			kcpVersion: "v1.31.1+k3s1",
+			inProgress: true,
+			wantStatus: metav1.ConditionFalse,
+			wantReason: clusterv1.MachineUpToDateUpdatingReason,
+			wantText:   "In-place update in progress",
+		},
+		{
+			name:       "in-place update in progress with newly changed desired version",
+			kcpVersion: "v1.31.2+k3s1",
 			inProgress: true,
 			wantStatus: metav1.ConditionFalse,
 			wantReason: clusterv1.MachineUpToDateUpdatingReason,
@@ -91,7 +100,30 @@ func TestReconcileMachineUpToDateCondition(t *testing.T) {
 	}
 }
 
+func TestReconcileControlPlaneConditionsPatchesUpToDateBeforeInitialization(t *testing.T) {
+	g := NewWithT(t)
+	controlPlane, c := newConditionControlPlaneAndClient(t, "v1.31.2+k3s1", false)
+	g.Expect(controlPlane.KCP.Status.Initialized).To(BeFalse())
+
+	r := &KThreesControlPlaneReconciler{}
+	g.Expect(r.reconcileControlPlaneConditions(context.Background(), controlPlane)).To(Succeed())
+
+	actualMachine := &clusterv1.Machine{}
+	g.Expect(c.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: "machine-1"}, actualMachine)).To(Succeed())
+	condition := conditions.Get(actualMachine, clusterv1.MachineUpToDateCondition)
+	g.Expect(condition).NotTo(BeNil())
+	g.Expect(condition.Status).To(Equal(metav1.ConditionFalse))
+	g.Expect(condition.Reason).To(Equal(clusterv1.MachineNotUpToDateReason))
+	g.Expect(condition.Message).To(ContainSubstring("Version v1.31.1+k3s1, v1.31.2+k3s1 required"))
+}
+
 func newConditionControlPlane(t *testing.T, kcpVersion string, inProgress bool) *k3s.ControlPlane {
+	t.Helper()
+	controlPlane, _ := newConditionControlPlaneAndClient(t, kcpVersion, inProgress)
+	return controlPlane
+}
+
+func newConditionControlPlaneAndClient(t *testing.T, kcpVersion string, inProgress bool) (*k3s.ControlPlane, client.Client) {
 	t.Helper()
 	g := NewWithT(t)
 	scheme := runtime.NewScheme()
@@ -164,8 +196,12 @@ func newConditionControlPlane(t *testing.T, kcpVersion string, inProgress bool) 
 			clusterv1.GroupVersion.String(): "v1beta1",
 		},
 	}}
-	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(config, infra, template, crd, machineCRD).Build()
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&clusterv1.Machine{}).
+		WithObjects(machine, config, infra, template, crd, machineCRD).
+		Build()
 	controlPlane, err := k3s.NewControlPlane(context.Background(), c, cluster, kcp, collections.FromMachines(machine))
 	g.Expect(err).NotTo(HaveOccurred())
-	return controlPlane
+	return controlPlane, c
 }

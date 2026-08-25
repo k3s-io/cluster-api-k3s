@@ -85,6 +85,22 @@ func TestCanUpdateMachine(t *testing.T) {
 			wantErrText: "extension failed",
 		},
 		{
+			name:     "invalid hook patch returns error",
+			enabled:  true,
+			handlers: []string{"handler"},
+			response: runtimehooksv1.CanUpdateMachineResponse{
+				MachinePatch: jsonPatch(`[{"op":"replace","path":"/spec/version","value":`),
+			},
+			wantErrText: "failed to apply patches from extension handler",
+		},
+		{
+			name:          "unexpected InfraMachine dry-run error is returned",
+			enabled:       true,
+			handlers:      []string{"handler"},
+			infraPatchErr: errors.New("unexpected dry-run failure"),
+			wantErrText:   "server side apply dry-run failed for current InfraMachine",
+		},
+		{
 			name:     "invalid InfraMachine dry-run is not coverable",
 			enabled:  true,
 			handlers: []string{"handler"},

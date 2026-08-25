@@ -871,6 +871,21 @@ func reconcileMachineUpToDateCondition(_ context.Context, controlPlane *k3s.Cont
 	}
 
 	for _, machine := range controlPlane.Machines {
+		if inplace.IsUpdateInProgress(machine) {
+			message := "* In-place update in progress"
+			if condition := conditions.Get(machine, clusterv1.MachineUpdatingCondition); condition != nil &&
+				condition.Status == metav1.ConditionTrue && condition.Message != "" {
+				message = fmt.Sprintf("* %s", condition.Message)
+			}
+			conditions.Set(machine, metav1.Condition{
+				Type:    clusterv1.MachineUpToDateCondition,
+				Status:  metav1.ConditionFalse,
+				Reason:  clusterv1.MachineUpToDateUpdatingReason,
+				Message: message,
+			})
+			continue
+		}
+
 		if _, ok := notUpToDateNames[machine.Name]; ok {
 			message := ""
 			if result, ok := machinesUpToDateResults[machine.Name]; ok && len(result.ConditionMessages) > 0 {
@@ -884,21 +899,6 @@ func reconcileMachineUpToDateCondition(_ context.Context, controlPlane *k3s.Cont
 				Type:    clusterv1.MachineUpToDateCondition,
 				Status:  metav1.ConditionFalse,
 				Reason:  clusterv1.MachineNotUpToDateReason,
-				Message: message,
-			})
-			continue
-		}
-
-		if inplace.IsUpdateInProgress(machine) {
-			message := "* In-place update in progress"
-			if condition := conditions.Get(machine, clusterv1.MachineUpdatingCondition); condition != nil &&
-				condition.Status == metav1.ConditionTrue && condition.Message != "" {
-				message = fmt.Sprintf("* %s", condition.Message)
-			}
-			conditions.Set(machine, metav1.Condition{
-				Type:    clusterv1.MachineUpToDateCondition,
-				Status:  metav1.ConditionFalse,
-				Reason:  clusterv1.MachineUpToDateUpdatingReason,
 				Message: message,
 			})
 			continue
