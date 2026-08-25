@@ -76,12 +76,13 @@ func TestSelectMachineForInPlaceUpdateOrScaleDownPrioritizesUnhealthyEtcdMember(
 
 func TestSelectMachineForInPlaceUpdateOrScaleDownPriority(t *testing.T) {
 	tests := []struct {
-		name      string
-		machines  []*clusterv1.Machine
-		outdated  []string
-		want      string
-		mutate    func(map[string]*clusterv1.Machine)
-		configure func(*k3s.ControlPlane)
+		name         string
+		machines     []*clusterv1.Machine
+		outdated     []string
+		want         string
+		globalOldest string
+		mutate       func(map[string]*clusterv1.Machine)
+		configure    func(*k3s.ControlPlane)
 	}{
 		{
 			name:     "outdated Machine with delete annotation",
@@ -103,10 +104,11 @@ func TestSelectMachineForInPlaceUpdateOrScaleDownPriority(t *testing.T) {
 			},
 		},
 		{
-			name:     "oldest remaining outdated Machine",
-			machines: []*clusterv1.Machine{rolloutMachine("oldest-outdated", 0), rolloutMachine("newest-outdated", 1), rolloutMachine("current", 2)},
-			outdated: []string{"oldest-outdated", "newest-outdated"},
-			want:     "oldest-outdated",
+			name:         "oldest remaining outdated Machine",
+			machines:     []*clusterv1.Machine{rolloutMachine("oldest-outdated", 1), rolloutMachine("newest-outdated", 2), rolloutMachine("current", 0)},
+			outdated:     []string{"oldest-outdated", "newest-outdated"},
+			want:         "oldest-outdated",
+			globalOldest: "current",
 		},
 		{
 			name:     "oldest Machine when no outdated Machine remains",
@@ -114,10 +116,11 @@ func TestSelectMachineForInPlaceUpdateOrScaleDownPriority(t *testing.T) {
 			want:     "oldest",
 		},
 		{
-			name:     "oldest candidate in the failure domain with most Machines",
-			machines: []*clusterv1.Machine{rolloutMachine("zone-a-oldest", 0), rolloutMachine("zone-a-newest", 2), rolloutMachine("zone-b-oldest", 1)},
-			outdated: []string{"zone-a-oldest", "zone-a-newest", "zone-b-oldest"},
-			want:     "zone-a-oldest",
+			name:         "oldest candidate in the failure domain with most Machines",
+			machines:     []*clusterv1.Machine{rolloutMachine("zone-a-oldest", 1), rolloutMachine("zone-a-newest", 2), rolloutMachine("zone-b-oldest", 0)},
+			outdated:     []string{"zone-a-oldest", "zone-a-newest", "zone-b-oldest"},
+			want:         "zone-a-oldest",
+			globalOldest: "zone-b-oldest",
 			mutate: func(machines map[string]*clusterv1.Machine) {
 				machines["zone-a-oldest"].Spec.FailureDomain = "zone-a"
 				machines["zone-a-newest"].Spec.FailureDomain = "zone-a"
@@ -153,6 +156,10 @@ func TestSelectMachineForInPlaceUpdateOrScaleDownPriority(t *testing.T) {
 			outdated := collections.Machines{}
 			for _, name := range tt.outdated {
 				outdated[name] = machineMap[name]
+			}
+			if tt.globalOldest != "" {
+				g.Expect(controlPlane.Machines.Oldest().Name).To(Equal(tt.globalOldest))
+				g.Expect(tt.want).NotTo(Equal(tt.globalOldest))
 			}
 
 			selected, err := selectMachineForInPlaceUpdateOrScaleDown(context.Background(), controlPlane, outdated)
