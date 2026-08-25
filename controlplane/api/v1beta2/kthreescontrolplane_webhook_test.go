@@ -73,6 +73,27 @@ func TestKThreesControlPlaneValidation(t *testing.T) {
 			strategyType: RollingUpdateStrategyType,
 		},
 		{
+			name:         "rejects numeric string zero with leading zero",
+			maxSurge:     intstr.FromString("00"),
+			replicas:     3,
+			strategyType: RollingUpdateStrategyType,
+			wantErr:      true,
+		},
+		{
+			name:         "rejects numeric string one with plus sign",
+			maxSurge:     intstr.FromString("+1"),
+			replicas:     3,
+			strategyType: RollingUpdateStrategyType,
+			wantErr:      true,
+		},
+		{
+			name:         "rejects numeric string zero with minus sign",
+			maxSurge:     intstr.FromString("-0"),
+			replicas:     3,
+			strategyType: RollingUpdateStrategyType,
+			wantErr:      true,
+		},
+		{
 			name:         "rejects percentages",
 			maxSurge:     intstr.FromString("50%"),
 			replicas:     3,

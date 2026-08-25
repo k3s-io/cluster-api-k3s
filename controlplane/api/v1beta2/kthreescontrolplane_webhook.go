@@ -19,7 +19,6 @@ package v1beta2
 import (
 	"context"
 	"fmt"
-	"strconv"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -168,9 +167,11 @@ func parseMaxSurge(value *intstr.IntOrString) (int32, error) {
 			return value.IntVal, nil
 		}
 	case intstr.String:
-		parsed, err := strconv.ParseInt(value.StrVal, 10, 32)
-		if err == nil && (parsed == 0 || parsed == 1) {
-			return int32(parsed), nil
+		switch value.StrVal {
+		case "0":
+			return 0, nil
+		case "1":
+			return 1, nil
 		}
 	}
 	return 0, fmt.Errorf("maxSurge must be 0 or 1")
