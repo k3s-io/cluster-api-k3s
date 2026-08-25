@@ -27,6 +27,7 @@ spec:
         - /manager
         args:
         - --enable-leader-election
+        - --feature-gates=InPlaceUpdates=${EXP_IN_PLACE_UPDATES:=false}
         image: controller:latest
         name: manager
       terminationGracePeriodSeconds: 10

@@ -48,6 +48,12 @@ import (
 	"k8s.io/client-go/transport"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
+	runtimehooksv1 "sigs.k8s.io/cluster-api/api/runtime/hooks/v1alpha1"
+	runtimev1 "sigs.k8s.io/cluster-api/api/runtime/v1beta2"
+	runtimecatalog "sigs.k8s.io/cluster-api/exp/runtime/catalog"
+	runtimeclient "sigs.k8s.io/cluster-api/exp/runtime/client"
+	"sigs.k8s.io/cluster-api/util"
+	"sigs.k8s.io/cluster-api/util/cache"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/certwatcher"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
@@ -55,12 +61,6 @@ import (
 
 	runtimeregistry "github.com/k3s-io/cluster-api-k3s/pkg/capi/registry"
 	runtimemetrics "github.com/k3s-io/cluster-api-k3s/pkg/capi/runtimemetrics"
-	runtimehooksv1 "sigs.k8s.io/cluster-api/api/runtime/hooks/v1alpha1"
-	runtimev1 "sigs.k8s.io/cluster-api/api/runtime/v1beta2"
-	runtimecatalog "sigs.k8s.io/cluster-api/exp/runtime/catalog"
-	runtimeclient "sigs.k8s.io/cluster-api/exp/runtime/client"
-	"sigs.k8s.io/cluster-api/util"
-	"sigs.k8s.io/cluster-api/util/cache"
 )
 
 type errCallingExtensionHandler error

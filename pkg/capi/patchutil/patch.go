@@ -35,9 +35,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/klog/v2"
-	ctrl "sigs.k8s.io/controller-runtime"
-
 	runtimehooksv1 "sigs.k8s.io/cluster-api/api/runtime/hooks/v1alpha1"
+	ctrl "sigs.k8s.io/controller-runtime"
 )
 
 // Path identifies a nested field path to preserve while applying a patch.

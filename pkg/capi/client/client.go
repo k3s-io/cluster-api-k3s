@@ -280,7 +280,7 @@ func compareResourceVersion(a, b string) (int, error) {
 }
 
 func isWellFormed(s string) bool {
-	if len(s) == 0 { //nolint:gocritic // not going to modify code copied from upstream
+	if len(s) == 0 {
 		return false
 	}
 	if s[0] == '0' {

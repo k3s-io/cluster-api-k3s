@@ -30,12 +30,15 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
 	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/controllers/external"
+	runtimeclient "sigs.k8s.io/cluster-api/exp/runtime/client"
+	"sigs.k8s.io/cluster-api/feature"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/annotations"
 	"sigs.k8s.io/cluster-api/util/certs"
@@ -65,10 +68,11 @@ import (
 // KThreesControlPlaneReconciler reconciles a KThreesControlPlane object.
 type KThreesControlPlaneReconciler struct {
 	client.Client
-	Log        logr.Logger
-	Scheme     *runtime.Scheme
-	controller controller.Controller
-	recorder   record.EventRecorder
+	Log           logr.Logger
+	Scheme        *runtime.Scheme
+	RuntimeClient runtimeclient.Client
+	controller    controller.Controller
+	recorder      record.EventRecorder
 
 	EtcdDialTimeout time.Duration
 	EtcdCallTimeout time.Duration
@@ -84,6 +88,8 @@ type KThreesControlPlaneReconciler struct {
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters;clusters/status,verbs=get;list;watch
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=machines;machines/status,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions,verbs=get;list;watch
+// +kubebuilder:rbac:groups=core,resources=namespaces,verbs=get;list;watch
+// +kubebuilder:rbac:groups=runtime.cluster.x-k8s.io,resources=extensionconfigs,verbs=get;list;watch
 
 func (r *KThreesControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := r.Log.WithValues("namespace", req.Namespace, "kthreesControlPlane", req.Name)
@@ -297,6 +303,10 @@ func patchKThreesControlPlane(ctx context.Context, patchHelper *v1beta1patch.Hel
 }
 
 func (r *KThreesControlPlaneReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, log *logr.Logger, concurrency int) error {
+	if feature.Gates.Enabled(feature.InPlaceUpdates) && r.RuntimeClient == nil {
+		return errors.New("RuntimeClient must not be nil when InPlaceUpdates feature gate is enabled")
+	}
+
 	c, err := ctrl.NewControllerManagedBy(mgr).
 		For(&controlplanev1.KThreesControlPlane{}).
 		Owns(&clusterv1.Machine{}).
@@ -891,6 +901,10 @@ func (r *KThreesControlPlaneReconciler) upgradeControlPlane(
 	controlPlane *k3s.ControlPlane,
 	machinesRequireUpgrade collections.Machines,
 ) (ctrl.Result, error) {
+	if err := validateRolloutStrategyForController(kcp); err != nil {
+		return ctrl.Result{}, err
+	}
+
 	// TODO: handle reconciliation of etcd members and kubeadm config in case they get out of sync with cluster
 
 	/**
@@ -932,4 +946,21 @@ func (r *KThreesControlPlaneReconciler) upgradeControlPlane(
 		return r.scaleUpControlPlane(ctx, cluster, kcp, controlPlane)
 	}
 	return r.scaleDownControlPlane(ctx, cluster, kcp, controlPlane, machinesRequireUpgrade)
+}
+
+func validateRolloutStrategyForController(kcp *controlplanev1.KThreesControlPlane) error {
+	if feature.Gates.Enabled(feature.InPlaceUpdates) ||
+		kcp.Spec.RolloutStrategy == nil ||
+		kcp.Spec.RolloutStrategy.RollingUpdate == nil ||
+		kcp.Spec.RolloutStrategy.RollingUpdate.MaxSurge == nil ||
+		ptr.Deref(kcp.Spec.Replicas, 1) >= 3 {
+		return nil
+	}
+
+	maxSurge := kcp.Spec.RolloutStrategy.RollingUpdate.MaxSurge
+	if (maxSurge.Type == intstr.Int && maxSurge.IntVal == 0) ||
+		(maxSurge.Type == intstr.String && maxSurge.StrVal == "0") {
+		return errors.New("cannot roll out a KThreesControlPlane with fewer than 3 replicas and maxSurge 0 when InPlaceUpdates is disabled")
+	}
+	return nil
 }

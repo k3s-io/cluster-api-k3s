@@ -21,10 +21,9 @@ import (
 	"fmt"
 
 	"github.com/pkg/errors"
+	runtimev1 "sigs.k8s.io/cluster-api/api/runtime/v1beta2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	runtimev1 "sigs.k8s.io/cluster-api/api/runtime/v1beta2"
 )
 
 const (
