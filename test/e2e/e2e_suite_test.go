@@ -24,6 +24,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -34,8 +35,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
+	kind "sigs.k8s.io/kind/pkg/cluster"
+	kindnodesutils "sigs.k8s.io/kind/pkg/cluster/nodeutils"
 
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
+	runtimev1 "sigs.k8s.io/cluster-api/api/runtime/v1beta2"
 	"sigs.k8s.io/cluster-api/test/framework"
 	"sigs.k8s.io/cluster-api/test/framework/bootstrap"
 	"sigs.k8s.io/cluster-api/test/framework/clusterctl"
@@ -109,6 +113,9 @@ func TestE2E(t *testing.T) {
 	if prowArtifactFolder, exists := os.LookupEnv("ARTIFACTS"); exists {
 		artifactFolder = prowArtifactFolder
 	}
+	absoluteArtifactFolder, err := filepath.Abs(artifactFolder)
+	g.Expect(err).NotTo(HaveOccurred(), "Invalid test suite argument. Can't resolve e2e.artifacts-folder %q", artifactFolder)
+	artifactFolder = absoluteArtifactFolder
 
 	// ensure the artifacts folder exists
 	g.Expect(os.MkdirAll(artifactFolder, 0o755)).To(Succeed(), "Invalid test suite argument. Can't create e2e.artifacts-folder %q", artifactFolder) //nolint:gosec
@@ -197,6 +204,7 @@ func initScheme() *runtime.Scheme {
 	Expect(controlplanev1.AddToScheme(sc)).To(Succeed())
 	Expect(bootstrapv1.AddToScheme(sc)).To(Succeed())
 	Expect(dockerinfrav1.AddToScheme(sc)).To(Succeed())
+	Expect(runtimev1.AddToScheme(sc)).To(Succeed())
 	return sc
 }
 
@@ -229,14 +237,22 @@ func setupBootstrapCluster(config *clusterctl.E2EConfig, scheme *runtime.Scheme,
 	kubeconfigPath := ""
 	if !useExistingCluster {
 		By("Creating the bootstrap cluster")
-		clusterProvider = bootstrap.CreateKindBootstrapClusterAndLoadImages(ctx, bootstrap.CreateKindBootstrapClusterAndLoadImagesInput{
+		input := bootstrap.CreateKindBootstrapClusterAndLoadImagesInput{
 			Name:               config.ManagementClusterName,
 			KubernetesVersion:  config.GetVariableOrEmpty(KubernetesVersionManagement),
 			RequiresDockerSock: config.HasDockerProvider(),
 			Images:             config.Images,
 			IPFamily:           config.GetVariableOrEmpty(IPFamily),
 			LogFolder:          filepath.Join(artifactFolder, "kind"),
-		})
+		}
+		if _, err := os.Stat("/var/run/docker.sock"); err != nil && os.Getenv("DOCKER_HOST") == "" {
+			images := input.Images
+			input.Images = nil
+			clusterProvider = bootstrap.CreateKindBootstrapClusterAndLoadImages(ctx, input)
+			loadImagesWithDockerCLI(config.ManagementClusterName, images)
+		} else {
+			clusterProvider = bootstrap.CreateKindBootstrapClusterAndLoadImages(ctx, input)
+		}
 		Expect(clusterProvider).ToNot(BeNil(), "Failed to create a bootstrap cluster")
 
 		kubeconfigPath = clusterProvider.GetKubeconfigPath()
@@ -249,6 +265,47 @@ func setupBootstrapCluster(config *clusterctl.E2EConfig, scheme *runtime.Scheme,
 	Expect(clusterProxy).ToNot(BeNil(), "Failed to get a bootstrap cluster proxy")
 
 	return clusterProvider, clusterProxy
+}
+
+func loadImagesWithDockerCLI(clusterName string, images []clusterctl.ContainerImage) {
+	archiveDir := filepath.Join(artifactFolder, "kind", "image-archives")
+	Expect(os.MkdirAll(archiveDir, 0o755)).To(Succeed())
+	defer os.RemoveAll(archiveDir)
+
+	nodes, err := kind.NewProvider().ListInternalNodes(clusterName)
+	Expect(err).NotTo(HaveOccurred())
+
+	for i, image := range images {
+		Byf("Loading image %q with the Docker CLI", image.Name)
+		archivePath, err := filepath.Abs(filepath.Join(archiveDir, fmt.Sprintf("image-%d.tar", i)))
+		Expect(err).NotTo(HaveOccurred())
+		windowsArchivePath, err := exec.CommandContext(ctx, "wslpath", "-w", archivePath).Output()
+		Expect(err).NotTo(HaveOccurred())
+
+		output, err := exec.CommandContext(
+			ctx,
+			"docker",
+			"save",
+			"--output",
+			strings.TrimSpace(string(windowsArchivePath)),
+			image.Name,
+		).CombinedOutput()
+		if err != nil {
+			if image.LoadBehavior == clusterctl.TryLoadImage {
+				fmt.Fprintf(GinkgoWriter, "WARNING: unable to save image %q: %v\n%s\n", image.Name, err, output)
+				continue
+			}
+			Expect(err).NotTo(HaveOccurred(), "Failed to save image %q:\n%s", image.Name, output)
+		}
+
+		for _, node := range nodes {
+			archive, err := os.Open(filepath.Clean(archivePath))
+			Expect(err).NotTo(HaveOccurred())
+			err = kindnodesutils.LoadImageArchive(node, archive)
+			Expect(archive.Close()).To(Succeed())
+			Expect(err).NotTo(HaveOccurred(), "Failed to load image %q into node %q", image.Name, node.String())
+		}
+	}
 }
 
 func initBootstrapCluster(bootstrapClusterProxy framework.ClusterProxy, config *clusterctl.E2EConfig, clusterctlConfig, artifactFolder string) {

@@ -1,0 +1,55 @@
+namespace: k3s-test-extension-system
+
+namePrefix: k3s-test-extension-
+
+labels:
+  - includeSelectors: true
+    pairs:
+      cluster.x-k8s.io/provider: runtime-extension-k3s-test
+
+resources:
+  - namespace.yaml
+  - manager.yaml
+  - service.yaml
+  - ../rbac
+  - ../certmanager
+
+patches:
+  - path: manager_image_patch.yaml
+  - path: manager_pull_policy.yaml
+  - path: manager_webhook_patch.yaml
+
+replacements:
+  - source:
+      kind: Service
+      name: webhook-service
+      version: v1
+      fieldPath: .metadata.name
+    targets:
+      - select:
+          group: cert-manager.io
+          kind: Certificate
+          version: v1
+        fieldPaths:
+          - .spec.dnsNames.0
+          - .spec.dnsNames.1
+        options:
+          create: true
+          delimiter: .
+  - source:
+      kind: Service
+      name: webhook-service
+      version: v1
+      fieldPath: .metadata.namespace
+    targets:
+      - select:
+          group: cert-manager.io
+          kind: Certificate
+          version: v1
+        fieldPaths:
+          - .spec.dnsNames.0
+          - .spec.dnsNames.1
+        options:
+          create: true
+          delimiter: .
+          index: 1

@@ -14,6 +14,24 @@ To run a specific e2e test, such as `[PR-Blocking]`, use the `GINKGO_FOCUS` envi
 ```shell
 make GINKGO_FOCUS="\\[PR-Blocking\\]" test-e2e  # only run e2e test with `[PR-Blocking]` in its spec name
 ```
+
+### Run the in-place update scenarios
+
+Build the provider and test Runtime Extension images, then run the focused scenarios:
+
+```shell
+make docker-build-e2e
+make GINKGO_FOCUS="\\[InPlaceUpdates\\]" test-e2e
+```
+
+To retain the management and workload resources for manual inspection:
+
+```shell
+make GINKGO_FOCUS="\\[InPlaceUpdates\\]" SKIP_RESOURCE_CLEANUP=true test-e2e
+```
+
+The test Runtime Extension deterministically fakes update progress. These scenarios validate Runtime SDK orchestration, hook evidence, identity preservation, and replacement fallback; they do not perform or claim a real K3s binary update.
+
 ## Develop an e2e test
 You could refer to [Developing E2E tests](https://cluster-api.sigs.k8s.io/developer/core/e2e) for a complete guide for developing e2e tests.
 

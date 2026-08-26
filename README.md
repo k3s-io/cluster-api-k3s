@@ -5,6 +5,8 @@ Cluster API Provider k3s provides the following [Cluster API](https://github.com
 - **Cluster API Bootstrap Provider k3s (CABP3)** is responsible for generating the instructions (and encoding them as cloud-init) to turn a Machine into a Kubernetes Node; this implementation brings up [k3s](https://k3s.io/) clusters instead of full kubernetes clusters.
 - **Cluster API ControlPlane Provider k3s (CACP3)** is responsible for managing the lifecycle of control plane machines for k3s; this implementation brings up [k3s](https://k3s.io/) clusters instead of full kubernetes clusters.
 
+See [In-place updates](docs/in-place-updates.md) for Runtime Extension requirements, rollout configuration, fallback behavior, and limitations.
+
 ## Getting Started
 
 **Warning**: Project and documentation are in an early stage, there is an assumption that a user of this provider is already familiar with Cluster API. Please consider contributing.

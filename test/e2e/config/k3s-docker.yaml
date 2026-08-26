@@ -10,6 +10,8 @@ images:
     loadBehavior: mustLoad
   - name: ghcr.io/k3s-io/cluster-api-k3s/bootstrap-controller:dev
     loadBehavior: mustLoad
+  - name: ghcr.io/k3s-io/cluster-api-k3s/test-extension:dev
+    loadBehavior: mustLoad
 
 providers:
   - name: cluster-api
@@ -110,6 +112,15 @@ providers:
         files:
           - sourcePath: "../data/shared/k3s/v1alpha1_provider/metadata.yaml"
             targetName: "metadata.yaml"
+  - name: k3s-test-extension
+    type: RuntimeExtensionProvider
+    versions:
+      - name: v0.0.99
+        value: ../../extension/config/default
+        contract: v1beta2
+        files:
+          - sourcePath: "../../extension/metadata.yaml"
+            targetName: "metadata.yaml"
 
 variables:
   KUBERNETES_VERSION_MANAGEMENT: "v1.33.0"
@@ -124,6 +135,8 @@ variables:
   # Enabling the feature flags by setting the env variables.
   CLUSTER_TOPOLOGY: "true"
   EXP_MACHINE_POOL: "true"
+  EXP_RUNTIME_SDK: "true"
+  EXP_IN_PLACE_UPDATES: "true"
 
 intervals:
   # The array is defined as [timeout, polling interval]
