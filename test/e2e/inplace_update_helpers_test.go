@@ -25,38 +25,66 @@ import (
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/util/validation"
 	runtimev1 "sigs.k8s.io/cluster-api/api/runtime/v1beta2"
 	"sigs.k8s.io/cluster-api/test/framework/clusterctl"
 )
 
-func TestAppendInPlaceExtensionNamespace(t *testing.T) {
-	config := &runtimev1.ExtensionConfig{
-		Spec: runtimev1.ExtensionConfigSpec{
-			NamespaceSelector: &metav1.LabelSelector{
-				MatchExpressions: []metav1.LabelSelectorRequirement{{
-					Key:      "kubernetes.io/metadata.name",
-					Operator: metav1.LabelSelectorOpIn,
-					Values:   []string{"scenario-1"},
-				}},
-			},
-		},
+func TestInPlaceExtensionConfigsAreUniqueAndDisjoint(t *testing.T) {
+	namespaces := []string{"scenario-1", "scenario-2"}
+	configs := []*runtimev1.ExtensionConfig{
+		inPlaceExtensionConfig(inPlaceExtensionConfigScenario1, namespaces[0]),
+		inPlaceExtensionConfig(inPlaceExtensionConfigScenario2, namespaces[1]),
 	}
 
-	if changed := appendInPlaceExtensionNamespace(config, "scenario-2"); !changed {
-		t.Fatal("expected namespace selector to change")
+	if configs[0].Name == configs[1].Name {
+		t.Fatalf("ExtensionConfig names must be unique, both were %q", configs[0].Name)
 	}
-	if changed := appendInPlaceExtensionNamespace(config, "scenario-1"); changed {
-		t.Fatal("expected duplicate namespace to be a no-op")
+	for i, config := range configs {
+		if errs := validation.IsDNS1123Subdomain(config.Name); len(errs) > 0 {
+			t.Fatalf("config %d has unsafe name %q: %v", i, config.Name, errs)
+		}
+		wantNamespace := namespaces[i]
+		selector, err := metav1.LabelSelectorAsSelector(config.Spec.NamespaceSelector)
+		if err != nil {
+			t.Fatalf("config %d selector is invalid: %v", i, err)
+		}
+		if !selector.Matches(labels.Set{"kubernetes.io/metadata.name": wantNamespace}) {
+			t.Fatalf("config %d selector does not match %q", i, wantNamespace)
+		}
+		otherNamespace := namespaces[1-i]
+		if selector.Matches(labels.Set{"kubernetes.io/metadata.name": otherNamespace}) {
+			t.Fatalf("config %d selector also matches %q", i, otherNamespace)
+		}
+		if got := config.Spec.Settings["callRecordNamespace"]; got != wantNamespace {
+			t.Fatalf("config %d callRecordNamespace = %q, want %q", i, got, wantNamespace)
+		}
+		if got := config.Spec.Settings["callRecordConfigMap"]; got != inPlaceCallRecordConfigMap {
+			t.Fatalf("config %d callRecordConfigMap = %q, want %q", i, got, inPlaceCallRecordConfigMap)
+		}
 	}
+}
 
-	got := config.Spec.NamespaceSelector.MatchExpressions[0]
-	want := metav1.LabelSelectorRequirement{
-		Key:      "kubernetes.io/metadata.name",
-		Operator: metav1.LabelSelectorOpIn,
-		Values:   []string{"scenario-1", "scenario-2"},
+func TestExtensionConfigDiscoveredForCurrentGeneration(t *testing.T) {
+	config := inPlaceExtensionConfig(inPlaceExtensionConfigScenario1, "scenario-1")
+	config.Generation = 2
+	config.Status.Conditions = []metav1.Condition{{
+		Type:               runtimev1.ExtensionConfigDiscoveredCondition,
+		Status:             metav1.ConditionTrue,
+		ObservedGeneration: 1,
+	}}
+
+	if extensionConfigDiscoveredForCurrentGeneration(config) {
+		t.Fatal("stale Discovered=True condition must not be accepted")
 	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("unexpected selector: got %#v, want %#v", got, want)
+	config.Status.Conditions[0].ObservedGeneration = config.Generation
+	if !extensionConfigDiscoveredForCurrentGeneration(config) {
+		t.Fatal("current Discovered=True condition should be accepted")
+	}
+	config.Status.Conditions[0].Status = metav1.ConditionFalse
+	if extensionConfigDiscoveredForCurrentGeneration(config) {
+		t.Fatal("current Discovered=False condition must not be accepted")
 	}
 }
 

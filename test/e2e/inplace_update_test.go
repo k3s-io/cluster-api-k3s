@@ -51,9 +51,11 @@ import (
 )
 
 const (
-	inPlaceCallRecordConfigMap = "k3s-in-place-hook-calls"
-	inPlaceSpecName            = "in-place-updates"
-	rotatedBootstrapTimeout    = 7 * time.Minute
+	inPlaceCallRecordConfigMap      = "k3s-in-place-hook-calls"
+	inPlaceSpecName                 = "in-place-updates"
+	inPlaceExtensionConfigScenario1 = "k3s-test-extension-scenario-1"
+	inPlaceExtensionConfigScenario2 = "k3s-test-extension-scenario-2"
+	rotatedBootstrapTimeout         = 7 * time.Minute
 )
 
 type machineIdentity struct {
@@ -99,6 +101,7 @@ var _ = Describe("In-place update via Runtime Extension [InPlaceUpdates] [PR-Blo
 		clusterctlLogFolder string
 		evidence            *inPlaceScenarioEvidence
 		evidencePath        string
+		extensionConfigName string
 	)
 
 	BeforeEach(func() {
@@ -109,6 +112,7 @@ var _ = Describe("In-place update via Runtime Extension [InPlaceUpdates] [PR-Blo
 		namespace, cancelWatches = setupSpecNamespace(testContext, inPlaceSpecName, bootstrapClusterProxy, artifactFolder)
 		result = new(ApplyClusterTemplateAndWaitResult)
 		clusterctlLogFolder = filepath.Join(artifactFolder, "clusters", bootstrapClusterProxy.GetName())
+		extensionConfigName = ""
 	})
 
 	AfterEach(func() {
@@ -116,8 +120,8 @@ var _ = Describe("In-place update via Runtime Extension [InPlaceUpdates] [PR-Blo
 			collectInPlaceCallRecord(testContext, bootstrapClusterProxy.GetClient(), namespace.Name, evidencePath, evidence)
 			writeInPlaceEvidence(evidencePath, evidence)
 		}
-		if !skipCleanup {
-			deleteInPlaceExtensionConfig(testContext, bootstrapClusterProxy.GetClient())
+		if !skipCleanup && extensionConfigName != "" {
+			deleteInPlaceExtensionConfig(testContext, bootstrapClusterProxy.GetClient(), extensionConfigName)
 		}
 
 		dumpSpecResourcesAndCleanup(testContext, cleanupInput{
@@ -139,8 +143,9 @@ var _ = Describe("In-place update via Runtime Extension [InPlaceUpdates] [PR-Blo
 			FinalConditions: map[string][]metav1.Condition{},
 		}
 		evidencePath = filepath.Join(artifactFolder, "in-place-updates", "scenario-1.json")
+		extensionConfigName = inPlaceExtensionConfigScenario1
 
-		createInPlaceCallRecorderAndExtension(testContext, bootstrapClusterProxy.GetClient(), namespace.Name)
+		createInPlaceCallRecorderAndExtension(testContext, bootstrapClusterProxy.GetClient(), extensionConfigName, namespace.Name)
 
 		applyInPlaceWorkloadCluster(testContext, namespace.Name, clusterName, clusterctlLogFolder, 1, result)
 
@@ -191,8 +196,9 @@ var _ = Describe("In-place update via Runtime Extension [InPlaceUpdates] [PR-Blo
 			FinalConditions: map[string][]metav1.Condition{},
 		}
 		evidencePath = filepath.Join(artifactFolder, "in-place-updates", "scenario-2.json")
+		extensionConfigName = inPlaceExtensionConfigScenario2
 
-		createInPlaceCallRecorderAndExtension(testContext, bootstrapClusterProxy.GetClient(), namespace.Name)
+		createInPlaceCallRecorderAndExtension(testContext, bootstrapClusterProxy.GetClient(), extensionConfigName, namespace.Name)
 
 		applyInPlaceWorkloadCluster(testContext, namespace.Name, clusterName, clusterctlLogFolder, 3, result)
 
@@ -286,10 +292,10 @@ func applyInPlaceWorkloadCluster(
 	}, result)
 }
 
-func inPlaceExtensionConfig(namespace string) *runtimev1.ExtensionConfig {
+func inPlaceExtensionConfig(name, namespace string) *runtimev1.ExtensionConfig {
 	return &runtimev1.ExtensionConfig{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "k3s-test-extension",
+			Name: name,
 			Annotations: map[string]string{
 				runtimev1.InjectCAFromSecretAnnotation: "k3s-test-extension-system/k3s-test-extension-webhook-service-cert",
 			},
@@ -302,11 +308,9 @@ func inPlaceExtensionConfig(namespace string) *runtimev1.ExtensionConfig {
 				},
 			},
 			NamespaceSelector: &metav1.LabelSelector{
-				MatchExpressions: []metav1.LabelSelectorRequirement{{
-					Key:      "kubernetes.io/metadata.name",
-					Operator: metav1.LabelSelectorOpIn,
-					Values:   []string{namespace},
-				}},
+				MatchLabels: map[string]string{
+					"kubernetes.io/metadata.name": namespace,
+				},
 			},
 			Settings: map[string]string{
 				"callRecordNamespace": namespace,
@@ -316,98 +320,38 @@ func inPlaceExtensionConfig(namespace string) *runtimev1.ExtensionConfig {
 	}
 }
 
-func createInPlaceCallRecorderAndExtension(ctx context.Context, c client.Client, namespace string) {
+func createInPlaceCallRecorderAndExtension(ctx context.Context, c client.Client, name, namespace string) {
 	Expect(c.Create(ctx, &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: namespace,
 			Name:      inPlaceCallRecordConfigMap,
 		},
 	})).To(Succeed())
-	Eventually(func() error {
-		extensionConfig := &runtimev1.ExtensionConfig{}
-		err := c.Get(ctx, client.ObjectKey{Name: "k3s-test-extension"}, extensionConfig)
-		if apierrors.IsNotFound(err) {
-			return c.Create(ctx, inPlaceExtensionConfig(namespace))
-		}
-		if err != nil {
-			return err
-		}
-
-		original := extensionConfig.DeepCopy()
-		appendInPlaceExtensionNamespace(extensionConfig, namespace)
-		extensionConfig.Spec.Settings = map[string]string{
-			"callRecordNamespace": namespace,
-			"callRecordConfigMap": inPlaceCallRecordConfigMap,
-		}
-		return c.Patch(ctx, extensionConfig, client.MergeFrom(original))
-	}, time.Minute, time.Second).Should(Succeed())
+	Expect(c.Create(ctx, inPlaceExtensionConfig(name, namespace))).To(Succeed())
 
 	Eventually(func() (bool, error) {
 		extensionConfig := &runtimev1.ExtensionConfig{}
-		if err := c.Get(ctx, client.ObjectKey{Name: "k3s-test-extension"}, extensionConfig); err != nil {
+		if err := c.Get(ctx, client.ObjectKey{Name: name}, extensionConfig); err != nil {
 			return false, err
 		}
-		condition := meta.FindStatusCondition(extensionConfig.Status.Conditions, runtimev1.ExtensionConfigDiscoveredCondition)
-		return condition != nil && condition.Status == metav1.ConditionTrue, nil
+		return extensionConfigDiscoveredForCurrentGeneration(extensionConfig), nil
 	}, 3*time.Minute, time.Second).Should(BeTrue(), "Runtime Extension was not discovered")
 }
 
-func appendInPlaceExtensionNamespace(config *runtimev1.ExtensionConfig, namespace string) bool {
-	if config.Spec.NamespaceSelector == nil {
-		config.Spec.NamespaceSelector = &metav1.LabelSelector{}
-	}
-
-	namespaces := []string{}
-	convertedMatchLabel := false
-	if existing := config.Spec.NamespaceSelector.MatchLabels["kubernetes.io/metadata.name"]; existing != "" {
-		namespaces = append(namespaces, existing)
-		delete(config.Spec.NamespaceSelector.MatchLabels, "kubernetes.io/metadata.name")
-		convertedMatchLabel = true
-	}
-
-	requirementIndex := -1
-	for i := range config.Spec.NamespaceSelector.MatchExpressions {
-		requirement := &config.Spec.NamespaceSelector.MatchExpressions[i]
-		if requirement.Key == "kubernetes.io/metadata.name" && requirement.Operator == metav1.LabelSelectorOpIn {
-			requirementIndex = i
-			namespaces = append(namespaces, requirement.Values...)
-			break
-		}
-	}
-
-	for _, existing := range namespaces {
-		if existing == namespace {
-			if requirementIndex == -1 {
-				config.Spec.NamespaceSelector.MatchExpressions = append(config.Spec.NamespaceSelector.MatchExpressions, metav1.LabelSelectorRequirement{
-					Key:      "kubernetes.io/metadata.name",
-					Operator: metav1.LabelSelectorOpIn,
-					Values:   namespaces,
-				})
-				return true
-			}
-			return convertedMatchLabel
-		}
-	}
-	namespaces = append(namespaces, namespace)
-	if requirementIndex == -1 {
-		config.Spec.NamespaceSelector.MatchExpressions = append(config.Spec.NamespaceSelector.MatchExpressions, metav1.LabelSelectorRequirement{
-			Key:      "kubernetes.io/metadata.name",
-			Operator: metav1.LabelSelectorOpIn,
-			Values:   namespaces,
-		})
-		return true
-	}
-	config.Spec.NamespaceSelector.MatchExpressions[requirementIndex].Values = namespaces
-	return true
+func extensionConfigDiscoveredForCurrentGeneration(config *runtimev1.ExtensionConfig) bool {
+	condition := meta.FindStatusCondition(config.Status.Conditions, runtimev1.ExtensionConfigDiscoveredCondition)
+	return condition != nil &&
+		condition.Status == metav1.ConditionTrue &&
+		condition.ObservedGeneration == config.Generation
 }
 
-func deleteInPlaceExtensionConfig(ctx context.Context, c client.Client) {
-	extensionConfig := &runtimev1.ExtensionConfig{ObjectMeta: metav1.ObjectMeta{Name: "k3s-test-extension"}}
+func deleteInPlaceExtensionConfig(ctx context.Context, c client.Client, name string) {
+	extensionConfig := &runtimev1.ExtensionConfig{ObjectMeta: metav1.ObjectMeta{Name: name}}
 	if err := c.Delete(ctx, extensionConfig); err != nil && !apierrors.IsNotFound(err) {
 		Expect(err).NotTo(HaveOccurred())
 	}
 	Eventually(func() bool {
-		err := c.Get(ctx, client.ObjectKey{Name: "k3s-test-extension"}, extensionConfig)
+		err := c.Get(ctx, client.ObjectKey{Name: name}, extensionConfig)
 		return apierrors.IsNotFound(err)
 	}, time.Minute, time.Second).Should(BeTrue(), "ExtensionConfig was not deleted")
 }
