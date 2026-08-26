@@ -19,13 +19,19 @@ package controllers
 import (
 	"context"
 	"testing"
+	"time"
 
+	"github.com/go-logr/logr"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
+	"k8s.io/utils/ptr"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/util/collections"
 	"sigs.k8s.io/cluster-api/util/conditions"
@@ -36,6 +42,139 @@ import (
 	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
 	"github.com/k3s-io/cluster-api-k3s/pkg/k3s"
 )
+
+func TestReconcileDeleteToleratesMissingInfrastructureTemplate(t *testing.T) {
+	g := NewWithT(t)
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	g.Expect(corev1.AddToScheme(scheme)).To(Succeed())
+	g.Expect(apiextensionsv1.AddToScheme(scheme)).To(Succeed())
+	g.Expect(clusterv1.AddToScheme(scheme)).To(Succeed())
+	g.Expect(bootstrapv1.AddToScheme(scheme)).To(Succeed())
+	g.Expect(controlplanev1.AddToScheme(scheme)).To(Succeed())
+
+	cluster := &clusterv1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "cluster-1", Namespace: "default", UID: types.UID("cluster-uid")},
+	}
+	deletionTimestamp := metav1.NewTime(time.Now())
+	kcp := &controlplanev1.KThreesControlPlane{
+		TypeMeta: metav1.TypeMeta{APIVersion: controlplanev1.GroupVersion.String(), Kind: "KThreesControlPlane"},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:              "kcp-1",
+			Namespace:         "default",
+			UID:               types.UID("kcp-uid"),
+			DeletionTimestamp: &deletionTimestamp,
+			Finalizers:        []string{controlplanev1.KThreesControlPlaneFinalizer},
+			OwnerReferences: []metav1.OwnerReference{{
+				APIVersion: clusterv1.GroupVersion.String(),
+				Kind:       "Cluster",
+				Name:       cluster.Name,
+				UID:        cluster.UID,
+				Controller: ptr.To(true),
+			}},
+		},
+		Spec: controlplanev1.KThreesControlPlaneSpec{
+			Replicas: ptr.To[int32](1),
+			Version:  "v1.31.1+k3s1",
+			MachineTemplate: controlplanev1.KThreesControlPlaneMachineTemplate{
+				InfrastructureRef: corev1.ObjectReference{
+					APIVersion: "infrastructure.cluster.x-k8s.io/v1beta1",
+					Kind:       "TestMachineTemplate",
+					Name:       "missing-template",
+				},
+			},
+		},
+	}
+	machine := &clusterv1.Machine{
+		TypeMeta: metav1.TypeMeta{APIVersion: clusterv1.GroupVersion.String(), Kind: "Machine"},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "machine-1",
+			Namespace:  "default",
+			Finalizers: []string{"test.machine.finalizer"},
+			Labels:     map[string]string{clusterv1.ClusterNameLabel: cluster.Name},
+			OwnerReferences: []metav1.OwnerReference{{
+				APIVersion: controlplanev1.GroupVersion.String(),
+				Kind:       "KThreesControlPlane",
+				Name:       kcp.Name,
+				UID:        kcp.UID,
+				Controller: ptr.To(true),
+			}},
+		},
+		Spec: clusterv1.MachineSpec{
+			ClusterName: cluster.Name,
+			Version:     kcp.Spec.Version,
+			InfrastructureRef: clusterv1.ContractVersionedObjectReference{
+				APIGroup: "infrastructure.cluster.x-k8s.io",
+				Kind:     "TestMachine",
+				Name:     "infra-1",
+			},
+			Bootstrap: clusterv1.Bootstrap{ConfigRef: clusterv1.ContractVersionedObjectReference{
+				APIGroup: bootstrapv1.GroupVersion.Group,
+				Kind:     "KThreesConfig",
+				Name:     "bootstrap-1",
+			}},
+		},
+	}
+	config := &bootstrapv1.KThreesConfig{
+		ObjectMeta: metav1.ObjectMeta{Name: "bootstrap-1", Namespace: "default"},
+	}
+	infra := &unstructured.Unstructured{Object: map[string]interface{}{
+		"apiVersion": "infrastructure.cluster.x-k8s.io/v1beta1",
+		"kind":       "TestMachine",
+		"metadata": map[string]interface{}{
+			"name":      "infra-1",
+			"namespace": "default",
+			"annotations": map[string]interface{}{
+				clusterv1.TemplateClonedFromNameAnnotation:      "missing-template",
+				clusterv1.TemplateClonedFromGroupKindAnnotation: "TestMachineTemplate.infrastructure.cluster.x-k8s.io",
+			},
+		},
+	}}
+	templateCRD := &apiextensionsv1.CustomResourceDefinition{ObjectMeta: metav1.ObjectMeta{
+		Name: "testmachinetemplates.infrastructure.cluster.x-k8s.io",
+		Labels: map[string]string{
+			clusterv1.GroupVersion.String(): "v1beta1",
+		},
+	}}
+	machineCRD := &apiextensionsv1.CustomResourceDefinition{ObjectMeta: metav1.ObjectMeta{
+		Name: "testmachines.infrastructure.cluster.x-k8s.io",
+		Labels: map[string]string{
+			clusterv1.GroupVersion.String(): "v1beta1",
+		},
+	}}
+
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&clusterv1.Machine{}, &controlplanev1.KThreesControlPlane{}).
+		WithObjects(cluster, kcp, machine, config, infra, templateCRD, machineCRD).
+		Build()
+	managementCluster := &k3s.Management{Client: c}
+	r := &KThreesControlPlaneReconciler{
+		Client:            c,
+		Log:               logr.Discard(),
+		recorder:          record.NewFakeRecorder(10),
+		managementCluster: managementCluster,
+	}
+
+	_, err := r.reconcileDelete(ctx, cluster, kcp)
+	g.Expect(err).NotTo(HaveOccurred())
+
+	deletingMachine := &clusterv1.Machine{}
+	g.Expect(c.Get(ctx, client.ObjectKeyFromObject(machine), deletingMachine)).To(Succeed())
+	g.Expect(deletingMachine.DeletionTimestamp.IsZero()).To(BeFalse())
+	g.Expect(r.updateStatus(ctx, kcp, cluster)).To(Succeed())
+
+	deletingMachine.Finalizers = nil
+	g.Expect(c.Update(ctx, deletingMachine)).To(Succeed())
+	g.Eventually(func() bool {
+		err := c.Get(ctx, client.ObjectKeyFromObject(machine), &clusterv1.Machine{})
+		return apierrors.IsNotFound(err)
+	}).Should(BeTrue())
+
+	_, err = r.reconcileDelete(ctx, cluster, kcp)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(kcp.Finalizers).NotTo(ContainElement(controlplanev1.KThreesControlPlaneFinalizer))
+}
 
 func TestReconcileMachineUpToDateCondition(t *testing.T) {
 	tests := []struct {

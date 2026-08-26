@@ -116,25 +116,32 @@ var _ = Describe("In-place update via Runtime Extension [InPlaceUpdates] [PR-Blo
 	})
 
 	AfterEach(func() {
-		if evidence != nil {
-			collectInPlaceCallRecord(testContext, bootstrapClusterProxy.GetClient(), namespace.Name, evidencePath, evidence)
-			writeInPlaceEvidence(evidencePath, evidence)
-		}
-		if !skipCleanup && extensionConfigName != "" {
-			deleteInPlaceExtensionConfig(testContext, bootstrapClusterProxy.GetClient(), extensionConfigName)
-		}
-
-		dumpSpecResourcesAndCleanup(testContext, cleanupInput{
-			SpecName:             inPlaceSpecName,
-			Cluster:              result.Cluster,
-			ClusterProxy:         bootstrapClusterProxy,
-			ClusterctlConfigPath: clusterctlConfigPath,
-			Namespace:            namespace,
-			CancelWatches:        cancelWatches,
-			IntervalsGetter:      e2eConfig.GetIntervals,
-			SkipCleanup:          skipCleanup,
-			ArtifactFolder:       artifactFolder,
-		})
+		runInPlaceAfterEach(
+			func() {
+				if evidence != nil {
+					collectInPlaceCallRecord(testContext, bootstrapClusterProxy.GetClient(), namespace.Name, evidencePath, evidence)
+					writeInPlaceEvidence(evidencePath, evidence)
+				}
+			},
+			func() {
+				if !skipCleanup && extensionConfigName != "" {
+					deleteInPlaceExtensionConfig(testContext, bootstrapClusterProxy.GetClient(), extensionConfigName)
+				}
+			},
+			func() {
+				dumpSpecResourcesAndCleanup(testContext, cleanupInput{
+					SpecName:             inPlaceSpecName,
+					Cluster:              result.Cluster,
+					ClusterProxy:         bootstrapClusterProxy,
+					ClusterctlConfigPath: clusterctlConfigPath,
+					Namespace:            namespace,
+					CancelWatches:        cancelWatches,
+					IntervalsGetter:      e2eConfig.GetIntervals,
+					SkipCleanup:          skipCleanup,
+					ArtifactFolder:       artifactFolder,
+				})
+			},
+		)
 	})
 
 	It("preserves Machine identity for a supported version update", func() {
@@ -264,6 +271,12 @@ var _ = Describe("In-place update via Runtime Extension [InPlaceUpdates] [PR-Blo
 		writeInPlaceEvidence(evidencePath, evidence)
 	})
 })
+
+func runInPlaceAfterEach(collectEvidence, deleteExtensionConfig, cleanupResources func()) {
+	defer cleanupResources()
+	defer deleteExtensionConfig()
+	collectEvidence()
+}
 
 func applyInPlaceWorkloadCluster(
 	ctx context.Context,

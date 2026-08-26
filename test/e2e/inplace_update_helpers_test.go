@@ -24,12 +24,46 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/validation"
 	runtimev1 "sigs.k8s.io/cluster-api/api/runtime/v1beta2"
 	"sigs.k8s.io/cluster-api/test/framework/clusterctl"
 )
+
+func TestRunInPlaceAfterEachCleansUpAfterEvidenceFailure(t *testing.T) {
+	cleanupCalls := []string{}
+	assertion := gomega.NewGomega(func(message string, _ ...int) {
+		panic(message)
+	})
+
+	var failure any
+	func() {
+		defer func() {
+			failure = recover()
+		}()
+		runInPlaceAfterEach(
+			func() {
+				assertion.Expect(errors.New("call-record ConfigMap unavailable")).NotTo(gomega.HaveOccurred())
+			},
+			func() {
+				cleanupCalls = append(cleanupCalls, "extension config")
+			},
+			func() {
+				cleanupCalls = append(cleanupCalls, "cluster namespace and watches")
+			},
+		)
+	}()
+
+	if failure == nil {
+		t.Fatal("expected evidence collection to fail")
+	}
+	want := []string{"extension config", "cluster namespace and watches"}
+	if !reflect.DeepEqual(cleanupCalls, want) {
+		t.Fatalf("cleanup calls = %#v, want %#v", cleanupCalls, want)
+	}
+}
 
 func TestInPlaceExtensionConfigsAreUniqueAndDisjoint(t *testing.T) {
 	namespaces := []string{"scenario-1", "scenario-2"}

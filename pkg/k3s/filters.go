@@ -21,6 +21,7 @@ import (
 	"fmt"
 
 	"github.com/pkg/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
@@ -128,22 +129,27 @@ func UpToDate(
 		result.CurrentInfraMachine = currentInfra
 		desiredInfra, err := desiredstate.ComputeDesiredInfraMachine(ctx, c, kcp, cluster, currentInfra.GetName(), currentInfra)
 		if err != nil {
-			return false, nil, errors.Wrapf(err, "failed to compute desired InfraMachine for Machine %s", machine.Name)
-		}
-		result.DesiredInfraMachine = desiredInfra
-		annotations := currentInfra.GetAnnotations()
-		clonedFromName, hasName := annotations[clusterv1.TemplateClonedFromNameAnnotation]
-		clonedFromGroupKind, hasGroupKind := annotations[clusterv1.TemplateClonedFromGroupKindAnnotation]
-		desiredTemplateRef := kcp.Spec.MachineTemplate.InfrastructureRef
-		if hasName && hasGroupKind &&
-			(clonedFromName != desiredTemplateRef.Name ||
-				clonedFromGroupKind != desiredTemplateRef.GroupVersionKind().GroupKind().String()) {
-			result.LogMessages = append(result.LogMessages, fmt.Sprintf(
-				"Infrastructure template rotated from %s %s to %s %s",
-				clonedFromGroupKind, clonedFromName,
-				desiredTemplateRef.GroupVersionKind().GroupKind().String(), desiredTemplateRef.Name,
-			))
-			result.ConditionMessages = append(result.ConditionMessages, fmt.Sprintf("%s is not up-to-date", machine.Spec.InfrastructureRef.Kind))
+			if !kcp.DeletionTimestamp.IsZero() && apierrors.IsNotFound(err) {
+				result.EligibleForInPlaceUpdate = false
+			} else {
+				return false, nil, errors.Wrapf(err, "failed to compute desired InfraMachine for Machine %s", machine.Name)
+			}
+		} else {
+			result.DesiredInfraMachine = desiredInfra
+			annotations := currentInfra.GetAnnotations()
+			clonedFromName, hasName := annotations[clusterv1.TemplateClonedFromNameAnnotation]
+			clonedFromGroupKind, hasGroupKind := annotations[clusterv1.TemplateClonedFromGroupKindAnnotation]
+			desiredTemplateRef := kcp.Spec.MachineTemplate.InfrastructureRef
+			if hasName && hasGroupKind &&
+				(clonedFromName != desiredTemplateRef.Name ||
+					clonedFromGroupKind != desiredTemplateRef.GroupVersionKind().GroupKind().String()) {
+				result.LogMessages = append(result.LogMessages, fmt.Sprintf(
+					"Infrastructure template rotated from %s %s to %s %s",
+					clonedFromGroupKind, clonedFromName,
+					desiredTemplateRef.GroupVersionKind().GroupKind().String(), desiredTemplateRef.Name,
+				))
+				result.ConditionMessages = append(result.ConditionMessages, fmt.Sprintf("%s is not up-to-date", machine.Spec.InfrastructureRef.Kind))
+			}
 		}
 	}
 
