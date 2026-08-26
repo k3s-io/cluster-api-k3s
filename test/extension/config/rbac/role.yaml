@@ -13,18 +13,25 @@ rules:
       - patch
       - update
   - apiGroups:
+      - cluster.x-k8s.io
+    resources:
+      - machines
+    verbs:
+      - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: leader-election-role
+  namespace: system
+rules:
+  - apiGroups:
       - ""
     resources:
       - events
     verbs:
       - create
       - patch
-  - apiGroups:
-      - cluster.x-k8s.io
-    resources:
-      - machines
-    verbs:
-      - get
   - apiGroups:
       - coordination.k8s.io
     resources:

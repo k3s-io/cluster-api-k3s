@@ -13,7 +13,8 @@
 # limitations under the License.
 
 # Build the manager binary
-FROM --platform=${BUILDPLATFORM} docker.io/library/golang:1.26.2 as build
+ARG builder_image=docker.io/library/golang:1.26.2
+FROM --platform=${BUILDPLATFORM} ${builder_image} as build
 ARG TARGETOS TARGETARCH
 ARG package
 

@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"strconv"
+	"sync"
 	"testing"
 
 	. "github.com/onsi/gomega"
@@ -173,6 +174,31 @@ func TestDoUpdateMachineFailsWhenCallCannotBeRecorded(t *testing.T) {
 
 	g.Expect(resp.Status).To(Equal(runtimehooksv1.ResponseStatusFailure))
 	g.Expect(resp.Message).To(ContainSubstring("record UpdateMachine call"))
+}
+
+func TestDoCanUpdateMachineDoesNotLoseConcurrentCallRecords(t *testing.T) {
+	g := NewWithT(t)
+	h, c := newHandlers(t)
+
+	const calls = 10
+	responses := make(chan *runtimehooksv1.CanUpdateMachineResponse, calls)
+	var waitGroup sync.WaitGroup
+	for range calls {
+		waitGroup.Add(1)
+		go func() {
+			defer waitGroup.Done()
+			resp := &runtimehooksv1.CanUpdateMachineResponse{}
+			h.DoCanUpdateMachine(context.Background(), canUpdateRequest("v1.34.5+k3s1"), resp)
+			responses <- resp
+		}()
+	}
+	waitGroup.Wait()
+	close(responses)
+
+	for resp := range responses {
+		g.Expect(resp.Status).To(Equal(runtimehooksv1.ResponseStatusSuccess))
+	}
+	g.Expect(callCount(t, c, "machine-1.canUpdateMachine")).To(Equal(calls))
 }
 
 func newHandlers(t *testing.T) (*ExtensionHandlers, client.Client) {

@@ -246,6 +246,32 @@ func TestCanUpdateMachineCallsExtensionWhenDesiredInfraDryRunRejectsImmutableCha
 	g.Expect(runtimeClient.callCount).To(Equal(1))
 }
 
+func TestCanUpdateMachineReturnsDesiredInfraRBACDryRunError(t *testing.T) {
+	g := NewWithT(t)
+	utilfeature.SetFeatureGateDuringTest(t, feature.Gates, feature.InPlaceUpdates, true)
+	machine, result, c := canUpdateFixtures(t)
+	result.DesiredInfraMachine.Object["spec"] = map[string]interface{}{"size": "large"}
+	runtimeClient := &fakeRuntimeClient{handlers: []string{"handler"}}
+	r := &KThreesControlPlaneReconciler{
+		Client: &nthInfraPatchErrorClient{
+			Client: c,
+			failAt: 2,
+			err: apierrors.NewForbidden(
+				schema.GroupResource{Group: "infrastructure.cluster.x-k8s.io", Resource: "testmachines"},
+				"infra-1",
+				errors.New("RBAC denied"),
+			),
+		},
+		RuntimeClient: runtimeClient,
+	}
+
+	canUpdate, err := r.canUpdateMachine(context.Background(), machine, result)
+
+	g.Expect(err).To(MatchError(ContainSubstring("server side apply dry-run failed for desired InfraMachine")))
+	g.Expect(canUpdate).To(BeFalse())
+	g.Expect(runtimeClient.callCount).To(BeZero())
+}
+
 func canUpdateFixtures(t *testing.T) (*clusterv1.Machine, k3s.UpToDateResult, client.Client) {
 	t.Helper()
 	g := NewWithT(t)

@@ -49,7 +49,10 @@ import (
 	dockerinfrav1 "sigs.k8s.io/cluster-api/test/infrastructure/docker/api/v1beta1"
 )
 
-const inPlaceCallRecordConfigMap = "k3s-in-place-hook-calls"
+const (
+	inPlaceCallRecordConfigMap = "k3s-in-place-hook-calls"
+	inPlaceSpecName            = "in-place-updates"
+)
 
 type machineIdentity struct {
 	Name string    `json:"name"`
@@ -75,8 +78,6 @@ type inPlaceScenarioEvidence struct {
 }
 
 var _ = Describe("In-place update via Runtime Extension [InPlaceUpdates] [PR-Blocking]", Serial, func() {
-	const specName = "in-place-updates"
-
 	var (
 		testContext         = context.TODO()
 		namespace           *corev1.Namespace
@@ -93,7 +94,7 @@ var _ = Describe("In-place update via Runtime Extension [InPlaceUpdates] [PR-Blo
 		Expect(e2eConfig.Variables).To(HaveKey(KubernetesVersionUpgradeTo))
 
 		clusterName = fmt.Sprintf("capik3s-in-place-%s", util.RandomString(6))
-		namespace, cancelWatches = setupSpecNamespace(testContext, specName, bootstrapClusterProxy, artifactFolder)
+		namespace, cancelWatches = setupSpecNamespace(testContext, inPlaceSpecName, bootstrapClusterProxy, artifactFolder)
 		result = new(ApplyClusterTemplateAndWaitResult)
 		clusterctlLogFolder = filepath.Join(artifactFolder, "clusters", bootstrapClusterProxy.GetName())
 	})
@@ -103,10 +104,12 @@ var _ = Describe("In-place update via Runtime Extension [InPlaceUpdates] [PR-Blo
 			collectInPlaceCallRecord(testContext, bootstrapClusterProxy.GetClient(), namespace.Name, evidencePath, evidence)
 			writeInPlaceEvidence(evidencePath, evidence)
 		}
-		deleteInPlaceExtensionConfig(testContext, bootstrapClusterProxy.GetClient())
+		if !skipCleanup {
+			deleteInPlaceExtensionConfig(testContext, bootstrapClusterProxy.GetClient())
+		}
 
 		dumpSpecResourcesAndCleanup(testContext, cleanupInput{
-			SpecName:             specName,
+			SpecName:             inPlaceSpecName,
 			Cluster:              result.Cluster,
 			ClusterProxy:         bootstrapClusterProxy,
 			ClusterctlConfigPath: clusterctlConfigPath,
@@ -127,29 +130,14 @@ var _ = Describe("In-place update via Runtime Extension [InPlaceUpdates] [PR-Blo
 
 		createInPlaceCallRecorderAndExtension(testContext, bootstrapClusterProxy.GetClient(), namespace.Name)
 
-		ApplyClusterTemplateAndWait(testContext, ApplyClusterTemplateAndWaitInput{
-			ClusterProxy: bootstrapClusterProxy,
-			ConfigCluster: clusterctl.ConfigClusterInput{
-				LogFolder:                clusterctlLogFolder,
-				ClusterctlConfigPath:     clusterctlConfigPath,
-				KubeconfigPath:           bootstrapClusterProxy.GetKubeconfigPath(),
-				InfrastructureProvider:   "docker",
-				Namespace:                namespace.Name,
-				ClusterName:              clusterName,
-				KubernetesVersion:        e2eConfig.MustGetVariable(KubernetesVersion),
-				ControlPlaneMachineCount: ptr.To[int64](1),
-				WorkerMachineCount:       ptr.To[int64](0),
-			},
-			WaitForClusterIntervals:      e2eConfig.GetIntervals(specName, "wait-cluster"),
-			WaitForControlPlaneIntervals: e2eConfig.GetIntervals(specName, "wait-control-plane"),
-			WaitForMachineDeployments:    e2eConfig.GetIntervals(specName, "wait-worker-nodes"),
-		}, result)
+		applyInPlaceWorkloadCluster(testContext, namespace.Name, clusterName, clusterctlLogFolder, 1, result)
 
 		mgmtClient := bootstrapClusterProxy.GetClient()
 		kcpKey := types.NamespacedName{Namespace: result.ControlPlane.Namespace, Name: result.ControlPlane.Name}
 		patchKThreesControlPlane(testContext, mgmtClient, kcpKey, func(kcp *controlplanev1.KThreesControlPlane) {
 			setZeroSurge(kcp)
 		})
+		waitForZeroSurge(testContext, mgmtClient, kcpKey)
 
 		original := getSingleControlPlaneMachine(testContext, mgmtClient, result.Cluster)
 		evidence.Original = []machineIdentity{identityForMachine(original)}
@@ -166,9 +154,11 @@ var _ = Describe("In-place update via Runtime Extension [InPlaceUpdates] [PR-Blo
 			original,
 			targetVersion,
 			evidence,
-			e2eConfig.GetIntervals(specName, "wait-control-plane"),
 		)
 
+		finalMachines := getControlPlaneMachines(testContext, mgmtClient, result.Cluster)
+		Expect(finalMachines).To(HaveLen(1))
+		Expect(identityForMachine(&finalMachines[0])).To(Equal(identityForMachine(original)))
 		Expect(identityForMachine(finalMachine)).To(Equal(identityForMachine(original)))
 		assertNoInPlaceAnnotations(testContext, mgmtClient, finalMachine)
 		Expect(machineCondition(finalMachine, clusterv1.MachineUpToDateCondition).Status).To(Equal(metav1.ConditionTrue))
@@ -191,26 +181,14 @@ var _ = Describe("In-place update via Runtime Extension [InPlaceUpdates] [PR-Blo
 
 		createInPlaceCallRecorderAndExtension(testContext, bootstrapClusterProxy.GetClient(), namespace.Name)
 
-		ApplyClusterTemplateAndWait(testContext, ApplyClusterTemplateAndWaitInput{
-			ClusterProxy: bootstrapClusterProxy,
-			ConfigCluster: clusterctl.ConfigClusterInput{
-				LogFolder:                clusterctlLogFolder,
-				ClusterctlConfigPath:     clusterctlConfigPath,
-				KubeconfigPath:           bootstrapClusterProxy.GetKubeconfigPath(),
-				InfrastructureProvider:   "docker",
-				Namespace:                namespace.Name,
-				ClusterName:              clusterName,
-				KubernetesVersion:        e2eConfig.MustGetVariable(KubernetesVersion),
-				ControlPlaneMachineCount: ptr.To[int64](3),
-				WorkerMachineCount:       ptr.To[int64](0),
-			},
-			WaitForClusterIntervals:      e2eConfig.GetIntervals(specName, "wait-cluster"),
-			WaitForControlPlaneIntervals: e2eConfig.GetIntervals(specName, "wait-control-plane"),
-			WaitForMachineDeployments:    e2eConfig.GetIntervals(specName, "wait-worker-nodes"),
-		}, result)
+		applyInPlaceWorkloadCluster(testContext, namespace.Name, clusterName, clusterctlLogFolder, 3, result)
 
 		mgmtClient := bootstrapClusterProxy.GetClient()
 		kcpKey := types.NamespacedName{Namespace: result.ControlPlane.Namespace, Name: result.ControlPlane.Name}
+		patchKThreesControlPlane(testContext, mgmtClient, kcpKey, func(kcp *controlplanev1.KThreesControlPlane) {
+			setZeroSurge(kcp)
+		})
+		waitForZeroSurge(testContext, mgmtClient, kcpKey)
 
 		originalMachines := getControlPlaneMachines(testContext, mgmtClient, result.Cluster)
 		Expect(originalMachines).To(HaveLen(3))
@@ -254,6 +232,33 @@ var _ = Describe("In-place update via Runtime Extension [InPlaceUpdates] [PR-Blo
 	})
 })
 
+func applyInPlaceWorkloadCluster(
+	ctx context.Context,
+	namespace string,
+	clusterName string,
+	clusterctlLogFolder string,
+	controlPlaneReplicas int64,
+	result *ApplyClusterTemplateAndWaitResult,
+) {
+	ApplyClusterTemplateAndWait(ctx, ApplyClusterTemplateAndWaitInput{
+		ClusterProxy: bootstrapClusterProxy,
+		ConfigCluster: clusterctl.ConfigClusterInput{
+			LogFolder:                clusterctlLogFolder,
+			ClusterctlConfigPath:     clusterctlConfigPath,
+			KubeconfigPath:           bootstrapClusterProxy.GetKubeconfigPath(),
+			InfrastructureProvider:   "docker",
+			Namespace:                namespace,
+			ClusterName:              clusterName,
+			KubernetesVersion:        e2eConfig.MustGetVariable(KubernetesVersion),
+			ControlPlaneMachineCount: ptr.To(controlPlaneReplicas),
+			WorkerMachineCount:       ptr.To[int64](0),
+		},
+		WaitForClusterIntervals:      e2eConfig.GetIntervals(inPlaceSpecName, "wait-cluster"),
+		WaitForControlPlaneIntervals: e2eConfig.GetIntervals(inPlaceSpecName, "wait-control-plane"),
+		WaitForMachineDeployments:    e2eConfig.GetIntervals(inPlaceSpecName, "wait-worker-nodes"),
+	}, result)
+}
+
 func inPlaceExtensionConfig(namespace string) *runtimev1.ExtensionConfig {
 	return &runtimev1.ExtensionConfig{
 		ObjectMeta: metav1.ObjectMeta{
@@ -289,6 +294,7 @@ func createInPlaceCallRecorderAndExtension(ctx context.Context, c client.Client,
 			Name:      inPlaceCallRecordConfigMap,
 		},
 	})).To(Succeed())
+	deleteInPlaceExtensionConfig(ctx, c)
 	Expect(c.Create(ctx, inPlaceExtensionConfig(namespace))).To(Succeed())
 
 	Eventually(func() (bool, error) {
@@ -306,6 +312,10 @@ func deleteInPlaceExtensionConfig(ctx context.Context, c client.Client) {
 	if err := c.Delete(ctx, extensionConfig); err != nil && !apierrors.IsNotFound(err) {
 		Expect(err).NotTo(HaveOccurred())
 	}
+	Eventually(func() bool {
+		err := c.Get(ctx, client.ObjectKey{Name: "k3s-test-extension"}, extensionConfig)
+		return apierrors.IsNotFound(err)
+	}, time.Minute, time.Second).Should(BeTrue(), "ExtensionConfig was not deleted")
 }
 
 func patchKThreesControlPlane(
@@ -334,6 +344,20 @@ func setZeroSurge(kcp *controlplanev1.KThreesControlPlane) {
 	}
 }
 
+func waitForZeroSurge(ctx context.Context, c client.Client, key types.NamespacedName) {
+	Eventually(func() bool {
+		kcp := &controlplanev1.KThreesControlPlane{}
+		if err := c.Get(ctx, key, kcp); err != nil {
+			return false
+		}
+		return kcp.Spec.RolloutStrategy != nil &&
+			kcp.Spec.RolloutStrategy.RollingUpdate != nil &&
+			kcp.Spec.RolloutStrategy.RollingUpdate.MaxSurge != nil &&
+			kcp.Spec.RolloutStrategy.RollingUpdate.MaxSurge.IntValue() == 0 &&
+			kcp.Status.ObservedGeneration >= kcp.Generation
+	}, time.Minute, time.Second).Should(BeTrue(), "KThreesControlPlane did not retain maxSurge 0")
+}
+
 func getControlPlaneMachines(ctx context.Context, c client.Client, cluster *clusterv1.Cluster) []clusterv1.Machine {
 	machines := &clusterv1.MachineList{}
 	Expect(c.List(ctx, machines,
@@ -359,7 +383,6 @@ func waitForSupportedInPlaceUpdate(
 	original *clusterv1.Machine,
 	targetVersion string,
 	evidence *inPlaceScenarioEvidence,
-	_ []interface{},
 ) *clusterv1.Machine {
 	var finalMachine *clusterv1.Machine
 	sawUpdateInProgress := false
@@ -554,11 +577,7 @@ func collectInPlaceCallRecord(
 	evidence *inPlaceScenarioEvidence,
 ) {
 	configMap := &corev1.ConfigMap{}
-	err := c.Get(ctx, client.ObjectKey{Namespace: namespace, Name: inPlaceCallRecordConfigMap}, configMap)
-	if apierrors.IsNotFound(err) {
-		return
-	}
-	Expect(err).NotTo(HaveOccurred())
+	Expect(c.Get(ctx, client.ObjectKey{Namespace: namespace, Name: inPlaceCallRecordConfigMap}, configMap)).To(Succeed())
 
 	evidence.Counters = map[string]string{}
 	for key, value := range configMap.Data {

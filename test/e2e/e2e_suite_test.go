@@ -109,8 +109,8 @@ func TestE2E(t *testing.T) {
 
 	ctrl.SetLogger(klog.Background())
 
-	// If running in prow, make sure to use the artifacts folder that will be reported in test grid (ignoring the value provided by flag).
-	if prowArtifactFolder, exists := os.LookupEnv("ARTIFACTS"); exists {
+	// If running in prow without an explicit flag, use the artifacts folder reported in test grid.
+	if prowArtifactFolder, exists := os.LookupEnv("ARTIFACTS"); exists && artifactFolder == "" {
 		artifactFolder = prowArtifactFolder
 	}
 	absoluteArtifactFolder, err := filepath.Abs(artifactFolder)
@@ -279,17 +279,7 @@ func loadImagesWithDockerCLI(clusterName string, images []clusterctl.ContainerIm
 		Byf("Loading image %q with the Docker CLI", image.Name)
 		archivePath, err := filepath.Abs(filepath.Join(archiveDir, fmt.Sprintf("image-%d.tar", i)))
 		Expect(err).NotTo(HaveOccurred())
-		windowsArchivePath, err := exec.CommandContext(ctx, "wslpath", "-w", archivePath).Output()
-		Expect(err).NotTo(HaveOccurred())
-
-		output, err := exec.CommandContext(
-			ctx,
-			"docker",
-			"save",
-			"--output",
-			strings.TrimSpace(string(windowsArchivePath)),
-			image.Name,
-		).CombinedOutput()
+		output, err := saveImageWithDockerCLI(image.Name, archivePath)
 		if err != nil {
 			if image.LoadBehavior == clusterctl.TryLoadImage {
 				fmt.Fprintf(GinkgoWriter, "WARNING: unable to save image %q: %v\n%s\n", image.Name, err, output)
@@ -300,12 +290,45 @@ func loadImagesWithDockerCLI(clusterName string, images []clusterctl.ContainerIm
 
 		for _, node := range nodes {
 			archive, err := os.Open(filepath.Clean(archivePath))
-			Expect(err).NotTo(HaveOccurred())
+			if err != nil {
+				if image.LoadBehavior == clusterctl.TryLoadImage {
+					fmt.Fprintf(GinkgoWriter, "WARNING: unable to open image archive for %q: %v\n", image.Name, err)
+					break
+				}
+				Expect(err).NotTo(HaveOccurred(), "Failed to open image archive for %q", image.Name)
+			}
 			err = kindnodesutils.LoadImageArchive(node, archive)
-			Expect(archive.Close()).To(Succeed())
-			Expect(err).NotTo(HaveOccurred(), "Failed to load image %q into node %q", image.Name, node.String())
+			closeErr := archive.Close()
+			if err != nil || closeErr != nil {
+				if image.LoadBehavior == clusterctl.TryLoadImage {
+					fmt.Fprintf(GinkgoWriter, "WARNING: unable to load image %q into node %q: load=%v close=%v\n", image.Name, node.String(), err, closeErr)
+					break
+				}
+				Expect(err).NotTo(HaveOccurred(), "Failed to load image %q into node %q", image.Name, node.String())
+				Expect(closeErr).NotTo(HaveOccurred(), "Failed to close image archive for %q", image.Name)
+			}
 		}
 	}
+}
+
+func saveImageWithDockerCLI(image, archivePath string) ([]byte, error) {
+	output, err := exec.CommandContext(ctx, "docker", "save", "--output", archivePath, image).CombinedOutput()
+	if err == nil {
+		return output, nil
+	}
+
+	windowsArchivePath, pathErr := exec.CommandContext(ctx, "wslpath", "-w", archivePath).Output()
+	if pathErr != nil {
+		return output, err
+	}
+	return exec.CommandContext(
+		ctx,
+		"docker",
+		"save",
+		"--output",
+		strings.TrimSpace(string(windowsArchivePath)),
+		image,
+	).CombinedOutput()
 }
 
 func initBootstrapCluster(bootstrapClusterProxy framework.ClusterProxy, config *clusterctl.E2EConfig, clusterctlConfig, artifactFolder string) {
