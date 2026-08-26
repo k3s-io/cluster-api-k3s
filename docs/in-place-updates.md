@@ -23,7 +23,11 @@ rolloutStrategy:
 - Allowing `maxSurge: 0` below three replicas while `InPlaceUpdates` is enabled is an intentional K3s divergence from official CAPI v1.12.9 validation.
 - Unsupported complete diffs use Machine replacement.
 - `maxSurge: 0` can therefore become delete-first replacement.
-- The provider does not perform host mutation.
+- Delete-first replacement can cause control-plane and API downtime and can
+  lose quorum, especially for a one-replica control plane.
+- CACP3 orchestrates the update but does not mutate the host or K3s binary. A
+  production Runtime Extension implementing `UpdateMachine` performs that
+  mutation.
 
 ## Known limitations
 

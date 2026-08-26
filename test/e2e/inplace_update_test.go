@@ -35,6 +35,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
@@ -52,6 +53,7 @@ import (
 const (
 	inPlaceCallRecordConfigMap = "k3s-in-place-hook-calls"
 	inPlaceSpecName            = "in-place-updates"
+	rotatedBootstrapTimeout    = 7 * time.Minute
 )
 
 type machineIdentity struct {
@@ -68,13 +70,23 @@ type machineUpdateSnapshot struct {
 	Conditions       []metav1.Condition `json:"conditions,omitempty"`
 }
 
+type infrastructureProvenance struct {
+	Machine                   machineIdentity `json:"machine"`
+	InfrastructureMachineName string          `json:"infrastructureMachineName"`
+	TemplateName              string          `json:"templateName"`
+	TemplateGroupKind         string          `json:"templateGroupKind"`
+	BootstrapTimeout          string          `json:"bootstrapTimeout"`
+}
+
 type inPlaceScenarioEvidence struct {
-	Scenario        string                        `json:"scenario"`
-	Original        []machineIdentity             `json:"originalMachines"`
-	Final           []machineIdentity             `json:"finalMachines,omitempty"`
-	Snapshots       []machineUpdateSnapshot       `json:"snapshots,omitempty"`
-	Counters        map[string]string             `json:"counters,omitempty"`
-	FinalConditions map[string][]metav1.Condition `json:"finalConditions,omitempty"`
+	Scenario                          string                        `json:"scenario"`
+	Original                          []machineIdentity             `json:"originalMachines"`
+	Final                             []machineIdentity             `json:"finalMachines,omitempty"`
+	Snapshots                         []machineUpdateSnapshot       `json:"snapshots,omitempty"`
+	Counters                          map[string]string             `json:"counters,omitempty"`
+	FinalConditions                   map[string][]metav1.Condition `json:"finalConditions,omitempty"`
+	MaxControlPlaneMachineCardinality int                           `json:"maxControlPlaneMachineCardinality"`
+	InfrastructureProvenance          []infrastructureProvenance    `json:"infrastructureProvenance,omitempty"`
 }
 
 var _ = Describe("In-place update via Runtime Extension [InPlaceUpdates] [PR-Blocking]", Serial, func() {
@@ -140,6 +152,7 @@ var _ = Describe("In-place update via Runtime Extension [InPlaceUpdates] [PR-Blo
 		waitForZeroSurge(testContext, mgmtClient, kcpKey)
 
 		original := getSingleControlPlaneMachine(testContext, mgmtClient, result.Cluster)
+		Expect(observeMachineCardinality(evidence, 1, 1)).To(Succeed())
 		evidence.Original = []machineIdentity{identityForMachine(original)}
 
 		targetVersion := e2eConfig.MustGetVariable(KubernetesVersionUpgradeTo)
@@ -192,9 +205,20 @@ var _ = Describe("In-place update via Runtime Extension [InPlaceUpdates] [PR-Blo
 
 		originalMachines := getControlPlaneMachines(testContext, mgmtClient, result.Cluster)
 		Expect(originalMachines).To(HaveLen(3))
+		Expect(observeMachineCardinality(evidence, len(originalMachines), 3)).To(Succeed())
 		evidence.Original = identitiesForMachines(originalMachines)
 
-		templateB := createRotatedDockerMachineTemplate(testContext, mgmtClient, namespace.Name, clusterName)
+		templateB := createRotatedDockerMachineTemplate(
+			testContext,
+			mgmtClient,
+			namespace.Name,
+			clusterName,
+			result.ControlPlane.Spec.MachineTemplate.InfrastructureRef.Name,
+		)
+		templateGroupKind := schema.GroupKind{
+			Group: dockerinfrav1.GroupVersion.Group,
+			Kind:  "DockerMachineTemplate",
+		}.String()
 		targetVersion := e2eConfig.MustGetVariable(KubernetesVersionUpgradeTo)
 		patchKThreesControlPlane(testContext, mgmtClient, kcpKey, func(kcp *controlplanev1.KThreesControlPlane) {
 			kcp.Spec.Version = targetVersion
@@ -213,7 +237,10 @@ var _ = Describe("In-place update via Runtime Extension [InPlaceUpdates] [PR-Blo
 			result.Cluster,
 			originalMachines,
 			templateB.Name,
+			templateGroupKind,
+			rotatedBootstrapTimeout,
 			targetVersion,
+			evidence,
 		)
 
 		collectInPlaceCallRecord(testContext, mgmtClient, namespace.Name, evidencePath, evidence)
@@ -275,9 +302,11 @@ func inPlaceExtensionConfig(namespace string) *runtimev1.ExtensionConfig {
 				},
 			},
 			NamespaceSelector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{
-					"kubernetes.io/metadata.name": namespace,
-				},
+				MatchExpressions: []metav1.LabelSelectorRequirement{{
+					Key:      "kubernetes.io/metadata.name",
+					Operator: metav1.LabelSelectorOpIn,
+					Values:   []string{namespace},
+				}},
 			},
 			Settings: map[string]string{
 				"callRecordNamespace": namespace,
@@ -294,8 +323,24 @@ func createInPlaceCallRecorderAndExtension(ctx context.Context, c client.Client,
 			Name:      inPlaceCallRecordConfigMap,
 		},
 	})).To(Succeed())
-	deleteInPlaceExtensionConfig(ctx, c)
-	Expect(c.Create(ctx, inPlaceExtensionConfig(namespace))).To(Succeed())
+	Eventually(func() error {
+		extensionConfig := &runtimev1.ExtensionConfig{}
+		err := c.Get(ctx, client.ObjectKey{Name: "k3s-test-extension"}, extensionConfig)
+		if apierrors.IsNotFound(err) {
+			return c.Create(ctx, inPlaceExtensionConfig(namespace))
+		}
+		if err != nil {
+			return err
+		}
+
+		original := extensionConfig.DeepCopy()
+		appendInPlaceExtensionNamespace(extensionConfig, namespace)
+		extensionConfig.Spec.Settings = map[string]string{
+			"callRecordNamespace": namespace,
+			"callRecordConfigMap": inPlaceCallRecordConfigMap,
+		}
+		return c.Patch(ctx, extensionConfig, client.MergeFrom(original))
+	}, time.Minute, time.Second).Should(Succeed())
 
 	Eventually(func() (bool, error) {
 		extensionConfig := &runtimev1.ExtensionConfig{}
@@ -305,6 +350,55 @@ func createInPlaceCallRecorderAndExtension(ctx context.Context, c client.Client,
 		condition := meta.FindStatusCondition(extensionConfig.Status.Conditions, runtimev1.ExtensionConfigDiscoveredCondition)
 		return condition != nil && condition.Status == metav1.ConditionTrue, nil
 	}, 3*time.Minute, time.Second).Should(BeTrue(), "Runtime Extension was not discovered")
+}
+
+func appendInPlaceExtensionNamespace(config *runtimev1.ExtensionConfig, namespace string) bool {
+	if config.Spec.NamespaceSelector == nil {
+		config.Spec.NamespaceSelector = &metav1.LabelSelector{}
+	}
+
+	namespaces := []string{}
+	convertedMatchLabel := false
+	if existing := config.Spec.NamespaceSelector.MatchLabels["kubernetes.io/metadata.name"]; existing != "" {
+		namespaces = append(namespaces, existing)
+		delete(config.Spec.NamespaceSelector.MatchLabels, "kubernetes.io/metadata.name")
+		convertedMatchLabel = true
+	}
+
+	requirementIndex := -1
+	for i := range config.Spec.NamespaceSelector.MatchExpressions {
+		requirement := &config.Spec.NamespaceSelector.MatchExpressions[i]
+		if requirement.Key == "kubernetes.io/metadata.name" && requirement.Operator == metav1.LabelSelectorOpIn {
+			requirementIndex = i
+			namespaces = append(namespaces, requirement.Values...)
+			break
+		}
+	}
+
+	for _, existing := range namespaces {
+		if existing == namespace {
+			if requirementIndex == -1 {
+				config.Spec.NamespaceSelector.MatchExpressions = append(config.Spec.NamespaceSelector.MatchExpressions, metav1.LabelSelectorRequirement{
+					Key:      "kubernetes.io/metadata.name",
+					Operator: metav1.LabelSelectorOpIn,
+					Values:   namespaces,
+				})
+				return true
+			}
+			return convertedMatchLabel
+		}
+	}
+	namespaces = append(namespaces, namespace)
+	if requirementIndex == -1 {
+		config.Spec.NamespaceSelector.MatchExpressions = append(config.Spec.NamespaceSelector.MatchExpressions, metav1.LabelSelectorRequirement{
+			Key:      "kubernetes.io/metadata.name",
+			Operator: metav1.LabelSelectorOpIn,
+			Values:   namespaces,
+		})
+		return true
+	}
+	config.Spec.NamespaceSelector.MatchExpressions[requirementIndex].Values = namespaces
+	return true
 }
 
 func deleteInPlaceExtensionConfig(ctx context.Context, c client.Client) {
@@ -389,6 +483,9 @@ func waitForSupportedInPlaceUpdate(
 	sawPendingHook := false
 
 	Eventually(func() (bool, error) {
+		machines := getControlPlaneMachines(ctx, c, cluster)
+		Expect(observeMachineCardinality(evidence, len(machines), 1)).To(Succeed())
+
 		machine := &clusterv1.Machine{}
 		if err := c.Get(ctx, client.ObjectKey{Namespace: cluster.Namespace, Name: original.Name}, machine); err != nil {
 			return false, err
@@ -443,7 +540,13 @@ func createRotatedDockerMachineTemplate(
 	c client.Client,
 	namespace string,
 	clusterName string,
+	sourceTemplateName string,
 ) *dockerinfrav1.DockerMachineTemplate {
+	sourceTemplate := &dockerinfrav1.DockerMachineTemplate{}
+	Expect(c.Get(ctx, client.ObjectKey{Namespace: namespace, Name: sourceTemplateName}, sourceTemplate)).To(Succeed())
+	templateSpec := sourceTemplate.Spec.DeepCopy()
+	templateSpec.Template.Spec.BootstrapTimeout = &metav1.Duration{Duration: rotatedBootstrapTimeout}
+
 	template := &dockerinfrav1.DockerMachineTemplate{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: dockerinfrav1.GroupVersion.String(),
@@ -453,13 +556,7 @@ func createRotatedDockerMachineTemplate(
 			Namespace: namespace,
 			Name:      clusterName + "-control-plane-rotated",
 		},
-		Spec: dockerinfrav1.DockerMachineTemplateSpec{
-			Template: dockerinfrav1.DockerMachineTemplateResource{
-				Spec: dockerinfrav1.DockerMachineSpec{
-					CustomImage: "kindest/node:v1.33.0",
-				},
-			},
-		},
+		Spec: *templateSpec,
 	}
 	Expect(c.Create(ctx, template)).To(Succeed())
 	return template
@@ -471,7 +568,10 @@ func waitForUnsupportedDiffReplacement(
 	cluster *clusterv1.Cluster,
 	originalMachines []clusterv1.Machine,
 	templateName string,
+	templateGroupKind string,
+	bootstrapTimeout time.Duration,
 	targetVersion string,
+	evidence *inPlaceScenarioEvidence,
 ) []clusterv1.Machine {
 	originalUIDs := map[types.UID]struct{}{}
 	originalNames := map[string]struct{}{}
@@ -492,10 +592,12 @@ func waitForUnsupportedDiffReplacement(
 		); err != nil {
 			return false, err
 		}
+		Expect(observeMachineCardinality(evidence, len(machines.Items), 3)).To(Succeed())
 		if len(machines.Items) != 3 {
 			return false, nil
 		}
 
+		provenance := make([]infrastructureProvenance, 0, len(machines.Items))
 		for i := range machines.Items {
 			machine := &machines.Items[i]
 			if _, found := originalUIDs[machine.UID]; found {
@@ -535,13 +637,38 @@ func waitForUnsupportedDiffReplacement(
 			if infraMachine.Annotations[clusterv1.TemplateClonedFromNameAnnotation] != templateName {
 				return false, nil
 			}
+			if infraMachine.Annotations[clusterv1.TemplateClonedFromGroupKindAnnotation] != templateGroupKind {
+				return false, nil
+			}
+			if infraMachine.Spec.BootstrapTimeout == nil ||
+				infraMachine.Spec.BootstrapTimeout.Duration != bootstrapTimeout {
+				return false, nil
+			}
+			provenance = append(provenance, infrastructureProvenance{
+				Machine:                   identityForMachine(machine),
+				InfrastructureMachineName: infraMachine.Name,
+				TemplateName:              templateName,
+				TemplateGroupKind:         templateGroupKind,
+				BootstrapTimeout:          infraMachine.Spec.BootstrapTimeout.Duration.String(),
+			})
 		}
 
 		finalMachines = append([]clusterv1.Machine(nil), machines.Items...)
+		evidence.InfrastructureProvenance = provenance
 		return true, nil
 	}, 15*time.Minute, time.Second).Should(BeTrue())
 
 	return finalMachines
+}
+
+func observeMachineCardinality(evidence *inPlaceScenarioEvidence, observed, limit int) error {
+	if observed > evidence.MaxControlPlaneMachineCardinality {
+		evidence.MaxControlPlaneMachineCardinality = observed
+	}
+	if observed > limit {
+		return fmt.Errorf("observed %d control-plane Machines, maximum allowed is %d", observed, limit)
+	}
+	return nil
 }
 
 func machineCondition(machine *clusterv1.Machine, conditionType string) *metav1.Condition {

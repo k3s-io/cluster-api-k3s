@@ -155,10 +155,10 @@ func createCanUpdateRequest(
 		return nil, errors.Wrap(err, "server side apply dry-run failed for current InfraMachine")
 	}
 	if err := ssa.Patch(ctx, c, kcpManagerName, desiredInfraForDiff, ssa.WithDryRun{}); err != nil {
-		if !apierrors.IsInvalid(err) && !(apierrors.IsForbidden(err) && strings.Contains(err.Error(), "admission webhook")) {
-			return nil, errors.Wrap(err, "server side apply dry-run failed for desired InfraMachine")
+		if apierrors.IsInvalid(err) || apierrors.IsForbidden(err) {
+			return nil, &nonCoverableDiffError{err: errors.Wrap(err, "desired InfraMachine does not support server side apply dry-run")}
 		}
-		// Immutable-field validation must not skip complete-diff evaluation; replacement remains the fallback.
+		return nil, errors.Wrap(err, "server side apply dry-run failed for desired InfraMachine")
 	}
 
 	request := &runtimehooksv1.CanUpdateMachineRequest{

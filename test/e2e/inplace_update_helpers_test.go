@@ -1,0 +1,164 @@
+//go:build e2e
+// +build e2e
+
+/*
+Copyright 2026 The Kubernetes Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package e2e
+
+import (
+	"errors"
+	"reflect"
+	"testing"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	runtimev1 "sigs.k8s.io/cluster-api/api/runtime/v1beta2"
+	"sigs.k8s.io/cluster-api/test/framework/clusterctl"
+)
+
+func TestAppendInPlaceExtensionNamespace(t *testing.T) {
+	config := &runtimev1.ExtensionConfig{
+		Spec: runtimev1.ExtensionConfigSpec{
+			NamespaceSelector: &metav1.LabelSelector{
+				MatchExpressions: []metav1.LabelSelectorRequirement{{
+					Key:      "kubernetes.io/metadata.name",
+					Operator: metav1.LabelSelectorOpIn,
+					Values:   []string{"scenario-1"},
+				}},
+			},
+		},
+	}
+
+	if changed := appendInPlaceExtensionNamespace(config, "scenario-2"); !changed {
+		t.Fatal("expected namespace selector to change")
+	}
+	if changed := appendInPlaceExtensionNamespace(config, "scenario-1"); changed {
+		t.Fatal("expected duplicate namespace to be a no-op")
+	}
+
+	got := config.Spec.NamespaceSelector.MatchExpressions[0]
+	want := metav1.LabelSelectorRequirement{
+		Key:      "kubernetes.io/metadata.name",
+		Operator: metav1.LabelSelectorOpIn,
+		Values:   []string{"scenario-1", "scenario-2"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected selector: got %#v, want %#v", got, want)
+	}
+}
+
+func TestShouldUseDockerCLIImageLoader(t *testing.T) {
+	tests := []struct {
+		name         string
+		socketExists bool
+		explicit     bool
+		osRelease    string
+		want         bool
+	}{
+		{name: "native socket remains on normal path", socketExists: true, explicit: true},
+		{name: "native Linux without socket remains on normal path"},
+		{name: "WSL without socket uses fallback", osRelease: "5.15.153.1-microsoft-standard-WSL2", want: true},
+		{name: "explicit opt-in without socket uses fallback", explicit: true, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shouldUseDockerCLIImageLoader(tt.socketExists, tt.explicit, tt.osRelease); got != tt.want {
+				t.Fatalf("got %t, want %t", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSaveImageWithDockerCLINativePath(t *testing.T) {
+	var calls [][]string
+	run := func(name string, args ...string) ([]byte, error) {
+		calls = append(calls, append([]string{name}, args...))
+		return []byte("saved"), nil
+	}
+
+	output, err := saveImageWithDockerCLI("image:dev", "/work/image.tar", run)
+	if err != nil {
+		t.Fatalf("saveImageWithDockerCLI returned error: %v", err)
+	}
+	if string(output) != "saved" {
+		t.Fatalf("unexpected output %q", output)
+	}
+	want := [][]string{{"docker", "save", "--output", "/work/image.tar", "image:dev"}}
+	if !reflect.DeepEqual(calls, want) {
+		t.Fatalf("unexpected calls: got %#v, want %#v", calls, want)
+	}
+}
+
+func TestSaveImageWithDockerCLIWindowsPathRetry(t *testing.T) {
+	var calls [][]string
+	run := func(name string, args ...string) ([]byte, error) {
+		calls = append(calls, append([]string{name}, args...))
+		switch len(calls) {
+		case 1:
+			return nil, errors.New("invalid output path")
+		case 2:
+			return []byte("C:\\work\\image.tar\r\n"), nil
+		default:
+			return []byte("saved"), nil
+		}
+	}
+
+	output, err := saveImageWithDockerCLI("image:dev", "/work/image.tar", run)
+	if err != nil {
+		t.Fatalf("saveImageWithDockerCLI returned error: %v", err)
+	}
+	if string(output) != "saved" {
+		t.Fatalf("unexpected output %q", output)
+	}
+	want := [][]string{
+		{"docker", "save", "--output", "/work/image.tar", "image:dev"},
+		{"wslpath", "-w", "/work/image.tar"},
+		{"docker", "save", "--output", "C:\\work\\image.tar", "image:dev"},
+	}
+	if !reflect.DeepEqual(calls, want) {
+		t.Fatalf("unexpected calls: got %#v, want %#v", calls, want)
+	}
+}
+
+func TestImageLoadFailure(t *testing.T) {
+	loadErr := errors.New("load failed")
+	if err := imageLoadFailure(clusterctl.MustLoadImage, loadErr); !errors.Is(err, loadErr) {
+		t.Fatalf("mustLoad error = %v, want %v", err, loadErr)
+	}
+	if err := imageLoadFailure(clusterctl.TryLoadImage, loadErr); err != nil {
+		t.Fatalf("tryLoad error = %v, want nil", err)
+	}
+}
+
+func TestObserveMachineCardinality(t *testing.T) {
+	evidence := &inPlaceScenarioEvidence{}
+	for _, observed := range []int{1, 3, 2} {
+		if err := observeMachineCardinality(evidence, observed, 3); err != nil {
+			t.Fatalf("observeMachineCardinality(%d) returned error: %v", observed, err)
+		}
+	}
+	if evidence.MaxControlPlaneMachineCardinality != 3 {
+		t.Fatalf("max cardinality = %d, want 3", evidence.MaxControlPlaneMachineCardinality)
+	}
+
+	if err := observeMachineCardinality(evidence, 4, 3); err == nil {
+		t.Fatal("expected cardinality limit error")
+	}
+	if evidence.MaxControlPlaneMachineCardinality != 4 {
+		t.Fatalf("max cardinality after violation = %d, want 4", evidence.MaxControlPlaneMachineCardinality)
+	}
+}

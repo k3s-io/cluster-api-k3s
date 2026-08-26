@@ -214,39 +214,46 @@ func TestCanUpdateMachine(t *testing.T) {
 	}
 }
 
-func TestCanUpdateMachineCallsExtensionWhenDesiredInfraDryRunRejectsImmutableChange(t *testing.T) {
-	g := NewWithT(t)
-	utilfeature.SetFeatureGateDuringTest(t, feature.Gates, feature.InPlaceUpdates, true)
-	machine, result, c := canUpdateFixtures(t)
-	result.DesiredInfraMachine.Object["spec"] = map[string]interface{}{"size": "large"}
-	runtimeClient := &fakeRuntimeClient{
-		handlers: []string{"handler"},
-		response: runtimehooksv1.CanUpdateMachineResponse{
-			MachinePatch:               jsonPatch(`[{"op":"replace","path":"/spec/version","value":"v1.31.2+k3s1"}]`),
-			InfrastructureMachinePatch: jsonPatch(`[]`),
-		},
-	}
-	r := &KThreesControlPlaneReconciler{
-		Client: &nthInfraPatchErrorClient{
-			Client: c,
-			failAt: 2,
-			err: apierrors.NewForbidden(
-				schema.GroupResource{Group: "infrastructure.cluster.x-k8s.io", Resource: "testmachines"},
-				"infra-1",
-				errors.New(`admission webhook "validation.testmachine.infrastructure.cluster.x-k8s.io" denied the request: immutable field`),
-			),
-		},
-		RuntimeClient: runtimeClient,
+func TestCanUpdateMachineDesiredInfraExpectedDryRunIsNonCoverable(t *testing.T) {
+	tests := map[string]error{
+		"invalid": apierrors.NewInvalid(
+			schema.GroupKind{Group: "infrastructure.cluster.x-k8s.io", Kind: "TestMachine"},
+			"infra-1",
+			field.ErrorList{field.Invalid(field.NewPath("spec", "size"), "large", "immutable")},
+		),
+		"forbidden": apierrors.NewForbidden(
+			schema.GroupResource{Group: "infrastructure.cluster.x-k8s.io", Resource: "testmachines"},
+			"infra-1",
+			errors.New(`admission webhook denied the request: immutable field`),
+		),
 	}
 
-	canUpdate, err := r.canUpdateMachine(context.Background(), machine, result)
+	for name, dryRunErr := range tests {
+		t.Run(name, func(t *testing.T) {
+			g := NewWithT(t)
+			utilfeature.SetFeatureGateDuringTest(t, feature.Gates, feature.InPlaceUpdates, true)
+			machine, result, c := canUpdateFixtures(t)
+			result.DesiredInfraMachine.Object["spec"] = map[string]interface{}{"size": "large"}
+			runtimeClient := &fakeRuntimeClient{handlers: []string{"handler"}}
+			r := &KThreesControlPlaneReconciler{
+				Client: &nthInfraPatchErrorClient{
+					Client: c,
+					failAt: 2,
+					err:    dryRunErr,
+				},
+				RuntimeClient: runtimeClient,
+			}
 
-	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(canUpdate).To(BeFalse())
-	g.Expect(runtimeClient.callCount).To(Equal(1))
+			canUpdate, err := r.canUpdateMachine(context.Background(), machine, result)
+
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(canUpdate).To(BeFalse())
+			g.Expect(runtimeClient.callCount).To(BeZero())
+		})
+	}
 }
 
-func TestCanUpdateMachineReturnsDesiredInfraRBACDryRunError(t *testing.T) {
+func TestCanUpdateMachineDesiredInfraUnexpectedDryRunReturnsError(t *testing.T) {
 	g := NewWithT(t)
 	utilfeature.SetFeatureGateDuringTest(t, feature.Gates, feature.InPlaceUpdates, true)
 	machine, result, c := canUpdateFixtures(t)
@@ -256,11 +263,7 @@ func TestCanUpdateMachineReturnsDesiredInfraRBACDryRunError(t *testing.T) {
 		Client: &nthInfraPatchErrorClient{
 			Client: c,
 			failAt: 2,
-			err: apierrors.NewForbidden(
-				schema.GroupResource{Group: "infrastructure.cluster.x-k8s.io", Resource: "testmachines"},
-				"infra-1",
-				errors.New("RBAC denied"),
-			),
+			err:    errors.New("unexpected dry-run failure"),
 		},
 		RuntimeClient: runtimeClient,
 	}
