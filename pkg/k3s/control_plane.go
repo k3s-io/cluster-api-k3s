@@ -268,6 +268,14 @@ func (c *ControlPlane) HasDeletingMachine() bool {
 	return len(c.Machines.Filter(collections.HasDeletionTimestamp)) > 0
 }
 
+// ReplaceMachine replaces a Machine in the cached collections without changing rollout eligibility.
+func (c *ControlPlane) ReplaceMachine(machine *clusterv1.Machine) {
+	c.Machines[machine.Name] = machine
+	if _, ok := c.machinesNotUpToDate[machine.Name]; ok {
+		c.machinesNotUpToDate[machine.Name] = machine
+	}
+}
+
 // MachinesNeedingRollout returns Machines that need rollout and their cached desired-state results.
 func (c *ControlPlane) MachinesNeedingRollout() (collections.Machines, map[string]UpToDateResult) {
 	return c.machinesNotUpToDate.Filter(collections.Not(collections.HasDeletionTimestamp)), c.machinesUpToDateResults

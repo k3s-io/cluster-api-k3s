@@ -762,7 +762,7 @@ func (r *KThreesControlPlaneReconciler) syncMachines(ctx context.Context, contro
 		if err != nil {
 			return errors.Wrapf(err, "failed to update Machine: %s", klog.KObj(m))
 		}
-		controlPlane.Machines[machineName] = updatedMachine
+		controlPlane.ReplaceMachine(updatedMachine)
 		// Since the machine is updated, re-create the patch helper so that any subsequent
 		// Patch calls use the correct base machine object to calculate the diffs.
 		// Example: reconcileControlPlaneConditions patches the machine objects in a subsequent call

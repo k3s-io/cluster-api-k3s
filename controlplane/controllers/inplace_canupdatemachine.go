@@ -145,6 +145,12 @@ func createCanUpdateRequest(
 	currentInfraForDiff := result.CurrentInfraMachine.DeepCopy()
 	desiredInfraForDiff := result.DesiredInfraMachine.DeepCopy()
 
+	// Related-object metadata is synchronized before rollout and is not the extension's responsibility.
+	currentConfigForDiff.SetLabels(desiredConfigForDiff.GetLabels())
+	currentConfigForDiff.SetAnnotations(desiredConfigForDiff.GetAnnotations())
+	currentInfraForDiff.SetLabels(desiredInfraForDiff.GetLabels())
+	currentInfraForDiff.SetAnnotations(desiredInfraForDiff.GetAnnotations())
+
 	if err := ssa.Patch(ctx, c, kcpManagerName, desiredMachineForDiff, ssa.WithDryRun{}); err != nil {
 		return nil, errors.Wrap(err, "server side apply dry-run failed for desired Machine")
 	}

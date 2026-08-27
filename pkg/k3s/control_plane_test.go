@@ -91,3 +91,33 @@ func TestMachinesNeedingRolloutReturnsCachedResults(t *testing.T) {
 	g.Expect(results).To(HaveKeyWithValue(outdated.Name, result))
 	g.Expect(controlPlane.UpToDateMachines().Names()).To(ConsistOf(upToDate.Name))
 }
+
+func TestReplaceMachineUpdatesCachedCollectionsWithoutChangingMembership(t *testing.T) {
+	g := NewWithT(t)
+	outdated := &clusterv1.Machine{ObjectMeta: metav1.ObjectMeta{Name: "outdated", ResourceVersion: "1"}}
+	otherOutdated := &clusterv1.Machine{ObjectMeta: metav1.ObjectMeta{Name: "other-outdated", ResourceVersion: "1"}}
+	upToDate := &clusterv1.Machine{ObjectMeta: metav1.ObjectMeta{Name: "up-to-date", ResourceVersion: "1"}}
+	controlPlane := &ControlPlane{
+		Machines:            collections.FromMachines(outdated, otherOutdated, upToDate),
+		machinesNotUpToDate: collections.FromMachines(outdated, otherOutdated),
+	}
+
+	updatedOutdated := outdated.DeepCopy()
+	updatedOutdated.ResourceVersion = "2"
+	updatedOutdated.Labels = map[string]string{"updated": "true"}
+	controlPlane.ReplaceMachine(updatedOutdated)
+
+	machinesNeedingRollout, _ := controlPlane.MachinesNeedingRollout()
+	g.Expect(controlPlane.Machines[outdated.Name]).To(BeIdenticalTo(updatedOutdated))
+	g.Expect(machinesNeedingRollout[outdated.Name]).To(BeIdenticalTo(updatedOutdated))
+	g.Expect(controlPlane.Machines[otherOutdated.Name]).To(BeIdenticalTo(otherOutdated))
+	g.Expect(machinesNeedingRollout[otherOutdated.Name]).To(BeIdenticalTo(otherOutdated))
+
+	updatedUpToDate := upToDate.DeepCopy()
+	updatedUpToDate.ResourceVersion = "2"
+	controlPlane.ReplaceMachine(updatedUpToDate)
+
+	machinesNeedingRollout, _ = controlPlane.MachinesNeedingRollout()
+	g.Expect(controlPlane.Machines[upToDate.Name]).To(BeIdenticalTo(updatedUpToDate))
+	g.Expect(machinesNeedingRollout).NotTo(HaveKey(upToDate.Name))
+}

@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	utilfeature "k8s.io/component-base/featuregate/testing"
+	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/feature"
 	"sigs.k8s.io/cluster-api/util/collections"
@@ -41,6 +42,7 @@ import (
 	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
 	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
 	"github.com/k3s-io/cluster-api-k3s/pkg/k3s"
+	"github.com/k3s-io/cluster-api-k3s/pkg/util/ssa"
 )
 
 func TestRollingUpdate(t *testing.T) {
@@ -203,6 +205,46 @@ func TestRollingUpdate(t *testing.T) {
 	}
 }
 
+func TestSyncMachinesRefreshesRolloutMachineBeforeInPlaceSelection(t *testing.T) {
+	g := NewWithT(t)
+	utilfeature.SetFeatureGateDuringTest(t, feature.Gates, feature.InPlaceUpdates, true)
+	controlPlane, cluster, kcp, _, _, c := newRolloutControlPlane(t, 1, 1, 0, []int{0}, false)
+	controlPlane.InfraResources = map[string]*unstructured.Unstructured{}
+	controlPlane.KthreesConfigs = map[string]*bootstrapv1.KThreesConfig{}
+
+	originalMachine := controlPlane.Machines["machine-0"]
+	kcp.Spec.MachineTemplate.ObjectMeta = clusterv1beta1.ObjectMeta{
+		Labels:      map[string]string{"updated": "label"},
+		Annotations: map[string]string{"updated": "annotation"},
+	}
+	kcp.Spec.MachineTemplate.NodeDrainTimeout = &metav1.Duration{Duration: time.Minute}
+
+	var selectedMachine *clusterv1.Machine
+	syncClient := &machineApplyResourceVersionClient{Client: c, resourceVersion: "post-sync-resource-version"}
+	r := &KThreesControlPlaneReconciler{
+		Client:   syncClient,
+		ssaCache: ssa.NewCache(),
+		overrideTryInPlaceUpdate: func(_ context.Context, _ *k3s.ControlPlane, machine *clusterv1.Machine, _ k3s.UpToDateResult) (bool, ctrl.Result, error) {
+			selectedMachine = machine
+			return false, ctrl.Result{}, nil
+		},
+	}
+
+	g.Expect(r.syncMachines(context.Background(), controlPlane)).To(Succeed())
+	machinesNeedingRollout, results := controlPlane.MachinesNeedingRollout()
+	_, err := r.updateControlPlane(context.Background(), cluster, kcp, controlPlane, machinesNeedingRollout, results)
+	g.Expect(err).NotTo(HaveOccurred())
+
+	g.Expect(selectedMachine).NotTo(BeNil())
+	g.Expect(selectedMachine).To(BeIdenticalTo(controlPlane.Machines[originalMachine.Name]))
+	g.Expect(selectedMachine).NotTo(BeIdenticalTo(originalMachine))
+	g.Expect(selectedMachine.ResourceVersion).To(Equal("post-sync-resource-version"))
+	g.Expect(selectedMachine.Labels).To(HaveKeyWithValue("updated", "label"))
+	g.Expect(selectedMachine.Annotations).To(HaveKeyWithValue("updated", "annotation"))
+	g.Expect(selectedMachine.Spec.Deletion.NodeDrainTimeoutSeconds).NotTo(BeNil())
+	g.Expect(*selectedMachine.Spec.Deletion.NodeDrainTimeoutSeconds).To(Equal(int32(60)))
+}
+
 func newRolloutControlPlane(
 	t *testing.T,
 	current int,
@@ -310,4 +352,20 @@ func newRolloutControlPlane(
 	g.Expect(err).NotTo(HaveOccurred())
 	machinesNeedingRollout, results := controlPlane.MachinesNeedingRollout()
 	return controlPlane, cluster, kcp, machinesNeedingRollout, results, c
+}
+
+// machineApplyResourceVersionClient models the resourceVersion returned by an SSA Machine update.
+type machineApplyResourceVersionClient struct {
+	client.Client
+	resourceVersion string
+}
+
+func (c *machineApplyResourceVersionClient) Patch(ctx context.Context, object client.Object, patch client.Patch, opts ...client.PatchOption) error {
+	if err := c.Client.Patch(ctx, object, patch, opts...); err != nil {
+		return err
+	}
+	if patch == client.Apply {
+		object.SetResourceVersion(c.resourceVersion)
+	}
+	return nil
 }

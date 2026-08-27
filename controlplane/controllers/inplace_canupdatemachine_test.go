@@ -42,6 +42,11 @@ import (
 	"github.com/k3s-io/cluster-api-k3s/pkg/k3s"
 )
 
+const (
+	currentK3sVersion = "v1.31.1+k3s1"
+	desiredK3sVersion = "v1.31.2+k3s1"
+)
+
 func TestCanUpdateMachine(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -134,7 +139,7 @@ func TestCanUpdateMachine(t *testing.T) {
 			enabled:  true,
 			handlers: []string{"handler"},
 			mutate: func(result *k3s.UpToDateResult) {
-				result.CurrentKThreesConfig.Spec.Version = "v1.31.1+k3s1"
+				result.CurrentKThreesConfig.Spec.Version = currentK3sVersion
 				result.DesiredKThreesConfig.Spec.Version = ""
 			},
 			response: runtimehooksv1.CanUpdateMachineResponse{
@@ -214,6 +219,66 @@ func TestCanUpdateMachine(t *testing.T) {
 	}
 }
 
+func TestCanUpdateMachineNormalizesCurrentRelatedObjectMetadataWithoutChangingSpecs(t *testing.T) {
+	g := NewWithT(t)
+	utilfeature.SetFeatureGateDuringTest(t, feature.Gates, feature.InPlaceUpdates, true)
+	machine, result, c := canUpdateFixtures(t)
+	result.CurrentKThreesConfig.Labels = map[string]string{"stale": "label"}
+	result.CurrentKThreesConfig.Annotations = map[string]string{"stale": "annotation"}
+	result.CurrentKThreesConfig.Spec.Version = currentK3sVersion
+	result.CurrentKThreesConfig.Spec.PostK3sCommands = []string{"preserved"}
+	result.DesiredKThreesConfig.Labels = map[string]string{"desired": "label"}
+	result.DesiredKThreesConfig.Annotations = map[string]string{"desired": "annotation"}
+	result.DesiredKThreesConfig.Spec.Version = desiredK3sVersion
+	result.DesiredKThreesConfig.Spec.PostK3sCommands = []string{"preserved"}
+	result.CurrentInfraMachine.SetLabels(map[string]string{"stale": "label"})
+	result.CurrentInfraMachine.SetAnnotations(map[string]string{"stale": "annotation"})
+	result.DesiredInfraMachine.SetLabels(map[string]string{"desired": "label"})
+	result.DesiredInfraMachine.SetAnnotations(map[string]string{"desired": "annotation"})
+
+	runtimeClient := &fakeRuntimeClient{
+		handlers: []string{"handler"},
+		response: runtimehooksv1.CanUpdateMachineResponse{
+			MachinePatch: jsonPatch(`[{"op":"replace","path":"/spec/version","value":"v1.31.2+k3s1"}]`),
+		},
+	}
+	r := &KThreesControlPlaneReconciler{Client: c, RuntimeClient: runtimeClient}
+
+	canUpdate, err := r.canUpdateMachine(context.Background(), machine, result)
+
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(canUpdate).To(BeTrue())
+	g.Expect(runtimeClient.request).NotTo(BeNil())
+
+	currentConfig := &bootstrapv1.KThreesConfig{}
+	desiredConfig := &bootstrapv1.KThreesConfig{}
+	g.Expect(runtime.DefaultUnstructuredConverter.FromUnstructured(
+		runtimeClient.request.Current.BootstrapConfig.Object.(*unstructured.Unstructured).Object,
+		currentConfig,
+	)).To(Succeed())
+	g.Expect(runtime.DefaultUnstructuredConverter.FromUnstructured(
+		runtimeClient.request.Desired.BootstrapConfig.Object.(*unstructured.Unstructured).Object,
+		desiredConfig,
+	)).To(Succeed())
+	g.Expect(currentConfig.Labels).To(Equal(map[string]string{"desired": "label"}))
+	g.Expect(currentConfig.Annotations).To(Equal(map[string]string{"desired": "annotation"}))
+	g.Expect(currentConfig.Spec.Version).To(BeEmpty())
+	g.Expect(desiredConfig.Spec.Version).To(BeEmpty())
+	g.Expect(currentConfig.Spec.PostK3sCommands).To(Equal([]string{"preserved"}))
+	g.Expect(desiredConfig.Spec.PostK3sCommands).To(Equal([]string{"preserved"}))
+
+	currentInfra := runtimeClient.request.Current.InfrastructureMachine.Object.(*unstructured.Unstructured)
+	desiredInfra := runtimeClient.request.Desired.InfrastructureMachine.Object.(*unstructured.Unstructured)
+	g.Expect(currentInfra.GetLabels()).To(Equal(map[string]string{"desired": "label"}))
+	g.Expect(currentInfra.GetAnnotations()).To(Equal(map[string]string{"desired": "annotation"}))
+	g.Expect(currentInfra.Object["spec"]).To(Equal(map[string]interface{}{"size": "small"}))
+	g.Expect(desiredInfra.Object["spec"]).To(Equal(map[string]interface{}{"size": "small"}))
+
+	g.Expect(result.CurrentKThreesConfig.Labels).To(Equal(map[string]string{"stale": "label"}))
+	g.Expect(result.CurrentKThreesConfig.Spec.Version).To(Equal(currentK3sVersion))
+	g.Expect(result.CurrentInfraMachine.GetLabels()).To(Equal(map[string]string{"stale": "label"}))
+}
+
 func TestCanUpdateMachineDesiredInfraExpectedDryRunIsNonCoverable(t *testing.T) {
 	tests := map[string]error{
 		"invalid": apierrors.NewInvalid(
@@ -287,10 +352,10 @@ func canUpdateFixtures(t *testing.T) (*clusterv1.Machine, k3s.UpToDateResult, cl
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "machine-1", Namespace: "default",
 		},
-		Spec: clusterv1.MachineSpec{Version: "v1.31.1+k3s1"},
+		Spec: clusterv1.MachineSpec{Version: currentK3sVersion},
 	}
 	desiredMachine := currentMachine.DeepCopy()
-	desiredMachine.Spec.Version = "v1.31.2+k3s1"
+	desiredMachine.Spec.Version = desiredK3sVersion
 
 	currentConfig := &bootstrapv1.KThreesConfig{
 		TypeMeta:   metav1.TypeMeta{APIVersion: bootstrapv1.GroupVersion.String(), Kind: "KThreesConfig"},
@@ -327,6 +392,7 @@ type fakeRuntimeClient struct {
 	callErr   error
 	response  runtimehooksv1.CanUpdateMachineResponse
 	callCount int
+	request   *runtimehooksv1.CanUpdateMachineRequest
 }
 
 func (f *fakeRuntimeClient) WarmUp(*runtimev1.ExtensionConfigList) error { return nil }
@@ -359,11 +425,12 @@ func (f *fakeRuntimeClient) CallExtension(
 	_ runtimecatalog.Hook,
 	_ client.Object,
 	_ string,
-	_ runtimehooksv1.RequestObject,
+	request runtimehooksv1.RequestObject,
 	response runtimehooksv1.ResponseObject,
 	_ ...runtimeclient.CallExtensionOption,
 ) error {
 	f.callCount++
+	f.request = request.(*runtimehooksv1.CanUpdateMachineRequest).DeepCopy()
 	if f.callErr != nil {
 		return f.callErr
 	}
