@@ -117,6 +117,7 @@ type RolloutStrategy struct {
 type RollingUpdate struct {
 	// MaxSurge is the maximum number of control plane machines that can be scheduled above the desired replicas.
 	// Only absolute values 0 and 1 are supported. The default is 1.
+	// With 0, update fallback is blocked below three desired replicas unless a surplus Machine can be deleted.
 	// +kubebuilder:validation:XValidation:rule="self == 0 || self == 1 || self == '0' || self == '1'",message="maxSurge must be 0 or 1"
 	// +optional
 	MaxSurge *intstr.IntOrString `json:"maxSurge,omitempty"`

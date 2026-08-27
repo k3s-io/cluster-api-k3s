@@ -56,12 +56,7 @@ func (r *KThreesControlPlaneReconciler) rollingUpdate(
 	currentReplicas := int32(controlPlane.Machines.Len())
 	currentUpToDateReplicas := int32(controlPlane.UpToDateMachines().Len())
 	desiredReplicas := *kcp.Spec.Replicas
-	maxSurge := int32(1)
-	if strategy := kcp.Spec.RolloutStrategy; strategy != nil &&
-		strategy.RollingUpdate != nil &&
-		strategy.RollingUpdate.MaxSurge != nil {
-		maxSurge = int32(strategy.RollingUpdate.MaxSurge.IntValue())
-	}
+	maxSurge := rolloutMaxSurge(kcp)
 	maxReplicas := desiredReplicas + maxSurge
 
 	if currentReplicas < maxReplicas {
@@ -111,6 +106,7 @@ func (r *KThreesControlPlaneReconciler) rollingUpdate(
 	return r.scaleDownForUpdate(ctx, cluster, kcp, controlPlane, machinesNeedingRollout)
 }
 
+// scaleDownForUpdate prevents update fallback from deleting without safe surplus capacity on low-replica control planes.
 func (r *KThreesControlPlaneReconciler) scaleDownForUpdate(
 	ctx context.Context,
 	cluster *clusterv1.Cluster,
@@ -118,8 +114,28 @@ func (r *KThreesControlPlaneReconciler) scaleDownForUpdate(
 	controlPlane *k3s.ControlPlane,
 	machines collections.Machines,
 ) (ctrl.Result, error) {
+	desiredReplicas := *kcp.Spec.Replicas
+	currentReplicas := int32(controlPlane.Machines.Len())
+	if rolloutMaxSurge(kcp) == 0 && desiredReplicas < 3 && currentReplicas <= desiredReplicas {
+		return ctrl.Result{}, errors.Errorf(
+			"maxSurge=0 with fewer than three replicas cannot fall back to Machine replacement; "+
+				"enable or fix a working in-place update extension or set maxSurge to 1 "+
+				"(desired replicas: %d, current Machines: %d)",
+			desiredReplicas,
+			currentReplicas,
+		)
+	}
 	if r.overrideScaleDownControlPlane != nil {
 		return r.overrideScaleDownControlPlane(ctx, cluster, kcp, controlPlane, machines)
 	}
 	return r.scaleDownControlPlane(ctx, cluster, kcp, controlPlane, machines)
+}
+
+func rolloutMaxSurge(kcp *controlplanev1.KThreesControlPlane) int32 {
+	if strategy := kcp.Spec.RolloutStrategy; strategy != nil &&
+		strategy.RollingUpdate != nil &&
+		strategy.RollingUpdate.MaxSurge != nil {
+		return int32(strategy.RollingUpdate.MaxSurge.IntValue())
+	}
+	return 1
 }

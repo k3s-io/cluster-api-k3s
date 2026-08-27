@@ -58,6 +58,7 @@ func TestRollingUpdate(t *testing.T) {
 		tryFallback     bool
 		tryErr          error
 		wantAction      string
+		wantScaleDowns  int
 		wantErrContains string
 	}{
 		{
@@ -85,21 +86,41 @@ func TestRollingUpdate(t *testing.T) {
 			wantAction: "scale-up",
 		},
 		{
-			name:       "maxSurge zero eligible covered diff uses in-place",
-			current:    3,
-			desired:    3,
+			name:       "maxSurge zero eligible covered diff uses in-place for one replica",
+			current:    1,
+			desired:    1,
 			maxSurge:   0,
 			outdated:   []int{0},
 			enabled:    true,
 			wantAction: "in-place",
 		},
 		{
-			name:       "feature disabled with maxSurge one scales down",
-			current:    4,
-			desired:    3,
+			name:       "maxSurge one remains create first for one replica",
+			current:    1,
+			desired:    1,
 			maxSurge:   1,
 			outdated:   []int{0},
-			wantAction: "scale-down",
+			enabled:    true,
+			wantAction: "scale-up",
+		},
+		{
+			name:           "maxSurge one replaces after creating surge Machine for one replica",
+			current:        2,
+			desired:        1,
+			maxSurge:       1,
+			outdated:       []int{0},
+			enabled:        true,
+			wantAction:     "scale-down",
+			wantScaleDowns: 1,
+		},
+		{
+			name:           "feature disabled with maxSurge one scales down",
+			current:        4,
+			desired:        3,
+			maxSurge:       1,
+			outdated:       []int{0},
+			wantAction:     "scale-down",
+			wantScaleDowns: 1,
 		},
 		{
 			name:            "feature disabled single-node maxSurge zero fails safely",
@@ -110,26 +131,59 @@ func TestRollingUpdate(t *testing.T) {
 			wantErrContains: "maxSurge=0 with fewer than three replicas requires InPlaceUpdates",
 		},
 		{
-			name:     "ineligible diff scales down",
-			current:  3,
-			desired:  3,
+			name:     "one replica ineligible diff fails closed",
+			current:  1,
+			desired:  1,
 			maxSurge: 0,
 			outdated: []int{0},
 			enabled:  true,
 			mutateResult: func(result *k3s.UpToDateResult) {
 				result.EligibleForInPlaceUpdate = false
 			},
-			wantAction: "scale-down",
+			wantErrContains: "maxSurge=0 with fewer than three replicas cannot fall back to Machine replacement; enable or fix a working in-place update extension or set maxSurge to 1",
 		},
 		{
-			name:        "coverage false falls back to scale down",
-			current:     3,
-			desired:     3,
-			maxSurge:    0,
-			outdated:    []int{0},
-			enabled:     true,
-			tryFallback: true,
-			wantAction:  "scale-down",
+			name:            "one replica coverage false fallback fails closed",
+			current:         1,
+			desired:         1,
+			maxSurge:        0,
+			outdated:        []int{0},
+			enabled:         true,
+			tryFallback:     true,
+			wantAction:      "in-place",
+			wantErrContains: "maxSurge=0 with fewer than three replicas cannot fall back to Machine replacement; enable or fix a working in-place update extension or set maxSurge to 1",
+		},
+		{
+			name:            "two replica fallback fails closed",
+			current:         2,
+			desired:         2,
+			maxSurge:        0,
+			outdated:        []int{0},
+			enabled:         true,
+			tryFallback:     true,
+			wantAction:      "in-place",
+			wantErrContains: "maxSurge=0 with fewer than three replicas cannot fall back to Machine replacement; enable or fix a working in-place update extension or set maxSurge to 1",
+		},
+		{
+			name:           "three replica unsupported fallback scales down",
+			current:        3,
+			desired:        3,
+			maxSurge:       0,
+			outdated:       []int{0},
+			enabled:        true,
+			tryFallback:    true,
+			wantAction:     "scale-down",
+			wantScaleDowns: 1,
+		},
+		{
+			name:           "one desired replica with two current Machines permits surplus deletion",
+			current:        2,
+			desired:        1,
+			maxSurge:       0,
+			outdated:       []int{0},
+			enabled:        true,
+			wantAction:     "scale-down",
+			wantScaleDowns: 1,
 		},
 		{
 			name:            "coverage error is returned",
@@ -139,16 +193,18 @@ func TestRollingUpdate(t *testing.T) {
 			outdated:        []int{0},
 			enabled:         true,
 			tryErr:          errors.New("coverage failed"),
+			wantAction:      "in-place",
 			wantErrContains: "coverage failed",
 		},
 		{
-			name:       "surplus outdated Machine is deleted after desired replicas are up to date",
-			current:    4,
-			desired:    3,
-			maxSurge:   1,
-			outdated:   []int{0},
-			enabled:    true,
-			wantAction: "scale-down",
+			name:           "surplus outdated Machine is deleted after desired replicas are up to date",
+			current:        4,
+			desired:        3,
+			maxSurge:       1,
+			outdated:       []int{0},
+			enabled:        true,
+			wantAction:     "scale-down",
+			wantScaleDowns: 1,
 		},
 	}
 
@@ -168,6 +224,7 @@ func TestRollingUpdate(t *testing.T) {
 				}
 			}
 			action := ""
+			scaleDowns := 0
 			r := &KThreesControlPlaneReconciler{
 				Client: c,
 				overrideScaleUpControlPlane: func(context.Context, *clusterv1.Cluster, *controlplanev1.KThreesControlPlane, *k3s.ControlPlane) (ctrl.Result, error) {
@@ -175,6 +232,7 @@ func TestRollingUpdate(t *testing.T) {
 					return ctrl.Result{}, nil
 				},
 				overrideScaleDownControlPlane: func(_ context.Context, _ *clusterv1.Cluster, _ *controlplanev1.KThreesControlPlane, _ *k3s.ControlPlane, machines collections.Machines) (ctrl.Result, error) {
+					scaleDowns++
 					action = "scale-down"
 					g.Expect(machines).NotTo(BeEmpty())
 					return ctrl.Result{}, nil
@@ -188,19 +246,13 @@ func TestRollingUpdate(t *testing.T) {
 			_, err := r.updateControlPlane(context.Background(), cluster, kcp, controlPlane, machinesNeedingRollout, results)
 			if tt.wantErrContains != "" {
 				g.Expect(err).To(MatchError(ContainSubstring(tt.wantErrContains)))
-				if tt.tryErr != nil {
-					g.Expect(action).To(Equal("in-place"))
-				} else {
-					g.Expect(action).To(BeEmpty())
-				}
+				g.Expect(action).To(Equal(tt.wantAction))
+				g.Expect(scaleDowns).To(Equal(tt.wantScaleDowns))
 				return
 			}
 			g.Expect(err).NotTo(HaveOccurred())
-			if tt.tryFallback {
-				g.Expect(action).To(Equal("scale-down"))
-			} else {
-				g.Expect(action).To(Equal(tt.wantAction))
-			}
+			g.Expect(action).To(Equal(tt.wantAction))
+			g.Expect(scaleDowns).To(Equal(tt.wantScaleDowns))
 		})
 	}
 }
