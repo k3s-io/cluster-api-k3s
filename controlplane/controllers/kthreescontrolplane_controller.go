@@ -738,10 +738,9 @@ func (r *KThreesControlPlaneReconciler) reconcileKubeconfig(ctx context.Context,
 // syncMachines updates Machines, InfrastructureMachines and KThreesConfigs to propagate in-place mutable fields from KCP.
 // Note: It also cleans up managed fields of all Machines so that Machines that were
 // created/patched before (<= v0.2.0) the controller adopted Server-Side-Apply (SSA) can also work with SSA.
-// Note: For InfrastructureMachines and KThreesConfigs it also drops ownership of "metadata.labels" and
-// "metadata.annotations" from the main manager so that the metadata-only manager can own these fields with SSA.
-// Otherwise, fields would be co-owned and then we would not be
-// able to e.g. drop labels and annotations.
+// Note: For InfrastructureMachines and KThreesConfigs it also migrates ownership of "metadata.labels" and
+// "metadata.annotations" from the main manager to the metadata-only manager. It retains the older cleanup
+// for objects created before SSA adoption so both upgrade paths can drop labels and annotations.
 func (r *KThreesControlPlaneReconciler) syncMachines(ctx context.Context, controlPlane *k3s.ControlPlane) error {
 	patchHelpers := map[string]*patch.Helper{}
 	for machineName := range controlPlane.Machines {
@@ -786,11 +785,12 @@ func (r *KThreesControlPlaneReconciler) syncMachines(ctx context.Context, contro
 		// Only update the InfraMachine if it is already found, otherwise just skip it.
 		// This could happen e.g. if the cache is not up-to-date yet.
 		if infraMachineFound {
-			// Cleanup managed fields of all InfrastructureMachines to drop ownership of labels and annotations
-			// from "manager". We do this so that InfrastructureMachines that are created using the Create method
-			// can also work with SSA. Otherwise, labels and annotations would be co-owned and then we would not
-			// be able to e.g. drop labels and annotations.
-			if err := ssa.DropManagedFields(ctx, r.Client, infraMachine, kcpManagerName, labelsAndAnnotationsManagedFieldPaths); err != nil {
+			// Migrate related objects created through v0.4.0, when the main manager owned labels and annotations.
+			if err := ssa.MigrateManagedFields(ctx, r.Client, infraMachine, kcpManagerName, kcpMetadataManagerName); err != nil {
+				return errors.Wrapf(err, "failed to migrate managedFields of InfrastructureMachine %s", klog.KObj(infraMachine))
+			}
+			// Preserve cleanup for objects created before Cluster API K3s adopted SSA (<= v0.2.0).
+			if err := ssa.DropManagedFields(ctx, r.Client, infraMachine, kcpMetadataManagerName, labelsAndAnnotationsManagedFieldPaths); err != nil {
 				return errors.Wrapf(err, "failed to clean up managedFields of InfrastructureMachine %s", klog.KObj(infraMachine))
 			}
 			// Update in-place mutating fields on InfrastructureMachine.
@@ -816,11 +816,12 @@ func (r *KThreesControlPlaneReconciler) syncMachines(ctx context.Context, contro
 			}
 			gvk := groupVersion.WithKind(m.Spec.Bootstrap.ConfigRef.Kind)
 			kthreesConfigs.SetGroupVersionKind(gvk)
-			// Cleanup managed fields of all KThreesConfigs to drop ownership of labels and annotations
-			// from "manager". We do this so that KThreesConfigs that are created using the Create method
-			// can also work with SSA. Otherwise, labels and annotations would be co-owned and then we would not
-			// be able to e.g. drop labels and annotations.
-			if err := ssa.DropManagedFields(ctx, r.Client, kthreesConfigs, kcpManagerName, labelsAndAnnotationsManagedFieldPaths); err != nil {
+			// Migrate related objects created through v0.4.0, when the main manager owned labels and annotations.
+			if err := ssa.MigrateManagedFields(ctx, r.Client, kthreesConfigs, kcpManagerName, kcpMetadataManagerName); err != nil {
+				return errors.Wrapf(err, "failed to migrate managedFields of KThreesConfigs %s", klog.KObj(kthreesConfigs))
+			}
+			// Preserve cleanup for objects created before Cluster API K3s adopted SSA (<= v0.2.0).
+			if err := ssa.DropManagedFields(ctx, r.Client, kthreesConfigs, kcpMetadataManagerName, labelsAndAnnotationsManagedFieldPaths); err != nil {
 				return errors.Wrapf(err, "failed to clean up managedFields of kthreesConfigs %s", klog.KObj(kthreesConfigs))
 			}
 			// Update in-place mutating fields on BootstrapConfig.

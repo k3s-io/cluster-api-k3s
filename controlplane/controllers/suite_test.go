@@ -22,11 +22,14 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
+	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
 	controlplanev1beta1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta1"
 	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
 )
@@ -58,6 +61,9 @@ var _ = BeforeSuite(func(done Done) {
 	Expect(err).ToNot(HaveOccurred())
 	Expect(cfg).ToNot(BeNil())
 
+	Expect(apiextensionsv1.AddToScheme(scheme.Scheme)).Should(Succeed())
+	Expect(clusterv1.AddToScheme(scheme.Scheme)).Should(Succeed())
+	Expect(bootstrapv1.AddToScheme(scheme.Scheme)).Should(Succeed())
 	Expect(controlplanev1beta1.AddToScheme(scheme.Scheme)).Should(Succeed())
 	Expect(controlplanev1.AddToScheme(scheme.Scheme)).Should(Succeed())
 
