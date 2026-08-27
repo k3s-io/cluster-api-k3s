@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -256,6 +257,30 @@ func TestReconcileControlPlaneConditionsPatchesUpToDateBeforeInitialization(t *t
 	g.Expect(condition.Message).To(ContainSubstring("Version v1.31.1+k3s1, v1.31.2+k3s1 required"))
 }
 
+func TestReconcileControlPlaneConditionsPatchesUpToDateWhenWorkloadClientFails(t *testing.T) {
+	g := NewWithT(t)
+	controlPlane, c := newConditionControlPlaneAndClient(t, "v1.31.2+k3s1", false)
+	controlPlane.KCP.Status.Initialized = true
+
+	workloadErr := errors.New("injected workload client failure")
+	r := &KThreesControlPlaneReconciler{
+		managementCluster: &workloadClientErrorManagementCluster{
+			Reader: c,
+			err:    workloadErr,
+		},
+	}
+	err := r.reconcileControlPlaneConditions(context.Background(), controlPlane)
+	g.Expect(err).To(MatchError(ContainSubstring(workloadErr.Error())))
+
+	actualMachine := &clusterv1.Machine{}
+	g.Expect(c.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: "machine-1"}, actualMachine)).To(Succeed())
+	condition := conditions.Get(actualMachine, clusterv1.MachineUpToDateCondition)
+	g.Expect(condition).NotTo(BeNil())
+	g.Expect(condition.Status).To(Equal(metav1.ConditionFalse))
+	g.Expect(condition.Reason).To(Equal(clusterv1.MachineNotUpToDateReason))
+	g.Expect(condition.Message).To(ContainSubstring("Version v1.31.1+k3s1, v1.31.2+k3s1 required"))
+}
+
 func newConditionControlPlane(t *testing.T, kcpVersion string, inProgress bool) *k3s.ControlPlane {
 	t.Helper()
 	controlPlane, _ := newConditionControlPlaneAndClient(t, kcpVersion, inProgress)
@@ -343,4 +368,24 @@ func newConditionControlPlaneAndClient(t *testing.T, kcpVersion string, inProgre
 	controlPlane, err := k3s.NewControlPlane(context.Background(), c, cluster, kcp, collections.FromMachines(machine))
 	g.Expect(err).NotTo(HaveOccurred())
 	return controlPlane, c
+}
+
+type workloadClientErrorManagementCluster struct {
+	client.Reader
+	err error
+}
+
+func (m *workloadClientErrorManagementCluster) GetMachinesForCluster(
+	context.Context,
+	client.ObjectKey,
+	...collections.Func,
+) (collections.Machines, error) {
+	return nil, errors.New("unexpected GetMachinesForCluster call")
+}
+
+func (m *workloadClientErrorManagementCluster) GetWorkloadCluster(
+	context.Context,
+	client.ObjectKey,
+) (*k3s.Workload, error) {
+	return nil, m.err
 }

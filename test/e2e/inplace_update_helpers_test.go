@@ -25,10 +25,14 @@ import (
 	"testing"
 
 	"github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/validation"
+	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	runtimev1 "sigs.k8s.io/cluster-api/api/runtime/v1beta2"
+
+	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
 )
 
 func TestRunInPlaceAfterEachCleansUpAfterEvidenceFailure(t *testing.T) {
@@ -137,5 +141,32 @@ func TestObserveMachineCardinality(t *testing.T) {
 	}
 	if evidence.MaxControlPlaneMachineCardinality != 4 {
 		t.Fatalf("max cardinality after violation = %d, want 4", evidence.MaxControlPlaneMachineCardinality)
+	}
+}
+
+func TestRecordCompletedControlPlaneConditions(t *testing.T) {
+	evidence := &inPlaceScenarioEvidence{}
+	kcp := &controlplanev1.KThreesControlPlane{
+		Status: controlplanev1.KThreesControlPlaneStatus{
+			Conditions: clusterv1beta1.Conditions{{
+				Type:   controlplanev1.MachinesSpecUpToDateCondition,
+				Status: corev1.ConditionFalse,
+			}},
+		},
+	}
+
+	if err := recordCompletedControlPlaneConditions(evidence, kcp); err == nil {
+		t.Fatal("expected incomplete control-plane condition to be rejected")
+	}
+	if evidence.FinalControlPlaneConditions != nil {
+		t.Fatalf("conditions recorded before completion: %#v", evidence.FinalControlPlaneConditions)
+	}
+
+	kcp.Status.Conditions[0].Status = corev1.ConditionTrue
+	if err := recordCompletedControlPlaneConditions(evidence, kcp); err != nil {
+		t.Fatalf("recordCompletedControlPlaneConditions returned error: %v", err)
+	}
+	if !reflect.DeepEqual(evidence.FinalControlPlaneConditions, kcp.Status.Conditions) {
+		t.Fatalf("recorded conditions = %#v, want %#v", evidence.FinalControlPlaneConditions, kcp.Status.Conditions)
 	}
 }

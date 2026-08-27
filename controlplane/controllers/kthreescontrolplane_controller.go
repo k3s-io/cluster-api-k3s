@@ -19,6 +19,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -30,7 +31,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
@@ -596,6 +596,17 @@ func (r *KThreesControlPlaneReconciler) reconcile(ctx context.Context, cluster *
 		return result, err
 	}
 
+	return r.reconcileControlPlaneOperations(ctx, cluster, kcp, controlPlane)
+}
+
+func (r *KThreesControlPlaneReconciler) reconcileControlPlaneOperations(
+	ctx context.Context,
+	cluster *clusterv1.Cluster,
+	kcp *controlplanev1.KThreesControlPlane,
+	controlPlane *k3s.ControlPlane,
+) (ctrl.Result, error) {
+	logger := r.Log.WithValues("namespace", kcp.Namespace, "KThreesControlPlane", kcp.Name, "cluster", cluster.Name)
+
 	if r.reconcileInPlaceUpdateState(controlPlane) {
 		return ctrl.Result{}, nil
 	}
@@ -604,7 +615,8 @@ func (r *KThreesControlPlaneReconciler) reconcile(ctx context.Context, cluster *
 	needRollout, upToDateResults := controlPlane.MachinesNeedingRollout()
 	switch {
 	case len(needRollout) > 0:
-		logger.Info("Rolling out Control Plane machines", "needRollout", needRollout.Names())
+		machineNames, reasons := rolloutLogDetails(needRollout, upToDateResults)
+		logger.Info(fmt.Sprintf("Machines need rollout: %s", strings.Join(machineNames, ",")), "reason", reasons)
 		v1beta1conditions.MarkFalse(controlPlane.KCP, controlplanev1.MachinesSpecUpToDateCondition, controlplanev1.RollingUpdateInProgressReason, clusterv1beta1.ConditionSeverityWarning, "Rolling %d replicas with outdated spec (%d replicas up to date)", len(needRollout), len(controlPlane.Machines)-len(needRollout))
 		return r.updateControlPlane(ctx, cluster, kcp, controlPlane, needRollout, upToDateResults)
 	default:
@@ -616,8 +628,8 @@ func (r *KThreesControlPlaneReconciler) reconcile(ctx context.Context, cluster *
 		}
 	}
 
-	// If we've made it this far, we can assume that all ownedMachines are up to date
-	numMachines := len(ownedMachines)
+	// If we've made it this far, we can assume that all control-plane Machines are up to date.
+	numMachines := controlPlane.Machines.Len()
 	desiredReplicas := int(*kcp.Spec.Replicas)
 
 	switch {
@@ -837,13 +849,17 @@ func (r *KThreesControlPlaneReconciler) syncMachines(ctx context.Context, contro
 
 // reconcileControlPlaneConditions is responsible of reconciling conditions reporting the status of static pods and
 // the status of the etcd cluster.
-func (r *KThreesControlPlaneReconciler) reconcileControlPlaneConditions(ctx context.Context, controlPlane *k3s.ControlPlane) error {
+func (r *KThreesControlPlaneReconciler) reconcileControlPlaneConditions(ctx context.Context, controlPlane *k3s.ControlPlane) (reterr error) {
+	defer func() {
+		reterr = kerrors.NewAggregate([]error{reterr, controlPlane.PatchMachines(ctx)})
+	}()
+
 	reconcileMachineUpToDateCondition(ctx, controlPlane)
 
 	// If the cluster is not yet initialized, there is no way to connect to the workload cluster and fetch information
-	// for updating health conditions. The Machine UpToDate condition must still be patched.
+	// for updating health conditions.
 	if !controlPlane.KCP.Status.Initialized {
-		return controlPlane.PatchMachines(ctx)
+		return nil
 	}
 
 	workloadCluster, err := r.managementCluster.GetWorkloadCluster(ctx, util.ObjectKey(controlPlane.Cluster))
@@ -854,11 +870,6 @@ func (r *KThreesControlPlaneReconciler) reconcileControlPlaneConditions(ctx cont
 	// Update conditions status
 	workloadCluster.UpdateAgentConditions(ctx, controlPlane)
 	workloadCluster.UpdateEtcdConditions(ctx, controlPlane)
-
-	// Patch machines with the updated conditions.
-	if err := controlPlane.PatchMachines(ctx); err != nil {
-		return err
-	}
 
 	// KCP will be patched at the end of Reconcile to reflect updated conditions, so we can return now.
 	return nil
@@ -913,6 +924,24 @@ func reconcileMachineUpToDateCondition(_ context.Context, controlPlane *k3s.Cont
 	}
 }
 
+func rolloutLogDetails(
+	machinesNeedingRollout collections.Machines,
+	results map[string]k3s.UpToDateResult,
+) ([]string, string) {
+	machineNames := machinesNeedingRollout.Names()
+	slices.Sort(machineNames)
+
+	messages := make([]string, 0, len(machineNames))
+	for _, name := range machineNames {
+		messages = append(messages, fmt.Sprintf(
+			"Machine %s needs rollout: %s",
+			name,
+			strings.Join(results[name].LogMessages, ", "),
+		))
+	}
+	return machineNames, strings.Join(messages, ", ")
+}
+
 // reconcileEtcdMembers ensures the number of etcd members is in sync with the number of machines/nodes.
 // This is usually required after a machine deletion.
 //
@@ -961,22 +990,5 @@ func (r *KThreesControlPlaneReconciler) reconcileEtcdMembers(ctx context.Context
 		log.Info("Etcd members without nodes removed from the cluster", "members", removedMembers)
 	}
 
-	return nil
-}
-
-func validateRolloutStrategyForController(kcp *controlplanev1.KThreesControlPlane) error {
-	if feature.Gates.Enabled(feature.InPlaceUpdates) ||
-		kcp.Spec.RolloutStrategy == nil ||
-		kcp.Spec.RolloutStrategy.RollingUpdate == nil ||
-		kcp.Spec.RolloutStrategy.RollingUpdate.MaxSurge == nil ||
-		ptr.Deref(kcp.Spec.Replicas, 1) >= 3 {
-		return nil
-	}
-
-	maxSurge := kcp.Spec.RolloutStrategy.RollingUpdate.MaxSurge
-	if (maxSurge.Type == intstr.Int && maxSurge.IntVal == 0) ||
-		(maxSurge.Type == intstr.String && maxSurge.StrVal == "0") {
-		return errors.New("maxSurge=0 with fewer than three replicas requires InPlaceUpdates")
-	}
 	return nil
 }

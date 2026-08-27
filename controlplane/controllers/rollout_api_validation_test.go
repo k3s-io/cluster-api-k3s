@@ -38,65 +38,6 @@ func TestSetupWithManagerRequiresRuntimeClientForInPlaceUpdates(t *testing.T) {
 	NewWithT(t).Expect(err).To(MatchError("RuntimeClient must not be nil when InPlaceUpdates feature gate is enabled"))
 }
 
-func TestValidateRolloutStrategyForController(t *testing.T) {
-	tests := []struct {
-		name                 string
-		maxSurge             intstr.IntOrString
-		replicas             int32
-		enableInPlaceUpdates bool
-		wantErr              bool
-	}{
-		{
-			name:     "blocks single-node zero surge when feature disabled",
-			maxSurge: intstr.FromInt32(0),
-			replicas: 1,
-			wantErr:  true,
-		},
-		{
-			name:                 "allows single-node zero surge when feature enabled",
-			maxSurge:             intstr.FromInt32(0),
-			replicas:             1,
-			enableInPlaceUpdates: true,
-		},
-		{
-			name:     "allows three-node zero surge when feature disabled",
-			maxSurge: intstr.FromInt32(0),
-			replicas: 3,
-		},
-		{
-			name:     "allows single-node surge when feature disabled",
-			maxSurge: intstr.FromInt32(1),
-			replicas: 1,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if tt.enableInPlaceUpdates {
-				utilfeature.SetFeatureGateDuringTest(t, feature.Gates, feature.InPlaceUpdates, true)
-			}
-			kcp := &controlplanev1.KThreesControlPlane{
-				Spec: controlplanev1.KThreesControlPlaneSpec{
-					Replicas: ptr.To(tt.replicas),
-					RolloutStrategy: &controlplanev1.RolloutStrategy{
-						Type: controlplanev1.RollingUpdateStrategyType,
-						RollingUpdate: &controlplanev1.RollingUpdate{
-							MaxSurge: ptr.To(tt.maxSurge),
-						},
-					},
-				},
-			}
-
-			err := validateRolloutStrategyForController(kcp)
-			if tt.wantErr {
-				NewWithT(t).Expect(err).To(HaveOccurred())
-				return
-			}
-			NewWithT(t).Expect(err).NotTo(HaveOccurred())
-		})
-	}
-}
-
 var _ = Describe("KThreesControlPlaneTemplate rollout strategy schema", func() {
 	ctx := context.Background()
 

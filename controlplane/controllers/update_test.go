@@ -205,6 +205,26 @@ func TestRollingUpdate(t *testing.T) {
 	}
 }
 
+func TestRolloutLogDetailsSortsMachinesAndIncludesReasons(t *testing.T) {
+	machines := collections.FromMachines(
+		&clusterv1.Machine{ObjectMeta: metav1.ObjectMeta{Name: "machine-b"}},
+		&clusterv1.Machine{ObjectMeta: metav1.ObjectMeta{Name: "machine-a"}},
+	)
+	results := map[string]k3s.UpToDateResult{
+		"machine-a": {LogMessages: []string{"version changed", "config changed"}},
+		"machine-b": {LogMessages: []string{"rolloutAfter expired"}},
+	}
+
+	names, reasons := rolloutLogDetails(machines, results)
+
+	g := NewWithT(t)
+	g.Expect(names).To(Equal([]string{"machine-a", "machine-b"}))
+	g.Expect(reasons).To(Equal(
+		"Machine machine-a needs rollout: version changed, config changed, " +
+			"Machine machine-b needs rollout: rolloutAfter expired",
+	))
+}
+
 func TestSyncMachinesRefreshesRolloutMachineBeforeInPlaceSelection(t *testing.T) {
 	g := NewWithT(t)
 	utilfeature.SetFeatureGateDuringTest(t, feature.Gates, feature.InPlaceUpdates, true)

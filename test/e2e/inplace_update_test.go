@@ -39,10 +39,12 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
+	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	runtimev1 "sigs.k8s.io/cluster-api/api/runtime/v1beta2"
 	"sigs.k8s.io/cluster-api/test/framework/clusterctl"
 	"sigs.k8s.io/cluster-api/util"
+	v1beta1conditions "sigs.k8s.io/cluster-api/util/deprecated/v1beta1/conditions"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
@@ -87,6 +89,7 @@ type inPlaceScenarioEvidence struct {
 	Snapshots                         []machineUpdateSnapshot       `json:"snapshots,omitempty"`
 	Counters                          map[string]string             `json:"counters,omitempty"`
 	FinalConditions                   map[string][]metav1.Condition `json:"finalConditions,omitempty"`
+	FinalControlPlaneConditions       clusterv1beta1.Conditions     `json:"finalControlPlaneConditions,omitempty"`
 	MaxControlPlaneMachineCardinality int                           `json:"maxControlPlaneMachineCardinality"`
 	InfrastructureProvenance          []infrastructureProvenance    `json:"infrastructureProvenance,omitempty"`
 }
@@ -194,6 +197,7 @@ var _ = Describe("In-place update via Runtime Extension [InPlaceUpdates] [PR-Blo
 
 		evidence.Final = []machineIdentity{identityForMachine(finalMachine)}
 		evidence.FinalConditions[finalMachine.Name] = finalMachine.Status.Conditions
+		waitForCompletedControlPlaneConditions(testContext, mgmtClient, kcpKey, evidence)
 		writeInPlaceEvidence(evidencePath, evidence)
 	})
 
@@ -268,6 +272,7 @@ var _ = Describe("In-place update via Runtime Extension [InPlaceUpdates] [PR-Blo
 			evidence.FinalConditions[finalMachines[i].Name] = finalMachines[i].Status.Conditions
 		}
 		evidence.Final = identitiesForMachines(finalMachines)
+		waitForCompletedControlPlaneConditions(testContext, mgmtClient, kcpKey, evidence)
 		writeInPlaceEvidence(evidencePath, evidence)
 	})
 })
@@ -677,6 +682,37 @@ func collectInPlaceCallRecord(
 
 func writeInPlaceEvidence(path string, evidence *inPlaceScenarioEvidence) {
 	writeJSONArtifact(path, evidence)
+}
+
+func waitForCompletedControlPlaneConditions(
+	ctx context.Context,
+	c client.Client,
+	key types.NamespacedName,
+	evidence *inPlaceScenarioEvidence,
+) {
+	Eventually(func() error {
+		kcp := &controlplanev1.KThreesControlPlane{}
+		if err := c.Get(ctx, key, kcp); err != nil {
+			return err
+		}
+		return recordCompletedControlPlaneConditions(evidence, kcp)
+	}, time.Minute, time.Second).Should(Succeed())
+}
+
+func recordCompletedControlPlaneConditions(
+	evidence *inPlaceScenarioEvidence,
+	kcp *controlplanev1.KThreesControlPlane,
+) error {
+	if !v1beta1conditions.IsTrue(kcp, controlplanev1.MachinesSpecUpToDateCondition) {
+		return fmt.Errorf(
+			"KThreesControlPlane %s/%s condition %s is not True",
+			kcp.Namespace,
+			kcp.Name,
+			controlplanev1.MachinesSpecUpToDateCondition,
+		)
+	}
+	evidence.FinalControlPlaneConditions = append(clusterv1beta1.Conditions(nil), kcp.Status.Conditions...)
+	return nil
 }
 
 func writeJSONArtifact(path string, value any) {

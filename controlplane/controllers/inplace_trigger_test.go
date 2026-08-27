@@ -27,13 +27,17 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
+	utilfeature "k8s.io/component-base/featuregate/testing"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	runtimehooksv1 "sigs.k8s.io/cluster-api/api/runtime/hooks/v1alpha1"
+	"sigs.k8s.io/cluster-api/feature"
 	"sigs.k8s.io/cluster-api/util/collections"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
+	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
 	"github.com/k3s-io/cluster-api-k3s/pkg/capi/hooks"
 	"github.com/k3s-io/cluster-api-k3s/pkg/k3s"
 )
@@ -193,27 +197,36 @@ func TestTriggerInPlaceUpdateResumeUsesLatestDesiredState(t *testing.T) {
 	g.Expect(hooks.IsPending(runtimehooksv1.UpdateMachine, stored)).To(BeTrue())
 }
 
-func TestReconcileInPlaceUpdateStateBlocksAnotherRollout(t *testing.T) {
+func TestReconcileControlPlaneOperationsBlocksAnotherRolloutDuringActiveInPlaceUpdate(t *testing.T) {
 	g := NewWithT(t)
-	active := &clusterv1.Machine{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        "active",
-			Annotations: map[string]string{clusterv1.UpdateInProgressAnnotation: ""},
-		},
-	}
+	utilfeature.SetFeatureGateDuringTest(t, feature.Gates, feature.InPlaceUpdates, true)
+	controlPlane, cluster, kcp, machinesNeedingRollout, results, _ := newRolloutControlPlane(t, 2, 2, 0, []int{1}, false)
+	g.Expect(machinesNeedingRollout.Names()).To(Equal([]string{"machine-1"}))
+	g.Expect(results).To(HaveKey("machine-1"))
+	active := controlPlane.Machines["machine-0"]
+	active.Annotations[clusterv1.UpdateInProgressAnnotation] = ""
 	hooks.MarkObjectAsPending(active, runtimehooksv1.UpdateMachine)
-	controlPlane := &k3s.ControlPlane{Machines: collections.FromMachines(active)}
-	triggerCalled := false
+
+	operations := []string{}
 	r := &KThreesControlPlaneReconciler{
-		overrideTriggerInPlaceUpdate: func(context.Context, *clusterv1.Machine, k3s.UpToDateResult) error {
-			triggerCalled = true
-			return nil
+		overrideScaleUpControlPlane: func(context.Context, *clusterv1.Cluster, *controlplanev1.KThreesControlPlane, *k3s.ControlPlane) (ctrl.Result, error) {
+			operations = append(operations, "scale-up")
+			return ctrl.Result{}, nil
+		},
+		overrideScaleDownControlPlane: func(context.Context, *clusterv1.Cluster, *controlplanev1.KThreesControlPlane, *k3s.ControlPlane, collections.Machines) (ctrl.Result, error) {
+			operations = append(operations, "scale-down")
+			return ctrl.Result{}, nil
+		},
+		overrideTryInPlaceUpdate: func(context.Context, *k3s.ControlPlane, *clusterv1.Machine, k3s.UpToDateResult) (bool, ctrl.Result, error) {
+			operations = append(operations, "in-place")
+			return false, ctrl.Result{}, nil
 		},
 	}
 
-	handled := r.reconcileInPlaceUpdateState(controlPlane)
-	g.Expect(handled).To(BeTrue())
-	g.Expect(triggerCalled).To(BeFalse())
+	result, err := r.reconcileControlPlaneOperations(context.Background(), cluster, kcp, controlPlane)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(result).To(Equal(ctrl.Result{}))
+	g.Expect(operations).To(BeEmpty())
 }
 
 func TestResumeTriggerUsesLatestDesiredStateWithoutRepeatingCoverage(t *testing.T) {
