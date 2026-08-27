@@ -66,7 +66,10 @@ func (r *KThreesControlPlaneReconciler) rollingUpdate(
 		return r.scaleUpControlPlane(ctx, cluster, kcp, controlPlane)
 	}
 
-	if maxSurge == 0 && desiredReplicas < 3 && !feature.Gates.Enabled(feature.InPlaceUpdates) {
+	if maxSurge == 0 &&
+		desiredReplicas < 3 &&
+		currentReplicas <= desiredReplicas &&
+		!feature.Gates.Enabled(feature.InPlaceUpdates) {
 		return ctrl.Result{}, errors.New("maxSurge=0 with fewer than three replicas requires InPlaceUpdates")
 	}
 

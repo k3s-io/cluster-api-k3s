@@ -131,6 +131,15 @@ func TestRollingUpdate(t *testing.T) {
 			wantErrContains: "maxSurge=0 with fewer than three replicas requires InPlaceUpdates",
 		},
 		{
+			name:           "feature disabled permits outdated surplus deletion",
+			current:        2,
+			desired:        1,
+			maxSurge:       0,
+			outdated:       []int{0},
+			wantAction:     "scale-down",
+			wantScaleDowns: 1,
+		},
+		{
 			name:     "one replica ineligible diff fails closed",
 			current:  1,
 			desired:  1,
