@@ -29,7 +29,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/validation"
 	runtimev1 "sigs.k8s.io/cluster-api/api/runtime/v1beta2"
-	"sigs.k8s.io/cluster-api/test/framework/clusterctl"
 )
 
 func TestRunInPlaceAfterEachCleansUpAfterEvidenceFailure(t *testing.T) {
@@ -119,90 +118,6 @@ func TestExtensionConfigDiscoveredForCurrentGeneration(t *testing.T) {
 	config.Status.Conditions[0].Status = metav1.ConditionFalse
 	if extensionConfigDiscoveredForCurrentGeneration(config) {
 		t.Fatal("current Discovered=False condition must not be accepted")
-	}
-}
-
-func TestShouldUseDockerCLIImageLoader(t *testing.T) {
-	tests := []struct {
-		name         string
-		socketExists bool
-		explicit     bool
-		osRelease    string
-		want         bool
-	}{
-		{name: "native socket remains on normal path", socketExists: true, explicit: true},
-		{name: "native Linux without socket remains on normal path"},
-		{name: "WSL without socket uses fallback", osRelease: "5.15.153.1-microsoft-standard-WSL2", want: true},
-		{name: "explicit opt-in without socket uses fallback", explicit: true, want: true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := shouldUseDockerCLIImageLoader(tt.socketExists, tt.explicit, tt.osRelease); got != tt.want {
-				t.Fatalf("got %t, want %t", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestSaveImageWithDockerCLINativePath(t *testing.T) {
-	var calls [][]string
-	run := func(name string, args ...string) ([]byte, error) {
-		calls = append(calls, append([]string{name}, args...))
-		return []byte("saved"), nil
-	}
-
-	output, err := saveImageWithDockerCLI("image:dev", "/work/image.tar", run)
-	if err != nil {
-		t.Fatalf("saveImageWithDockerCLI returned error: %v", err)
-	}
-	if string(output) != "saved" {
-		t.Fatalf("unexpected output %q", output)
-	}
-	want := [][]string{{"docker", "save", "--output", "/work/image.tar", "image:dev"}}
-	if !reflect.DeepEqual(calls, want) {
-		t.Fatalf("unexpected calls: got %#v, want %#v", calls, want)
-	}
-}
-
-func TestSaveImageWithDockerCLIWindowsPathRetry(t *testing.T) {
-	var calls [][]string
-	run := func(name string, args ...string) ([]byte, error) {
-		calls = append(calls, append([]string{name}, args...))
-		switch len(calls) {
-		case 1:
-			return nil, errors.New("invalid output path")
-		case 2:
-			return []byte("C:\\work\\image.tar\r\n"), nil
-		default:
-			return []byte("saved"), nil
-		}
-	}
-
-	output, err := saveImageWithDockerCLI("image:dev", "/work/image.tar", run)
-	if err != nil {
-		t.Fatalf("saveImageWithDockerCLI returned error: %v", err)
-	}
-	if string(output) != "saved" {
-		t.Fatalf("unexpected output %q", output)
-	}
-	want := [][]string{
-		{"docker", "save", "--output", "/work/image.tar", "image:dev"},
-		{"wslpath", "-w", "/work/image.tar"},
-		{"docker", "save", "--output", "C:\\work\\image.tar", "image:dev"},
-	}
-	if !reflect.DeepEqual(calls, want) {
-		t.Fatalf("unexpected calls: got %#v, want %#v", calls, want)
-	}
-}
-
-func TestImageLoadFailure(t *testing.T) {
-	loadErr := errors.New("load failed")
-	if err := imageLoadFailure(clusterctl.MustLoadImage, loadErr); !errors.Is(err, loadErr) {
-		t.Fatalf("mustLoad error = %v, want %v", err, loadErr)
-	}
-	if err := imageLoadFailure(clusterctl.TryLoadImage, loadErr); err != nil {
-		t.Fatalf("tryLoad error = %v, want nil", err)
 	}
 }
 

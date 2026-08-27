@@ -21,13 +21,10 @@ package e2e
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -37,8 +34,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
-	kind "sigs.k8s.io/kind/pkg/cluster"
-	kindnodesutils "sigs.k8s.io/kind/pkg/cluster/nodeutils"
 
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	runtimev1 "sigs.k8s.io/cluster-api/api/runtime/v1beta2"
@@ -97,8 +92,6 @@ var (
 	bootstrapClusterProxy framework.ClusterProxy
 )
 
-const dockerCLIImageLoaderEnv = "CAPI_K3S_E2E_DOCKER_CLI_IMAGE_LOADER"
-
 func init() {
 	flag.StringVar(&configPath, "e2e.config", "", "path to the e2e config file")
 	flag.StringVar(&artifactFolder, "e2e.artifacts-folder", "", "folder where e2e test artifact should be stored")
@@ -113,13 +106,10 @@ func TestE2E(t *testing.T) {
 
 	ctrl.SetLogger(klog.Background())
 
-	// If running in prow without an explicit flag, use the artifacts folder reported in test grid.
-	if prowArtifactFolder, exists := os.LookupEnv("ARTIFACTS"); exists && artifactFolder == "" {
+	// If running in prow, make sure to use the artifacts folder that will be reported in test grid (ignoring the value provided by flag).
+	if prowArtifactFolder, exists := os.LookupEnv("ARTIFACTS"); exists {
 		artifactFolder = prowArtifactFolder
 	}
-	absoluteArtifactFolder, err := filepath.Abs(artifactFolder)
-	g.Expect(err).NotTo(HaveOccurred(), "Invalid test suite argument. Can't resolve e2e.artifacts-folder %q", artifactFolder)
-	artifactFolder = absoluteArtifactFolder
 
 	// ensure the artifacts folder exists
 	g.Expect(os.MkdirAll(artifactFolder, 0o755)).To(Succeed(), "Invalid test suite argument. Can't create e2e.artifacts-folder %q", artifactFolder) //nolint:gosec
@@ -241,25 +231,14 @@ func setupBootstrapCluster(config *clusterctl.E2EConfig, scheme *runtime.Scheme,
 	kubeconfigPath := ""
 	if !useExistingCluster {
 		By("Creating the bootstrap cluster")
-		input := bootstrap.CreateKindBootstrapClusterAndLoadImagesInput{
+		clusterProvider = bootstrap.CreateKindBootstrapClusterAndLoadImages(ctx, bootstrap.CreateKindBootstrapClusterAndLoadImagesInput{
 			Name:               config.ManagementClusterName,
 			KubernetesVersion:  config.GetVariableOrEmpty(KubernetesVersionManagement),
 			RequiresDockerSock: config.HasDockerProvider(),
 			Images:             config.Images,
 			IPFamily:           config.GetVariableOrEmpty(IPFamily),
 			LogFolder:          filepath.Join(artifactFolder, "kind"),
-		}
-		_, socketErr := os.Stat("/var/run/docker.sock")
-		explicitDockerCLILoader, _ := strconv.ParseBool(os.Getenv(dockerCLIImageLoaderEnv))
-		osRelease, _ := os.ReadFile("/proc/sys/kernel/osrelease") //nolint:gosec // Fixed kernel metadata path.
-		if shouldUseDockerCLIImageLoader(socketErr == nil, explicitDockerCLILoader, string(osRelease)) {
-			images := input.Images
-			input.Images = nil
-			clusterProvider = bootstrap.CreateKindBootstrapClusterAndLoadImages(ctx, input)
-			loadImagesWithDockerCLI(config.ManagementClusterName, images)
-		} else {
-			clusterProvider = bootstrap.CreateKindBootstrapClusterAndLoadImages(ctx, input)
-		}
+		})
 		Expect(clusterProvider).ToNot(BeNil(), "Failed to create a bootstrap cluster")
 
 		kubeconfigPath = clusterProvider.GetKubeconfigPath()
@@ -272,90 +251,6 @@ func setupBootstrapCluster(config *clusterctl.E2EConfig, scheme *runtime.Scheme,
 	Expect(clusterProxy).ToNot(BeNil(), "Failed to get a bootstrap cluster proxy")
 
 	return clusterProvider, clusterProxy
-}
-
-func loadImagesWithDockerCLI(clusterName string, images []clusterctl.ContainerImage) {
-	archiveDir := filepath.Join(artifactFolder, "kind", "image-archives")
-	Expect(os.MkdirAll(archiveDir, 0o755)).To(Succeed())
-	defer os.RemoveAll(archiveDir)
-
-	nodes, err := kind.NewProvider().ListInternalNodes(clusterName)
-	Expect(err).NotTo(HaveOccurred())
-
-	for i, image := range images {
-		Byf("Loading image %q with the Docker CLI", image.Name)
-		archivePath, err := filepath.Abs(filepath.Join(archiveDir, fmt.Sprintf("image-%d.tar", i)))
-		Expect(err).NotTo(HaveOccurred())
-		output, err := saveImageWithDockerCLI(image.Name, archivePath, runCommand)
-		if err != nil {
-			if imageLoadFailure(image.LoadBehavior, err) == nil {
-				fmt.Fprintf(GinkgoWriter, "WARNING: unable to save image %q: %v\n%s\n", image.Name, err, output)
-				continue
-			}
-			Expect(err).NotTo(HaveOccurred(), "Failed to save image %q:\n%s", image.Name, output)
-		}
-
-		for _, node := range nodes {
-			archive, err := os.Open(filepath.Clean(archivePath))
-			if err != nil {
-				if imageLoadFailure(image.LoadBehavior, err) == nil {
-					fmt.Fprintf(GinkgoWriter, "WARNING: unable to open image archive for %q: %v\n", image.Name, err)
-					break
-				}
-				Expect(err).NotTo(HaveOccurred(), "Failed to open image archive for %q", image.Name)
-			}
-			err = kindnodesutils.LoadImageArchive(node, archive)
-			closeErr := archive.Close()
-			if err != nil || closeErr != nil {
-				loadErr := errors.Join(err, closeErr)
-				if imageLoadFailure(image.LoadBehavior, loadErr) == nil {
-					fmt.Fprintf(GinkgoWriter, "WARNING: unable to load image %q into node %q: load=%v close=%v\n", image.Name, node.String(), err, closeErr)
-					break
-				}
-				Expect(err).NotTo(HaveOccurred(), "Failed to load image %q into node %q", image.Name, node.String())
-				Expect(closeErr).NotTo(HaveOccurred(), "Failed to close image archive for %q", image.Name)
-			}
-		}
-	}
-}
-
-type commandRunner func(name string, args ...string) ([]byte, error)
-
-func shouldUseDockerCLIImageLoader(socketExists, explicit bool, osRelease string) bool {
-	if socketExists {
-		return false
-	}
-	return explicit || strings.Contains(strings.ToLower(osRelease), "microsoft")
-}
-
-func runCommand(name string, args ...string) ([]byte, error) {
-	return exec.CommandContext(ctx, name, args...).CombinedOutput()
-}
-
-func saveImageWithDockerCLI(image, archivePath string, run commandRunner) ([]byte, error) {
-	output, err := run("docker", "save", "--output", archivePath, image)
-	if err == nil {
-		return output, nil
-	}
-
-	windowsArchivePath, pathErr := run("wslpath", "-w", archivePath)
-	if pathErr != nil {
-		return output, err
-	}
-	return run(
-		"docker",
-		"save",
-		"--output",
-		strings.TrimSpace(string(windowsArchivePath)),
-		image,
-	)
-}
-
-func imageLoadFailure(loadBehavior clusterctl.LoadImageBehavior, err error) error {
-	if err == nil || loadBehavior == clusterctl.TryLoadImage {
-		return nil
-	}
-	return err
 }
 
 func initBootstrapCluster(bootstrapClusterProxy framework.ClusterProxy, config *clusterctl.E2EConfig, clusterctlConfig, artifactFolder string) {
