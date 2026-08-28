@@ -70,6 +70,7 @@ import (
 // KThreesControlPlaneReconciler reconciles a KThreesControlPlane object.
 type KThreesControlPlaneReconciler struct {
 	client.Client
+	apiReader     client.Reader
 	Log           logr.Logger
 	Scheme        *runtime.Scheme
 	RuntimeClient runtimeclient.Client
@@ -338,6 +339,7 @@ func (r *KThreesControlPlaneReconciler) SetupWithManager(ctx context.Context, mg
 	}
 
 	r.Scheme = mgr.GetScheme()
+	r.apiReader = mgr.GetAPIReader()
 	r.controller = c
 	r.recorder = mgr.GetEventRecorderFor("k3s-control-plane-controller")
 	r.ssaCache = ssa.NewCache()

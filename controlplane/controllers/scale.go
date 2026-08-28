@@ -267,13 +267,13 @@ func (r *KThreesControlPlaneReconciler) cloneConfigsAndGenerateMachine(ctx conte
 	if err != nil {
 		return fmt.Errorf("failed to clone infrastructure template: %w", err)
 	}
-	if err := r.Client.Create(ctx, infraMachine); err != nil {
-		return fmt.Errorf("failed to clone infrastructure template: %w", err)
-	}
 	infraRef := clusterv1.ContractVersionedObjectReference{
 		APIGroup: infraMachine.GroupVersionKind().Group,
 		Kind:     infraMachine.GetKind(),
 		Name:     infraMachine.GetName(),
+	}
+	if err := r.createRelatedObject(ctx, infraMachine, infraMachine.GroupVersionKind(), kcp, cluster); err != nil {
+		errs = append(errs, fmt.Errorf("failed to clone infrastructure template: %w", err))
 	}
 
 	// Clone the bootstrap configuration
@@ -337,14 +337,13 @@ func (r *KThreesControlPlaneReconciler) generateKThreesConfig(ctx context.Contex
 		return nil, fmt.Errorf("failed to compute bootstrap configuration: %w", err)
 	}
 
-	if err := r.Client.Create(ctx, bootstrapConfig); err != nil {
-		return nil, fmt.Errorf("failed to create bootstrap configuration: %w", err)
-	}
-
 	bootstrapRef := &clusterv1.ContractVersionedObjectReference{
 		APIGroup: bootstrapv1.GroupVersion.Group,
 		Kind:     "KThreesConfig",
 		Name:     bootstrapConfig.GetName(),
+	}
+	if err := r.createRelatedObject(ctx, bootstrapConfig, bootstrapv1.GroupVersion.WithKind("KThreesConfig"), kcp, cluster); err != nil {
+		return bootstrapRef, fmt.Errorf("failed to create bootstrap configuration: %w", err)
 	}
 
 	return bootstrapRef, nil

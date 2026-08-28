@@ -1,0 +1,517 @@
+/*
+Copyright 2026 The Kubernetes Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+	http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package controllers
+
+import (
+	"context"
+	"errors"
+
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/uuid"
+	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
+	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
+	"github.com/k3s-io/cluster-api-k3s/pkg/util/ssa"
+)
+
+const (
+	relatedObjectTestGroup        = "infrastructure.cluster.x-k8s.io"
+	relatedObjectTestVersion      = "v1beta2"
+	relatedObjectTestMachineKind  = "OwnershipTestMachine"
+	relatedObjectTestTemplateKind = "OwnershipTestMachineTemplate"
+)
+
+var _ = Describe("new related object ownership", func() {
+	BeforeEach(func() {
+		ensureManagedFieldsTestCRD(
+			"ownershiptestmachines."+relatedObjectTestGroup,
+			relatedObjectTestGroup,
+			relatedObjectTestMachineKind,
+			"ownershiptestmachines",
+		)
+		ensureManagedFieldsTestCRD(
+			"ownershiptestmachinetemplates."+relatedObjectTestGroup,
+			relatedObjectTestGroup,
+			relatedObjectTestTemplateKind,
+			"ownershiptestmachinetemplates",
+		)
+		ensureManagedFieldsTestCRD(
+			"machines."+clusterv1.GroupVersion.Group,
+			clusterv1.GroupVersion.Group,
+			"Machine",
+			"machines",
+		)
+		ensureRelatedObjectContractLabels()
+		ensureKThreesConfigContractLabel()
+	})
+
+	It("creates complete related objects with split metadata ownership", func() {
+		ctx := context.Background()
+		fixture := newRelatedObjectOwnershipFixture(ctx)
+		defer fixture.cleanup(ctx)
+
+		reconciler := &KThreesControlPlaneReconciler{
+			Client:    k8sClient,
+			apiReader: k8sClient,
+			ssaCache:  ssa.NewCache(),
+		}
+		Expect(reconciler.cloneConfigsAndGenerateMachine(
+			ctx,
+			fixture.cluster,
+			fixture.kcp,
+			&fixture.kcp.Spec.KThreesConfigSpec,
+			"",
+		)).To(Succeed())
+
+		machine := fixture.getMachine(ctx)
+		Expect(machine).NotTo(BeNil())
+
+		infraMachine := fixture.getInfraMachine(ctx, machine.Spec.InfrastructureRef)
+		kthreesConfig := fixture.getKThreesConfig(ctx, machine.Spec.Bootstrap.ConfigRef)
+		for _, object := range []client.Object{infraMachine, kthreesConfig} {
+			mainEntry := findManagedField(object, kcpManagerName, metav1.ManagedFieldsOperationApply, "")
+			Expect(mainEntry).NotTo(BeNil())
+			Expect(managedFieldOwns(mainEntry, "f:spec")).To(BeTrue())
+			Expect(managedFieldOwns(mainEntry, "f:metadata", "f:labels")).To(BeFalse())
+			Expect(managedFieldOwns(mainEntry, "f:metadata", "f:annotations")).To(BeFalse())
+
+			metadataEntry := findManagedField(object, kcpMetadataManagerName, metav1.ManagedFieldsOperationApply, "")
+			Expect(metadataEntry).NotTo(BeNil())
+			Expect(managedFieldOwns(metadataEntry, "f:metadata", "f:labels")).To(BeTrue())
+			Expect(managedFieldOwns(metadataEntry, "f:metadata", "f:annotations")).To(BeTrue())
+		}
+	})
+
+	It("removes omitted related-object spec fields on a later main-manager apply", func() {
+		ctx := context.Background()
+		fixture := newRelatedObjectOwnershipFixture(ctx)
+		defer fixture.cleanup(ctx)
+		reconciler := &KThreesControlPlaneReconciler{
+			Client:    k8sClient,
+			apiReader: k8sClient,
+			ssaCache:  ssa.NewCache(),
+		}
+		Expect(reconciler.cloneConfigsAndGenerateMachine(
+			ctx,
+			fixture.cluster,
+			fixture.kcp,
+			&fixture.kcp.Spec.KThreesConfigSpec,
+			"",
+		)).To(Succeed())
+
+		machine := fixture.getMachine(ctx)
+		infraMachine := fixture.getInfraMachine(ctx, machine.Spec.InfrastructureRef)
+		desiredInfraMachine := infraMachine.DeepCopy()
+		desiredInfraMachine.SetLabels(nil)
+		desiredInfraMachine.SetAnnotations(nil)
+		unstructured.RemoveNestedField(desiredInfraMachine.Object, "spec", "settings", "legacy")
+		Expect(ssa.Patch(ctx, k8sClient, kcpManagerName, desiredInfraMachine)).To(Succeed())
+
+		kthreesConfig := fixture.getKThreesConfig(ctx, machine.Spec.Bootstrap.ConfigRef)
+		desiredKThreesConfig := kthreesConfig.DeepCopy()
+		desiredKThreesConfig.Labels = nil
+		desiredKThreesConfig.Annotations = nil
+		desiredKThreesConfig.Spec.PostK3sCommands = nil
+		Expect(ssa.Patch(ctx, k8sClient, kcpManagerName, desiredKThreesConfig)).To(Succeed())
+
+		infraMachine = fixture.getInfraMachine(ctx, machine.Spec.InfrastructureRef)
+		_, found, err := unstructured.NestedString(infraMachine.Object, "spec", "settings", "legacy")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(found).To(BeFalse())
+		stable, found, err := unstructured.NestedString(infraMachine.Object, "spec", "settings", "stable")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(found).To(BeTrue())
+		Expect(stable).To(Equal("kept"))
+
+		kthreesConfig = fixture.getKThreesConfig(ctx, machine.Spec.Bootstrap.ConfigRef)
+		Expect(kthreesConfig.Spec.PostK3sCommands).To(BeEmpty())
+	})
+
+	It("cleans up an InfraMachine when ownership setup fails after its SSA create", func() {
+		ctx := context.Background()
+		fixture := newRelatedObjectOwnershipFixture(ctx)
+		defer fixture.cleanup(ctx)
+		failingClient := &relatedObjectSetupFailureClient{
+			Client:                   k8sClient,
+			failManagedFieldsPatchAt: 1,
+		}
+		reconciler := &KThreesControlPlaneReconciler{
+			Client:    failingClient,
+			apiReader: k8sClient,
+			ssaCache:  ssa.NewCache(),
+		}
+
+		err := reconciler.cloneConfigsAndGenerateMachine(
+			ctx,
+			fixture.cluster,
+			fixture.kcp,
+			&fixture.kcp.Spec.KThreesConfigSpec,
+			"",
+		)
+		Expect(err).To(MatchError(ContainSubstring("failed to split managedFields ownership for " + relatedObjectTestMachineKind)))
+		fixture.expectObjectCounts(ctx, 0, 0, 0)
+	})
+
+	It("does not create a Machine when the related-object SSA create fails", func() {
+		ctx := context.Background()
+		fixture := newRelatedObjectOwnershipFixture(ctx)
+		defer fixture.cleanup(ctx)
+		failingClient := &relatedObjectSetupFailureClient{
+			Client:           k8sClient,
+			failApplyPatchAt: 1,
+		}
+		reconciler := &KThreesControlPlaneReconciler{
+			Client:    failingClient,
+			apiReader: k8sClient,
+			ssaCache:  ssa.NewCache(),
+		}
+
+		err := reconciler.cloneConfigsAndGenerateMachine(
+			ctx,
+			fixture.cluster,
+			fixture.kcp,
+			&fixture.kcp.Spec.KThreesConfigSpec,
+			"",
+		)
+		Expect(err).To(MatchError(ContainSubstring("failed to create " + relatedObjectTestMachineKind)))
+		fixture.expectObjectCounts(ctx, 0, 0, 0)
+	})
+
+	It("cleans up related objects when metadata ownership establishment fails", func() {
+		ctx := context.Background()
+		fixture := newRelatedObjectOwnershipFixture(ctx)
+		defer fixture.cleanup(ctx)
+		failingClient := &relatedObjectSetupFailureClient{
+			Client:           k8sClient,
+			failApplyPatchAt: 2,
+		}
+		reconciler := &KThreesControlPlaneReconciler{
+			Client:    failingClient,
+			apiReader: k8sClient,
+			ssaCache:  ssa.NewCache(),
+		}
+
+		err := reconciler.cloneConfigsAndGenerateMachine(
+			ctx,
+			fixture.cluster,
+			fixture.kcp,
+			&fixture.kcp.Spec.KThreesConfigSpec,
+			"",
+		)
+		Expect(err).To(MatchError(ContainSubstring("failed to establish metadata ownership for " + relatedObjectTestMachineKind)))
+		fixture.expectObjectCounts(ctx, 0, 0, 0)
+	})
+
+	It("cleans up both related objects when KThreesConfig ownership setup fails", func() {
+		ctx := context.Background()
+		fixture := newRelatedObjectOwnershipFixture(ctx)
+		defer fixture.cleanup(ctx)
+		failingClient := &relatedObjectSetupFailureClient{
+			Client:                   k8sClient,
+			failManagedFieldsPatchAt: 2,
+		}
+		reconciler := &KThreesControlPlaneReconciler{
+			Client:    failingClient,
+			apiReader: k8sClient,
+			ssaCache:  ssa.NewCache(),
+		}
+
+		err := reconciler.cloneConfigsAndGenerateMachine(
+			ctx,
+			fixture.cluster,
+			fixture.kcp,
+			&fixture.kcp.Spec.KThreesConfigSpec,
+			"",
+		)
+		Expect(err).To(MatchError(ContainSubstring("failed to split managedFields ownership for KThreesConfig")))
+		fixture.expectObjectCounts(ctx, 0, 0, 0)
+	})
+
+	It("retains ownership setup and cleanup failures in the aggregate", func() {
+		ctx := context.Background()
+		fixture := newRelatedObjectOwnershipFixture(ctx)
+		defer fixture.cleanup(ctx)
+		failingClient := &relatedObjectSetupFailureClient{
+			Client:                   k8sClient,
+			failManagedFieldsPatchAt: 2,
+			failDeleteKind:           relatedObjectTestMachineKind,
+		}
+		reconciler := &KThreesControlPlaneReconciler{
+			Client:    failingClient,
+			apiReader: k8sClient,
+			ssaCache:  ssa.NewCache(),
+		}
+
+		err := reconciler.cloneConfigsAndGenerateMachine(
+			ctx,
+			fixture.cluster,
+			fixture.kcp,
+			&fixture.kcp.Spec.KThreesConfigSpec,
+			"",
+		)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("failed to split managedFields ownership for KThreesConfig"))
+		Expect(err.Error()).To(ContainSubstring("injected cleanup failure"))
+		fixture.expectObjectCounts(ctx, 0, 1, 0)
+	})
+})
+
+type relatedObjectSetupFailureClient struct {
+	client.Client
+	failManagedFieldsPatchAt int
+	managedFieldsPatchCount  int
+	failApplyPatchAt         int
+	applyPatchCount          int
+	failDeleteKind           string
+	deleteFailed             bool
+}
+
+func (c *relatedObjectSetupFailureClient) Patch(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+	if patch.Type() == types.ApplyPatchType {
+		c.applyPatchCount++
+		if c.applyPatchCount == c.failApplyPatchAt {
+			return errors.New("injected apply patch failure")
+		}
+	}
+	if patch.Type() == types.MergePatchType {
+		c.managedFieldsPatchCount++
+		if c.managedFieldsPatchCount == c.failManagedFieldsPatchAt {
+			return errors.New("injected managedFields patch failure")
+		}
+	}
+	return c.Client.Patch(ctx, obj, patch, opts...)
+}
+
+func (c *relatedObjectSetupFailureClient) Delete(ctx context.Context, obj client.Object, opts ...client.DeleteOption) error {
+	if !c.deleteFailed && obj.GetObjectKind().GroupVersionKind().Kind == c.failDeleteKind {
+		c.deleteFailed = true
+		return errors.New("injected cleanup failure")
+	}
+	return c.Client.Delete(ctx, obj, opts...)
+}
+
+type relatedObjectOwnershipFixture struct {
+	cluster  *clusterv1.Cluster
+	kcp      *controlplanev1.KThreesControlPlane
+	template *unstructured.Unstructured
+}
+
+func newRelatedObjectOwnershipFixture(ctx context.Context) *relatedObjectOwnershipFixture {
+	suffix := string(uuid.NewUUID())
+	cluster := &clusterv1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "ownership-cluster-" + suffix,
+			Namespace: metav1.NamespaceDefault,
+		},
+	}
+	kcp := &controlplanev1.KThreesControlPlane{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: controlplanev1.GroupVersion.String(),
+			Kind:       "KThreesControlPlane",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "ownership-kcp-" + suffix,
+			Namespace: metav1.NamespaceDefault,
+			UID:       types.UID("ownership-kcp-" + suffix),
+		},
+		Spec: controlplanev1.KThreesControlPlaneSpec{
+			Version: "v1.31.1+k3s1",
+			MachineTemplate: controlplanev1.KThreesControlPlaneMachineTemplate{
+				ObjectMeta: clusterv1beta1.ObjectMeta{
+					Labels: map[string]string{
+						"ownership.test.cluster-api.io/label": "desired",
+					},
+					Annotations: map[string]string{
+						"ownership.test.cluster-api.io/annotation": "desired",
+					},
+				},
+				InfrastructureRef: corev1.ObjectReference{
+					APIVersion: relatedObjectTestGroup + "/" + relatedObjectTestVersion,
+					Kind:       relatedObjectTestTemplateKind,
+					Name:       "ownership-template-" + suffix,
+				},
+			},
+			KThreesConfigSpec: bootstrapv1.KThreesConfigSpec{
+				Version:         "v1.31.1+k3s1",
+				PostK3sCommands: []string{"echo removable"},
+			},
+		},
+	}
+	template := &unstructured.Unstructured{Object: map[string]interface{}{
+		"apiVersion": relatedObjectTestGroup + "/" + relatedObjectTestVersion,
+		"kind":       relatedObjectTestTemplateKind,
+		"metadata": map[string]interface{}{
+			"name":      kcp.Spec.MachineTemplate.InfrastructureRef.Name,
+			"namespace": kcp.Namespace,
+		},
+		"spec": map[string]interface{}{
+			"template": map[string]interface{}{
+				"spec": map[string]interface{}{
+					"stable":       "kept",
+					"removedLater": "remove-me",
+					"settings": map[string]interface{}{
+						"legacy": "remove-me",
+						"stable": "kept",
+					},
+				},
+			},
+		},
+	}}
+	Expect(k8sClient.Create(ctx, template)).To(Succeed())
+
+	return &relatedObjectOwnershipFixture{
+		cluster:  cluster,
+		kcp:      kcp,
+		template: template,
+	}
+}
+
+func (f *relatedObjectOwnershipFixture) getMachine(ctx context.Context) *clusterv1.Machine {
+	machines := &clusterv1.MachineList{}
+	Expect(k8sClient.List(
+		ctx,
+		machines,
+		client.InNamespace(f.kcp.Namespace),
+		client.MatchingLabels{clusterv1.ClusterNameLabel: f.cluster.Name},
+	)).To(Succeed())
+	Expect(machines.Items).To(HaveLen(1))
+	return &machines.Items[0]
+}
+
+func (f *relatedObjectOwnershipFixture) getInfraMachine(ctx context.Context, ref clusterv1.ContractVersionedObjectReference) *unstructured.Unstructured {
+	infraMachine := &unstructured.Unstructured{}
+	infraMachine.SetGroupVersionKind(schema.FromAPIVersionAndKind(
+		relatedObjectTestGroup+"/"+relatedObjectTestVersion,
+		ref.Kind,
+	))
+	Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: f.kcp.Namespace, Name: ref.Name}, infraMachine)).To(Succeed())
+	return infraMachine
+}
+
+func (f *relatedObjectOwnershipFixture) getKThreesConfig(ctx context.Context, ref clusterv1.ContractVersionedObjectReference) *bootstrapv1.KThreesConfig {
+	kthreesConfig := &bootstrapv1.KThreesConfig{}
+	Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: f.kcp.Namespace, Name: ref.Name}, kthreesConfig)).To(Succeed())
+	kthreesConfig.SetGroupVersionKind(bootstrapv1.GroupVersion.WithKind("KThreesConfig"))
+	return kthreesConfig
+}
+
+func (f *relatedObjectOwnershipFixture) cleanup(ctx context.Context) {
+	machines := &clusterv1.MachineList{}
+	Expect(k8sClient.List(
+		ctx,
+		machines,
+		client.InNamespace(f.kcp.Namespace),
+		client.MatchingLabels{clusterv1.ClusterNameLabel: f.cluster.Name},
+	)).To(Succeed())
+	for i := range machines.Items {
+		Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, &machines.Items[i]))).To(Succeed())
+	}
+
+	infraMachines := &unstructured.UnstructuredList{}
+	infraMachines.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   relatedObjectTestGroup,
+		Version: relatedObjectTestVersion,
+		Kind:    relatedObjectTestMachineKind + "List",
+	})
+	Expect(k8sClient.List(
+		ctx,
+		infraMachines,
+		client.InNamespace(f.kcp.Namespace),
+		client.MatchingLabels{clusterv1.ClusterNameLabel: f.cluster.Name},
+	)).To(Succeed())
+	for i := range infraMachines.Items {
+		Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, &infraMachines.Items[i]))).To(Succeed())
+	}
+
+	kthreesConfigs := &bootstrapv1.KThreesConfigList{}
+	Expect(k8sClient.List(
+		ctx,
+		kthreesConfigs,
+		client.InNamespace(f.kcp.Namespace),
+		client.MatchingLabels{clusterv1.ClusterNameLabel: f.cluster.Name},
+	)).To(Succeed())
+	for i := range kthreesConfigs.Items {
+		Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, &kthreesConfigs.Items[i]))).To(Succeed())
+	}
+
+	Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, f.template))).To(Succeed())
+}
+
+func (f *relatedObjectOwnershipFixture) expectObjectCounts(ctx context.Context, machineCount, infraMachineCount, kthreesConfigCount int) {
+	machines := &clusterv1.MachineList{}
+	Expect(k8sClient.List(
+		ctx,
+		machines,
+		client.InNamespace(f.kcp.Namespace),
+		client.MatchingLabels{clusterv1.ClusterNameLabel: f.cluster.Name},
+	)).To(Succeed())
+	Expect(machines.Items).To(HaveLen(machineCount))
+
+	infraMachines := &unstructured.UnstructuredList{}
+	infraMachines.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   relatedObjectTestGroup,
+		Version: relatedObjectTestVersion,
+		Kind:    relatedObjectTestMachineKind + "List",
+	})
+	Expect(k8sClient.List(
+		ctx,
+		infraMachines,
+		client.InNamespace(f.kcp.Namespace),
+		client.MatchingLabels{clusterv1.ClusterNameLabel: f.cluster.Name},
+	)).To(Succeed())
+	Expect(infraMachines.Items).To(HaveLen(infraMachineCount))
+
+	kthreesConfigs := &bootstrapv1.KThreesConfigList{}
+	Expect(k8sClient.List(
+		ctx,
+		kthreesConfigs,
+		client.InNamespace(f.kcp.Namespace),
+		client.MatchingLabels{clusterv1.ClusterNameLabel: f.cluster.Name},
+	)).To(Succeed())
+	Expect(kthreesConfigs.Items).To(HaveLen(kthreesConfigCount))
+}
+
+func ensureRelatedObjectContractLabels() {
+	ctx := context.Background()
+	for _, name := range []string{
+		"ownershiptestmachines." + relatedObjectTestGroup,
+		"ownershiptestmachinetemplates." + relatedObjectTestGroup,
+	} {
+		crd := &apiextensionsv1.CustomResourceDefinition{}
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: name}, crd)).To(Succeed())
+		if crd.Labels[clusterv1.GroupVersion.String()] == relatedObjectTestVersion {
+			continue
+		}
+
+		base := crd.DeepCopy()
+		if crd.Labels == nil {
+			crd.Labels = map[string]string{}
+		}
+		crd.Labels[clusterv1.GroupVersion.String()] = relatedObjectTestVersion
+		Expect(k8sClient.Patch(ctx, crd, client.MergeFrom(base))).To(Succeed())
+	}
+}
