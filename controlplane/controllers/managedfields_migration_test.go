@@ -46,6 +46,7 @@ const (
 	managedFieldsOtherManagerLabel = "other.test.cluster-api.io/label"
 	managedFieldsCurrentAnnotation = "current.test.cluster-api.io/annotation"
 	managedFieldsStaleAnnotation   = "stale.test.cluster-api.io/annotation"
+	managedFieldsTestFinalizer     = "managed-fields.test.cluster-api.io/finalizer"
 )
 
 var _ = Describe("related object managedFields migration", func() {
@@ -90,34 +91,87 @@ var _ = Describe("related object managedFields migration", func() {
 		Expect(kthreesConfig.GetManagedFields()).To(Equal(configManagedFields))
 	})
 
-	It("preserves the CAPI migration entries and is idempotent after the first patch", func() {
+	It("transfers removable spec and metadata ownership and remains idempotent", func() {
 		ctx := context.Background()
 		fixture := createManagedFieldsSyncFixture(ctx, "migration", true)
 		defer fixture.cleanup(ctx)
 
-		Expect(ssa.MigrateManagedFields(ctx, k8sClient, fixture.infraMachine, kcpManagerName, kcpMetadataManagerName)).To(Succeed())
+		for _, object := range []client.Object{fixture.infraMachine, fixture.kthreesConfig} {
+			result, err := ssa.MigrateManagedFields(
+				ctx,
+				k8sClient,
+				k8sClient,
+				object,
+				kcpManagerName,
+				kcpMetadataManagerName,
+			)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Outcome).To(Equal(ssa.ManagedFieldsMigrationCompleted))
+		}
 
 		infraMachine := getInfraMachine(ctx, fixture.infraMachine)
-		Expect(findManagedField(infraMachine, kcpManagerName, metav1.ManagedFieldsOperationApply, "")).To(BeNil())
-		Expect(findManagedField(infraMachine, "manager", metav1.ManagedFieldsOperationUpdate, "")).To(BeNil())
-		Expect(findManagedField(infraMachine, "manager", metav1.ManagedFieldsOperationUpdate, "status")).NotTo(BeNil())
-		Expect(findManagedField(infraMachine, "other-manager", metav1.ManagedFieldsOperationApply, "")).NotTo(BeNil())
+		kthreesConfig := getKThreesConfig(ctx, fixture.kthreesConfig)
+		assertTransferredOwnership(infraMachine, []string{"f:value"}, []string{"f:removable", "f:nested"})
+		assertTransferredOwnership(kthreesConfig, []string{"f:version"}, []string{"f:serverConfig", "f:bindAddress"})
 
-		metadataEntry := findManagedField(infraMachine, kcpMetadataManagerName, metav1.ManagedFieldsOperationApply, "")
-		Expect(metadataEntry).NotTo(BeNil())
-		Expect(metadataEntry.APIVersion).To(Equal("infrastructure.cluster.x-k8s.io/v1beta2"))
-		Expect(managedFieldOwns(metadataEntry, "f:metadata", "f:name")).To(BeTrue())
-		Expect(managedFieldOwns(metadataEntry, "f:metadata", "f:labels", "f:"+clusterv1.ClusterNameLabel)).To(BeTrue())
-		Expect(managedFieldOwns(metadataEntry, "f:metadata", "f:labels", "f:"+managedFieldsStaleLabel)).To(BeTrue())
-		Expect(managedFieldOwns(metadataEntry, "f:metadata", "f:annotations", "f:"+managedFieldsStaleAnnotation)).To(BeTrue())
-		Expect(managedFieldOwns(metadataEntry, "f:metadata", "f:labels", "f:"+managedFieldsOtherManagerLabel)).To(BeFalse())
-
-		resourceVersion := infraMachine.GetResourceVersion()
-		managedFields := infraMachine.GetManagedFields()
-		Expect(ssa.MigrateManagedFields(ctx, k8sClient, infraMachine, kcpManagerName, kcpMetadataManagerName)).To(Succeed())
+		applyRelatedObjectSpec(ctx, infraMachine, infraMachine.GroupVersionKind(), map[string]interface{}{
+			"value": "initial",
+		})
+		applyRelatedObjectSpec(ctx, kthreesConfig, bootstrapv1.GroupVersion.WithKind("KThreesConfig"), map[string]interface{}{
+			"version": "v1.31.1+k3s1",
+		})
 		infraMachine = getInfraMachine(ctx, infraMachine)
-		Expect(infraMachine.GetResourceVersion()).To(Equal(resourceVersion))
-		Expect(infraMachine.GetManagedFields()).To(Equal(managedFields))
+		kthreesConfig = getKThreesConfig(ctx, kthreesConfig)
+		_, found, err := unstructured.NestedFieldNoCopy(infraMachine.Object, "spec", "removable")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(found).To(BeFalse())
+		Expect(kthreesConfig.Spec.ServerConfig.BindAddress).To(BeEmpty())
+
+		desiredLabels := oldRelatedObjectLabels(fixture.controlPlane.Cluster.Name)
+		delete(desiredLabels, managedFieldsStaleLabel)
+		desiredAnnotations := oldRelatedObjectAnnotations()
+		delete(desiredAnnotations, managedFieldsStaleAnnotation)
+		applyRelatedObjectMetadata(
+			ctx,
+			infraMachine,
+			infraMachine.GroupVersionKind(),
+			kcpMetadataManagerName,
+			desiredLabels,
+			desiredAnnotations,
+		)
+		applyRelatedObjectMetadata(
+			ctx,
+			kthreesConfig,
+			bootstrapv1.GroupVersion.WithKind("KThreesConfig"),
+			kcpMetadataManagerName,
+			desiredLabels,
+			desiredAnnotations,
+		)
+		infraMachine = getInfraMachine(ctx, infraMachine)
+		kthreesConfig = getKThreesConfig(ctx, kthreesConfig)
+		for _, object := range []client.Object{infraMachine, kthreesConfig} {
+			Expect(object.GetLabels()).NotTo(HaveKey(managedFieldsStaleLabel))
+			Expect(object.GetAnnotations()).NotTo(HaveKey(managedFieldsStaleAnnotation))
+			resourceVersion := object.GetResourceVersion()
+			managedFields := object.GetManagedFields()
+			result, err := ssa.MigrateManagedFields(
+				ctx,
+				k8sClient,
+				k8sClient,
+				object,
+				kcpManagerName,
+				kcpMetadataManagerName,
+			)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Outcome).To(Equal(ssa.ManagedFieldsMigrationUnchanged))
+			if _, ok := object.(*unstructured.Unstructured); ok {
+				object = getInfraMachine(ctx, object)
+			} else {
+				object = getKThreesConfig(ctx, object)
+			}
+			Expect(object.GetResourceVersion()).To(Equal(resourceVersion))
+			Expect(object.GetManagedFields()).To(Equal(managedFields))
+		}
 	})
 
 	It("keeps classic manager Update compatibility when syncing related-object metadata", func() {
@@ -185,7 +239,9 @@ func createManagedFieldsSyncFixture(ctx context.Context, suffix string, oldApply
 	infraMachine.SetNamespace(namespace)
 	infraMachine.SetLabels(oldRelatedObjectLabels(clusterName))
 	infraMachine.SetAnnotations(oldRelatedObjectAnnotations())
+	infraMachine.SetFinalizers([]string{managedFieldsTestFinalizer})
 	Expect(unstructured.SetNestedField(infraMachine.Object, "initial", "spec", "value")).To(Succeed())
+	Expect(unstructured.SetNestedField(infraMachine.Object, "remove", "spec", "removable", "nested")).To(Succeed())
 	Expect(k8sClient.Create(ctx, infraMachine, client.FieldOwner("manager"))).To(Succeed())
 
 	kthreesConfig := &bootstrapv1.KThreesConfig{
@@ -198,9 +254,11 @@ func createManagedFieldsSyncFixture(ctx context.Context, suffix string, oldApply
 			Namespace:   namespace,
 			Labels:      oldRelatedObjectLabels(clusterName),
 			Annotations: oldRelatedObjectAnnotations(),
+			Finalizers:  []string{managedFieldsTestFinalizer},
 		},
 		Spec: bootstrapv1.KThreesConfigSpec{
-			Version: "v1.31.1+k3s1",
+			Version:      "v1.31.1+k3s1",
+			ServerConfig: bootstrapv1.KThreesServerConfig{BindAddress: "192.0.2.1"},
 		},
 	}
 	Expect(k8sClient.Create(ctx, kthreesConfig, client.FieldOwner("manager"))).To(Succeed())
@@ -262,8 +320,9 @@ func createManagedFieldsSyncFixture(ctx context.Context, suffix string, oldApply
 	kthreesConfig = getKThreesConfig(ctx, kthreesConfig)
 	return &managedFieldsSyncFixture{
 		reconciler: &KThreesControlPlaneReconciler{
-			Client:   k8sClient,
-			ssaCache: ssa.NewCache(),
+			Client:    k8sClient,
+			apiReader: k8sClient,
+			ssaCache:  ssa.NewCache(),
 		},
 		controlPlane: &k3s.ControlPlane{
 			KCP:            kcp,
@@ -280,6 +339,11 @@ func createManagedFieldsSyncFixture(ctx context.Context, suffix string, oldApply
 
 func (f *managedFieldsSyncFixture) cleanup(ctx context.Context) {
 	for _, object := range []client.Object{f.machine, f.infraMachine, f.kthreesConfig} {
+		current := object.DeepCopyObject().(client.Object)
+		if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(object), current); err == nil && len(current.GetFinalizers()) > 0 {
+			current.SetFinalizers(nil)
+			Expect(k8sClient.Update(ctx, current)).To(Succeed())
+		}
 		if err := k8sClient.Delete(ctx, object); err != nil {
 			Expect(apierrors.IsNotFound(err)).To(BeTrue())
 		}
@@ -314,8 +378,22 @@ func applyRelatedObjectMetadata(ctx context.Context, object client.Object, gvk s
 	Expect(ssa.Patch(ctx, k8sClient, manager, intent)).To(Succeed())
 }
 
+func applyRelatedObjectSpec(ctx context.Context, object client.Object, gvk schema.GroupVersionKind, spec map[string]interface{}) {
+	intent := &unstructured.Unstructured{}
+	intent.SetGroupVersionKind(gvk)
+	intent.SetNamespace(object.GetNamespace())
+	intent.SetName(object.GetName())
+	intent.SetUID(object.GetUID())
+	Expect(unstructured.SetNestedMap(intent.Object, spec, "spec")).To(Succeed())
+	Expect(ssa.Patch(ctx, k8sClient, kcpManagerName, intent)).To(Succeed())
+}
+
 func assertMigratedRelatedObject(object client.Object) {
-	Expect(findManagedField(object, kcpManagerName, metav1.ManagedFieldsOperationApply, "")).To(BeNil())
+	mainEntry := findManagedField(object, kcpManagerName, metav1.ManagedFieldsOperationApply, "")
+	Expect(mainEntry).NotTo(BeNil())
+	Expect(managedFieldOwns(mainEntry, "f:spec")).To(BeTrue())
+	Expect(managedFieldOwns(mainEntry, "f:metadata", "f:labels")).To(BeFalse())
+	Expect(managedFieldOwns(mainEntry, "f:metadata", "f:annotations")).To(BeFalse())
 	metadataEntry := findManagedField(object, kcpMetadataManagerName, metav1.ManagedFieldsOperationApply, "")
 	Expect(metadataEntry).NotTo(BeNil())
 	Expect(managedFieldOwns(metadataEntry, "f:metadata", "f:labels", "f:"+managedFieldsCurrentLabel)).To(BeTrue())
@@ -327,6 +405,10 @@ func assertMigratedRelatedObject(object client.Object) {
 	Expect(otherManagerEntry).NotTo(BeNil())
 	Expect(managedFieldOwns(otherManagerEntry, "f:metadata", "f:labels", "f:"+managedFieldsOtherManagerLabel)).To(BeTrue())
 	Expect(findManagedField(object, "manager", metav1.ManagedFieldsOperationUpdate, "status")).NotTo(BeNil())
+	classicEntry := findManagedField(object, "manager", metav1.ManagedFieldsOperationUpdate, "")
+	Expect(classicEntry).NotTo(BeNil())
+	Expect(managedFieldOwns(classicEntry, "f:metadata", "f:finalizers")).To(BeTrue())
+	Expect(managedFieldOwns(classicEntry, "f:spec")).To(BeFalse())
 
 	Expect(object.GetLabels()).To(HaveKeyWithValue(managedFieldsCurrentLabel, "current"))
 	Expect(object.GetAnnotations()).To(HaveKeyWithValue(managedFieldsCurrentAnnotation, "current"))
@@ -340,7 +422,9 @@ func assertClassicRelatedObjectMigrated(object client.Object) {
 	Expect(object.GetAnnotations()).To(HaveKeyWithValue(managedFieldsCurrentAnnotation, "current"))
 	Expect(object.GetLabels()).To(HaveKeyWithValue(managedFieldsOtherManagerLabel, "preserved"))
 
-	Expect(findManagedField(object, kcpManagerName, metav1.ManagedFieldsOperationApply, "")).To(BeNil())
+	mainEntry := findManagedField(object, kcpManagerName, metav1.ManagedFieldsOperationApply, "")
+	Expect(mainEntry).NotTo(BeNil())
+	Expect(managedFieldOwns(mainEntry, "f:spec")).To(BeTrue())
 	metadataEntry := findManagedField(object, kcpMetadataManagerName, metav1.ManagedFieldsOperationApply, "")
 	Expect(metadataEntry).NotTo(BeNil())
 	Expect(managedFieldOwns(metadataEntry, "f:metadata", "f:labels", "f:"+managedFieldsCurrentLabel)).To(BeTrue())
@@ -353,8 +437,32 @@ func assertClassicRelatedObjectMigrated(object client.Object) {
 
 	classicEntry := findManagedField(object, "manager", metav1.ManagedFieldsOperationUpdate, "")
 	Expect(classicEntry).NotTo(BeNil())
+	Expect(managedFieldOwns(classicEntry, "f:metadata", "f:finalizers")).To(BeTrue())
+	Expect(managedFieldOwns(classicEntry, "f:spec")).To(BeFalse())
 	Expect(managedFieldOwns(classicEntry, "f:metadata", "f:labels")).To(BeFalse())
 	Expect(managedFieldOwns(classicEntry, "f:metadata", "f:annotations")).To(BeFalse())
+}
+
+func assertTransferredOwnership(object client.Object, retainedSpecPath, removableSpecPath []string) {
+	mainEntry := findManagedField(object, kcpManagerName, metav1.ManagedFieldsOperationApply, "")
+	Expect(mainEntry).NotTo(BeNil())
+	Expect(mainEntry.APIVersion).To(Equal(object.GetObjectKind().GroupVersionKind().GroupVersion().String()))
+	Expect(managedFieldOwns(mainEntry, append([]string{"f:spec"}, retainedSpecPath...)...)).To(BeTrue())
+	Expect(managedFieldOwns(mainEntry, append([]string{"f:spec"}, removableSpecPath...)...)).To(BeTrue())
+	Expect(managedFieldOwns(mainEntry, "f:metadata", "f:labels")).To(BeFalse())
+	Expect(managedFieldOwns(mainEntry, "f:metadata", "f:annotations")).To(BeFalse())
+
+	metadataEntry := findManagedField(object, kcpMetadataManagerName, metav1.ManagedFieldsOperationApply, "")
+	Expect(metadataEntry).NotTo(BeNil())
+	Expect(managedFieldOwns(metadataEntry, "f:metadata", "f:labels", "f:"+managedFieldsStaleLabel)).To(BeTrue())
+	Expect(managedFieldOwns(metadataEntry, "f:metadata", "f:annotations", "f:"+managedFieldsStaleAnnotation)).To(BeTrue())
+
+	classicEntry := findManagedField(object, "manager", metav1.ManagedFieldsOperationUpdate, "")
+	Expect(classicEntry).NotTo(BeNil())
+	Expect(managedFieldOwns(classicEntry, "f:metadata", "f:finalizers")).To(BeTrue())
+	Expect(managedFieldOwns(classicEntry, "f:spec")).To(BeFalse())
+	Expect(findManagedField(object, "manager", metav1.ManagedFieldsOperationUpdate, "status")).NotTo(BeNil())
+	Expect(findManagedField(object, "other-manager", metav1.ManagedFieldsOperationApply, "")).NotTo(BeNil())
 }
 
 func findManagedField(object client.Object, manager string, operation metav1.ManagedFieldsOperationType, subresource string) *metav1.ManagedFieldsEntry {
@@ -392,6 +500,33 @@ func getKThreesConfig(ctx context.Context, object client.Object) *bootstrapv1.KT
 
 func ensureManagedFieldsTestCRD(name, group, kind, plural string) {
 	ctx := context.Background()
+	openAPIV3Schema := &apiextensionsv1.JSONSchemaProps{
+		Type:                   "object",
+		XPreserveUnknownFields: ptr.To(true),
+	}
+	if kind == "TestMachine" {
+		openAPIV3Schema = &apiextensionsv1.JSONSchemaProps{
+			Type: "object",
+			Properties: map[string]apiextensionsv1.JSONSchemaProps{
+				"spec": {
+					Type: "object",
+					Properties: map[string]apiextensionsv1.JSONSchemaProps{
+						"value": {Type: "string"},
+						"removable": {
+							Type: "object",
+							Properties: map[string]apiextensionsv1.JSONSchemaProps{
+								"nested": {Type: "string"},
+							},
+						},
+					},
+				},
+				"status": {
+					Type:                   "object",
+					XPreserveUnknownFields: ptr.To(true),
+				},
+			},
+		}
+	}
 	crd := &apiextensionsv1.CustomResourceDefinition{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
 		Spec: apiextensionsv1.CustomResourceDefinitionSpec{
@@ -406,10 +541,7 @@ func ensureManagedFieldsTestCRD(name, group, kind, plural string) {
 				Served:  true,
 				Storage: true,
 				Schema: &apiextensionsv1.CustomResourceValidation{
-					OpenAPIV3Schema: &apiextensionsv1.JSONSchemaProps{
-						Type:                   "object",
-						XPreserveUnknownFields: ptr.To(true),
-					},
+					OpenAPIV3Schema: openAPIV3Schema,
 				},
 				Subresources: &apiextensionsv1.CustomResourceSubresources{
 					Status: &apiextensionsv1.CustomResourceSubresourceStatus{},

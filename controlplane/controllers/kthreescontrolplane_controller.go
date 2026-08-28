@@ -803,8 +803,15 @@ func (r *KThreesControlPlaneReconciler) syncMachines(ctx context.Context, contro
 		// Only update the InfraMachine if it is already found, otherwise just skip it.
 		// This could happen e.g. if the cache is not up-to-date yet.
 		if infraMachineFound {
-			// Migrate related objects created through v0.4.0, when the main manager owned labels and annotations.
-			if err := ssa.MigrateManagedFields(ctx, r.Client, infraMachine, kcpManagerName, kcpMetadataManagerName); err != nil {
+			// Migrate related objects created through v0.4.0 to the current spec and metadata ownership.
+			if _, err := ssa.MigrateManagedFields(
+				ctx,
+				r.Client,
+				r.apiReader,
+				infraMachine,
+				kcpManagerName,
+				kcpMetadataManagerName,
+			); err != nil {
 				return errors.Wrapf(err, "failed to migrate managedFields of InfrastructureMachine %s", klog.KObj(infraMachine))
 			}
 			// Preserve cleanup for objects created before Cluster API K3s adopted SSA (<= v0.2.0).
@@ -834,8 +841,15 @@ func (r *KThreesControlPlaneReconciler) syncMachines(ctx context.Context, contro
 			}
 			gvk := groupVersion.WithKind(m.Spec.Bootstrap.ConfigRef.Kind)
 			kthreesConfigs.SetGroupVersionKind(gvk)
-			// Migrate related objects created through v0.4.0, when the main manager owned labels and annotations.
-			if err := ssa.MigrateManagedFields(ctx, r.Client, kthreesConfigs, kcpManagerName, kcpMetadataManagerName); err != nil {
+			// Migrate related objects created through v0.4.0 to the current spec and metadata ownership.
+			if _, err := ssa.MigrateManagedFields(
+				ctx,
+				r.Client,
+				r.apiReader,
+				kthreesConfigs,
+				kcpManagerName,
+				kcpMetadataManagerName,
+			); err != nil {
 				return errors.Wrapf(err, "failed to migrate managedFields of KThreesConfigs %s", klog.KObj(kthreesConfigs))
 			}
 			// Preserve cleanup for objects created before Cluster API K3s adopted SSA (<= v0.2.0).
