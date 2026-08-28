@@ -21,10 +21,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"reflect"
 
 	"github.com/pkg/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
@@ -35,6 +38,101 @@ import (
 )
 
 const classicManager = "manager"
+
+var labelsAndAnnotationsPaths = []contract.Path{
+	{"f:metadata", "f:labels"},
+	{"f:metadata", "f:annotations"},
+}
+
+// RemoveManagedFieldsForLabelsAndAnnotations drops label and annotation ownership from fieldManager's main Apply entry.
+func RemoveManagedFieldsForLabelsAndAnnotations(
+	ctx context.Context,
+	c client.Client,
+	apiReader client.Reader,
+	obj client.Object,
+	fieldManager string,
+) error {
+	objectKey := client.ObjectKeyFromObject(obj)
+	current := obj.DeepCopyObject().(client.Object)
+	firstAttempt := true
+
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if !firstAttempt {
+			current = obj.DeepCopyObject().(client.Object)
+			current.SetResourceVersion("")
+			current.SetManagedFields(nil)
+			if err := apiReader.Get(ctx, objectKey, current); err != nil {
+				return err
+			}
+		}
+		firstAttempt = false
+
+		managedFields, changed, err := removeManagedFieldsForLabelsAndAnnotations(current.GetManagedFields(), fieldManager)
+		if err != nil {
+			return err
+		}
+		if !changed {
+			return nil
+		}
+
+		base := current.DeepCopyObject().(client.Object)
+		current.SetManagedFields(managedFields)
+		return c.Patch(ctx, current, client.MergeFromWithOptions(base, client.MergeFromWithOptimisticLock{}))
+	})
+	if err != nil {
+		return errors.Wrap(err, "failed to remove label and annotation managed fields")
+	}
+
+	if err := c.Scheme().Convert(current, obj, ctx); err != nil {
+		return errors.Wrap(err, "failed to write migrated object")
+	}
+	obj.GetObjectKind().SetGroupVersionKind(current.GetObjectKind().GroupVersionKind())
+	return nil
+}
+
+func removeManagedFieldsForLabelsAndAnnotations(
+	originalManagedFields []metav1.ManagedFieldsEntry,
+	fieldManager string,
+) ([]metav1.ManagedFieldsEntry, bool, error) {
+	managedFields := make([]metav1.ManagedFieldsEntry, 0, len(originalManagedFields))
+	changed := false
+	for _, managedField := range originalManagedFields {
+		if managedField.Manager != fieldManager ||
+			managedField.Operation != metav1.ManagedFieldsOperationApply ||
+			managedField.Subresource != "" {
+			managedFields = append(managedFields, managedField)
+			continue
+		}
+
+		fieldsV1 := map[string]interface{}{}
+		if err := json.Unmarshal(managedField.FieldsV1.Raw, &fieldsV1); err != nil {
+			return nil, false, errors.Wrap(err, "failed to unmarshal managed fields")
+		}
+		originalFieldsV1 := runtime.DeepCopyJSON(fieldsV1)
+		FilterIntent(&FilterIntentInput{
+			Path:         contract.Path{},
+			Value:        fieldsV1,
+			ShouldFilter: IsPathIgnored(labelsAndAnnotationsPaths),
+		})
+		if reflect.DeepEqual(fieldsV1, originalFieldsV1) {
+			managedFields = append(managedFields, managedField)
+			continue
+		}
+
+		changed = true
+		if len(fieldsV1) == 0 {
+			continue
+		}
+
+		fieldsV1Raw, err := json.Marshal(fieldsV1)
+		if err != nil {
+			return nil, false, errors.Wrap(err, "failed to marshal managed fields")
+		}
+		managedField.FieldsV1 = &metav1.FieldsV1{Raw: fieldsV1Raw}
+		managedFields = append(managedFields, managedField)
+	}
+	return managedFields, changed, nil
+}
 
 // DropManagedFields modifies the managedFields entries on the object that belong to "manager" (Operation=Update)
 // to drop ownership of the given paths if there is no field yet that is managed by `ssaManager`.
