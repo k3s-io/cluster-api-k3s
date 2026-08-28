@@ -15,6 +15,8 @@ limitations under the License.
 */
 
 // Package patchutil contains utilities for applying Runtime SDK patches.
+// All exported helpers return sanitized errors that exclude patch and object
+// bodies, spec values, and underlying error text.
 //
 // Copied from sigs.k8s.io/cluster-api/internal/util/patch at v1.12.9.
 // Remove when upstream CAPI exposes these APIs publicly.
@@ -31,7 +33,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
-	"k8s.io/klog/v2"
 	runtimehooksv1 "sigs.k8s.io/cluster-api/api/runtime/hooks/v1alpha1"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
@@ -207,33 +208,35 @@ func CopySpec(in CopySpecInput) error {
 	preservedFields := map[string]interface{}{}
 	for _, field := range in.FieldsToPreserve {
 		value, found, err := unstructured.NestedFieldNoCopy(in.Dest.Object, field...)
+		if err != nil {
+			return errors.New("failed to copy spec: preserved destination field could not be read")
+		}
 		if !found {
-			// Continue if the field does not exist in src. fieldsToPreserve don't have to exist.
+			// Continue if the field does not exist in dest. fieldsToPreserve don't have to exist.
 			continue
-		} else if err != nil {
-			return errors.Wrapf(err, "failed to get field %q from %s %s", strings.Join(field, "."), in.Dest.GetKind(), klog.KObj(in.Dest))
 		}
 		preservedFields[strings.Join(field, ".")] = value
 	}
 
 	// Get spec from src.
 	srcSpec, found, err := unstructured.NestedFieldNoCopy(in.Src.Object, strings.Split(in.SrcSpecPath, ".")...)
+	if err != nil {
+		return errors.New("failed to copy spec: source field could not be read")
+	}
 	if !found {
 		// Return if srcSpecPath does not exist in src, nothing to do.
 		return nil
-	} else if err != nil {
-		return errors.Wrapf(err, "failed to get field %q from %s %s", in.SrcSpecPath, in.Src.GetKind(), klog.KObj(in.Src))
 	}
 
 	// Set spec in dest.
 	if err := unstructured.SetNestedField(in.Dest.Object, srcSpec, strings.Split(in.DestSpecPath, ".")...); err != nil {
-		return errors.Wrapf(err, "failed to set field %q on %s %s", in.DestSpecPath, in.Dest.GetKind(), klog.KObj(in.Dest))
+		return errors.New("failed to copy spec: destination field could not be set")
 	}
 
 	// Restore preserved fields.
 	for path, value := range preservedFields {
 		if err := unstructured.SetNestedField(in.Dest.Object, value, strings.Split(path, ".")...); err != nil {
-			return errors.Wrapf(err, "failed to set field %q on %s %s", path, in.Dest.GetKind(), klog.KObj(in.Dest))
+			return errors.New("failed to copy spec: preserved destination field could not be restored")
 		}
 	}
 	return nil

@@ -38,8 +38,9 @@ limitations under the License.
 //
 // The patch helper deliberately diverges from Cluster API v1.12.9 and CAPRKE2
 // by using fixed diagnostics for patch parsing, application, conversion, and
-// panic recovery. Those logs and returned errors exclude patch and object
-// bodies and underlying error text because Runtime Extension patches can
-// contain secrets. Successful verbose logs include only the recognized patch
-// type and, for decoded JSON patches, the operation count.
+// panic recovery. All exported patchutil helpers, including direct CopySpec
+// calls, return errors that exclude patch and object bodies, spec values, and
+// underlying error text because Runtime Extension patches can contain secrets.
+// Successful verbose logs include only the recognized patch type and, for
+// decoded JSON patches, the operation count.
 package capi

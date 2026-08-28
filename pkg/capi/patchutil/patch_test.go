@@ -25,6 +25,7 @@ import (
 
 	"github.com/go-logr/logr/funcr"
 	. "github.com/onsi/gomega"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	runtimehooksv1 "sigs.k8s.io/cluster-api/api/runtime/hooks/v1alpha1"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -252,6 +253,109 @@ func TestPatchDoesNotExposeSensitiveInvalidDocuments(t *testing.T) {
 	})
 }
 
+func TestCopySpecDoesNotExposeSensitiveObjectValues(t *testing.T) {
+	tests := []struct {
+		name          string
+		input         CopySpecInput
+		expectedError string
+		sensitive     []string
+	}{
+		{
+			name: "source field lookup",
+			input: CopySpecInput{
+				Src:          testUnstructured("SourceMachine", "source-machine", map[string]interface{}{"spec": "sentinel-source-secret"}),
+				Dest:         testUnstructured("DestinationMachine", "destination-machine", map[string]interface{}{}),
+				SrcSpecPath:  "spec.template",
+				DestSpecPath: "spec.template",
+			},
+			expectedError: "failed to copy spec: source field could not be read",
+			sensitive:     []string{"sentinel-source-secret", "SourceMachine", "source-machine"},
+		},
+		{
+			name: "preserved destination field lookup",
+			input: CopySpecInput{
+				Src:              testUnstructured("SourceMachine", "source-machine", map[string]interface{}{"spec": map[string]interface{}{"template": "replacement"}}),
+				Dest:             testUnstructured("DestinationMachine", "destination-machine", map[string]interface{}{"spec": "sentinel-preserved-secret"}),
+				SrcSpecPath:      "spec.template",
+				DestSpecPath:     "spec.template",
+				FieldsToPreserve: []Path{{"spec", "credentials", "password"}},
+			},
+			expectedError: "failed to copy spec: preserved destination field could not be read",
+			sensitive:     []string{"sentinel-preserved-secret", "DestinationMachine", "destination-machine"},
+		},
+		{
+			name: "destination field set",
+			input: CopySpecInput{
+				Src:          testUnstructured("SourceMachine", "source-machine", map[string]interface{}{"spec": map[string]interface{}{"template": "replacement"}}),
+				Dest:         testUnstructured("DestinationMachine", "destination-machine", map[string]interface{}{"spec": "sentinel-destination-secret"}),
+				SrcSpecPath:  "spec.template",
+				DestSpecPath: "spec.template",
+			},
+			expectedError: "failed to copy spec: destination field could not be set",
+			sensitive:     []string{"sentinel-destination-secret", "DestinationMachine", "destination-machine"},
+		},
+		{
+			name: "preserved destination field restore",
+			input: CopySpecInput{
+				Src: testUnstructured("SourceMachine", "source-machine", map[string]interface{}{
+					"spec": "sentinel-restore-secret",
+				}),
+				Dest: testUnstructured("DestinationMachine", "destination-machine", map[string]interface{}{
+					"spec": map[string]interface{}{
+						"credentials": map[string]interface{}{"password": "preserved-password"},
+					},
+				}),
+				SrcSpecPath:      "spec",
+				DestSpecPath:     "spec",
+				FieldsToPreserve: []Path{{"spec", "credentials", "password"}},
+			},
+			expectedError: "failed to copy spec: preserved destination field could not be restored",
+			sensitive:     []string{"sentinel-restore-secret", "preserved-password", "DestinationMachine", "destination-machine"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := NewWithT(t)
+
+			err := CopySpec(tt.input)
+
+			g.Expect(err).To(MatchError(tt.expectedError))
+			expectNoDisclosure(g, "", err, tt.sensitive...)
+		})
+	}
+}
+
+func TestCopySpecPreservesFieldsAndIgnoresMissingOptionalFields(t *testing.T) {
+	g := NewWithT(t)
+	src := testUnstructured("SourceMachine", "source-machine", map[string]interface{}{
+		"spec": map[string]interface{}{
+			"credentials": map[string]interface{}{"password": "replacement-password"},
+			"version":     "v2",
+		},
+	})
+	dest := testUnstructured("DestinationMachine", "destination-machine", map[string]interface{}{
+		"spec": map[string]interface{}{
+			"credentials": map[string]interface{}{"password": "preserved-password"},
+			"version":     "v1",
+		},
+	})
+
+	err := CopySpec(CopySpecInput{
+		Src:              src,
+		Dest:             dest,
+		SrcSpecPath:      "spec",
+		DestSpecPath:     "spec",
+		FieldsToPreserve: []Path{{"spec", "credentials", "password"}, {"spec", "optional", "missing"}},
+	})
+
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(dest.Object["spec"]).To(Equal(map[string]interface{}{
+		"credentials": map[string]interface{}{"password": "preserved-password"},
+		"version":     "v2",
+	}))
+}
+
 func TestApplyPatchToObjectPreservesEmptyAndDeletionBehavior(t *testing.T) {
 	g := NewWithT(t)
 
@@ -313,4 +417,18 @@ func testRawExtension() runtime.RawExtension {
 		"metadata":{"name":"machine-1","labels":{"preserved":"true"}},
 		"spec":{"commands":["old-command"],"version":"v1"}
 	}`)}
+}
+
+func testUnstructured(kind, name string, fields map[string]interface{}) *unstructured.Unstructured {
+	object := map[string]interface{}{
+		"apiVersion": "infrastructure.cluster.x-k8s.io/v1beta1",
+		"kind":       kind,
+		"metadata": map[string]interface{}{
+			"name": name,
+		},
+	}
+	for key, value := range fields {
+		object[key] = value
+	}
+	return &unstructured.Unstructured{Object: object}
 }
