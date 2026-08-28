@@ -82,7 +82,7 @@ func UpToDate(
 	desiredMachine.Spec.Version = kcp.Spec.Version
 	result.DesiredMachine = desiredMachine
 
-	machineMatches, machineDiff, err := compare.Diff(
+	machineMatches, _, err := compare.Diff(
 		inplace.CleanupMachineSpecForDiff(&machine.Spec),
 		inplace.CleanupMachineSpecForDiff(&desiredMachine.Spec),
 	)
@@ -96,7 +96,7 @@ func UpToDate(
 			result.ConditionMessages = append(result.ConditionMessages,
 				fmt.Sprintf("Version %s, %s required", machine.Spec.Version, desiredMachine.Spec.Version))
 		} else {
-			result.LogMessages = append(result.LogMessages, "Machine spec is not up-to-date: "+machineDiff)
+			result.LogMessages = append(result.LogMessages, "Machine spec is not up-to-date")
 			result.ConditionMessages = append(result.ConditionMessages, "Machine spec is not up-to-date")
 		}
 	}
@@ -112,12 +112,12 @@ func UpToDate(
 		}
 		result.DesiredKThreesConfig = desiredConfig
 		currentConfigForDiff, desiredConfigForDiff := prepareKThreesConfigsForDiff(currentConfig, desiredConfig)
-		configMatches, diff, err := compare.Diff(&currentConfigForDiff.Spec, &desiredConfigForDiff.Spec)
+		configMatches, _, err := compare.Diff(&currentConfigForDiff.Spec, &desiredConfigForDiff.Spec)
 		if err != nil {
 			return false, nil, errors.Wrapf(err, "failed to compare KThreesConfig for Machine %s", machine.Name)
 		}
 		if !configMatches {
-			result.LogMessages = append(result.LogMessages, "KThreesConfig is not up-to-date: "+diff)
+			result.LogMessages = append(result.LogMessages, "KThreesConfig spec is not up-to-date")
 			result.ConditionMessages = append(result.ConditionMessages, "KThreesConfig is not up-to-date")
 		}
 	}

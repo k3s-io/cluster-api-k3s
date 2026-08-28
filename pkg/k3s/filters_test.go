@@ -52,6 +52,7 @@ func TestUpToDate(t *testing.T) {
 		wantDesiredInfra bool
 		wantDesiredBoot  bool
 		wantMessages     []string
+		wantLogMessages  []string
 	}{
 		{
 			name:         "matching objects are up to date and ineligible",
@@ -62,8 +63,9 @@ func TestUpToDate(t *testing.T) {
 			mutate: func(kcp *controlplanev1.KThreesControlPlane, _ *clusterv1.Machine, _ *bootstrapv1.KThreesConfig, _ *unstructured.Unstructured) {
 				kcp.Spec.Version = desiredVersion
 			},
-			wantEligible: true,
-			wantMessages: []string{"Version v1.31.1+k3s1, v1.31.2+k3s1 required"},
+			wantEligible:    true,
+			wantMessages:    []string{"Version v1.31.1+k3s1, v1.31.2+k3s1 required"},
+			wantLogMessages: []string{`Machine version "v1.31.1+k3s1" is not equal to KCP version "v1.31.2+k3s1"`},
 		},
 		{
 			name: "bootstrap difference is eligible and carries desired config",
@@ -73,6 +75,7 @@ func TestUpToDate(t *testing.T) {
 			wantEligible:    true,
 			wantDesiredBoot: true,
 			wantMessages:    []string{"KThreesConfig is not up-to-date"},
+			wantLogMessages: []string{"KThreesConfig spec is not up-to-date"},
 		},
 		{
 			name: "infrastructure template rotation is eligible and carries desired infra",
@@ -82,6 +85,9 @@ func TestUpToDate(t *testing.T) {
 			wantEligible:     true,
 			wantDesiredInfra: true,
 			wantMessages:     []string{"TestMachine is not up-to-date"},
+			wantLogMessages: []string{
+				"Infrastructure template rotated from TestMachineTemplate.infrastructure.cluster.x-k8s.io template-1 to TestMachineTemplate.infrastructure.cluster.x-k8s.io template-2",
+			},
 		},
 		{
 			name: "delete annotation makes version difference ineligible",
@@ -103,7 +109,8 @@ func TestUpToDate(t *testing.T) {
 				t := metav1.NewTime(reconciliationTime.Add(-time.Hour))
 				kcp.Spec.RolloutAfter = &t
 			},
-			wantMessages: []string{"KThreesControlPlane spec.rolloutAfter expired"},
+			wantMessages:    []string{"KThreesControlPlane spec.rolloutAfter expired"},
+			wantLogMessages: []string{"rolloutAfter expired"},
 		},
 		{
 			name:         "missing bootstrap prevents in-place",
@@ -156,6 +163,9 @@ func TestUpToDate(t *testing.T) {
 			g.Expect(upToDate).To(Equal(tt.wantUpToDate))
 			g.Expect(result.EligibleForInPlaceUpdate).To(Equal(tt.wantEligible))
 			g.Expect(result.ConditionMessages).To(ContainElements(tt.wantMessages))
+			if tt.wantLogMessages != nil {
+				g.Expect(result.LogMessages).To(Equal(tt.wantLogMessages))
+			}
 			g.Expect(result.DesiredMachine).NotTo(BeNil())
 			g.Expect(result.DesiredMachine.Spec.Version).To(Equal(kcp.Spec.Version))
 			if tt.wantDesiredInfra {

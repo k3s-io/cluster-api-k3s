@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -284,6 +285,47 @@ func TestRolloutLogDetailsSortsMachinesAndIncludesReasons(t *testing.T) {
 		"Machine machine-a needs rollout: version changed, config changed, " +
 			"Machine machine-b needs rollout: rolloutAfter expired",
 	))
+}
+
+func TestRolloutLogDetailsRedactsKThreesConfigValues(t *testing.T) {
+	const sentinel = "sentinel-rollout-secret"
+	oldContent := "old-content-" + sentinel
+	newContent := "new-content-" + sentinel
+	oldCommand := "old-command-" + sentinel
+	newCommand := "new-command-" + sentinel
+
+	controlPlane, cluster, kcp, _, _, c := newRolloutControlPlane(t, 1, 1, 0, nil, false)
+	currentConfig := controlPlane.KthreesConfigs["machine-0"]
+	currentConfig.Spec.Files = []bootstrapv1.File{{Path: "/etc/sensitive", Content: oldContent}}
+	currentConfig.Spec.PreK3sCommands = []string{oldCommand}
+	kcp.Spec.KThreesConfigSpec.Files = []bootstrapv1.File{{Path: "/etc/sensitive", Content: newContent}}
+	kcp.Spec.KThreesConfigSpec.PreK3sCommands = []string{newCommand}
+
+	machine := controlPlane.Machines["machine-0"]
+	upToDate, result, err := k3s.UpToDate(
+		context.Background(),
+		c,
+		cluster,
+		machine,
+		kcp,
+		&metav1.Time{Time: time.Now()},
+		controlPlane.InfraResources,
+		controlPlane.KthreesConfigs,
+	)
+	g := NewWithT(t)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(upToDate).To(BeFalse())
+	results := map[string]k3s.UpToDateResult{machine.Name: *result}
+	machines := collections.FromMachines(machine)
+	names, reasons := rolloutLogDetails(machines, results)
+
+	g.Expect(result.LogMessages).To(Equal([]string{"KThreesConfig spec is not up-to-date"}))
+	g.Expect(names).To(Equal([]string{"machine-0"}))
+	g.Expect(reasons).To(Equal("Machine machine-0 needs rollout: KThreesConfig spec is not up-to-date"))
+	for _, sensitiveValue := range []string{sentinel, oldContent, newContent, oldCommand, newCommand} {
+		g.Expect(strings.Join(result.LogMessages, ", ")).NotTo(ContainSubstring(sensitiveValue))
+		g.Expect(reasons).NotTo(ContainSubstring(sensitiveValue))
+	}
 }
 
 func TestSyncMachinesRefreshesRolloutMachineBeforeInPlaceSelection(t *testing.T) {

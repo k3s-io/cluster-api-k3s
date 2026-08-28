@@ -120,11 +120,12 @@ func (r *KThreesControlPlaneReconciler) canExtensionsUpdateMachine(
 }
 
 type nonCoverableDiffError struct {
-	err error
+	err    error
+	reason string
 }
 
 func (e *nonCoverableDiffError) Error() string {
-	return e.err.Error()
+	return e.reason
 }
 
 func (e *nonCoverableDiffError) Unwrap() error {
@@ -156,13 +157,19 @@ func createCanUpdateRequest(
 	}
 	if err := ssa.Patch(ctx, c, kcpManagerName, currentInfraForDiff, ssa.WithDryRun{}); err != nil {
 		if apierrors.IsInvalid(err) || apierrors.IsForbidden(err) {
-			return nil, &nonCoverableDiffError{err: errors.Wrap(err, "current InfraMachine does not support server side apply dry-run")}
+			return nil, &nonCoverableDiffError{
+				err:    errors.Wrap(err, "current InfraMachine does not support server side apply dry-run"),
+				reason: uncoveredSpecReason(currentInfraForDiff.GetKind(), "InfrastructureMachine"),
+			}
 		}
 		return nil, errors.Wrap(err, "server side apply dry-run failed for current InfraMachine")
 	}
 	if err := ssa.Patch(ctx, c, kcpManagerName, desiredInfraForDiff, ssa.WithDryRun{}); err != nil {
 		if apierrors.IsInvalid(err) || apierrors.IsForbidden(err) {
-			return nil, &nonCoverableDiffError{err: errors.Wrap(err, "desired InfraMachine does not support server side apply dry-run")}
+			return nil, &nonCoverableDiffError{
+				err:    errors.Wrap(err, "desired InfraMachine does not support server side apply dry-run"),
+				reason: uncoveredSpecReason(desiredInfraForDiff.GetKind(), "InfrastructureMachine"),
+			}
 		}
 		return nil, errors.Wrap(err, "server side apply dry-run failed for desired InfraMachine")
 	}
@@ -259,7 +266,7 @@ func applyPatchesToRequest(
 
 func matchesMachine(request *runtimehooksv1.CanUpdateMachineRequest) (bool, []string, error) {
 	reasons := []string{}
-	match, diff, err := compare.Diff(
+	match, _, err := compare.Diff(
 		&clusterv1.Machine{Spec: *inplace.CleanupMachineSpecForDiff(&request.Current.Machine.Spec)},
 		&clusterv1.Machine{Spec: *inplace.CleanupMachineSpecForDiff(&request.Desired.Machine.Spec)},
 	)
@@ -267,23 +274,31 @@ func matchesMachine(request *runtimehooksv1.CanUpdateMachineRequest) (bool, []st
 		return false, nil, errors.Wrap(err, "failed to match Machine")
 	}
 	if !match {
-		reasons = append(reasons, "Machine cannot be updated in-place: "+diff)
+		if request.Current.Machine.Spec.Version != request.Desired.Machine.Spec.Version {
+			reasons = append(reasons, fmt.Sprintf(
+				"Machine version %q is not equal to desired version %q",
+				request.Current.Machine.Spec.Version,
+				request.Desired.Machine.Spec.Version,
+			))
+		} else {
+			reasons = append(reasons, uncoveredSpecReason("Machine", "Machine"))
+		}
 	}
 
-	match, diff, err = matchesUnstructuredSpec(request.Current.BootstrapConfig, request.Desired.BootstrapConfig)
+	match, kind, err := matchesUnstructuredSpec(request.Current.BootstrapConfig, request.Desired.BootstrapConfig)
 	if err != nil {
 		return false, nil, errors.Wrap(err, "failed to match KThreesConfig")
 	}
 	if !match {
-		reasons = append(reasons, "KThreesConfig cannot be updated in-place: "+diff)
+		reasons = append(reasons, uncoveredSpecReason(kind, "KThreesConfig"))
 	}
 
-	match, diff, err = matchesUnstructuredSpec(request.Current.InfrastructureMachine, request.Desired.InfrastructureMachine)
+	match, kind, err = matchesUnstructuredSpec(request.Current.InfrastructureMachine, request.Desired.InfrastructureMachine)
 	if err != nil {
 		return false, nil, errors.Wrap(err, "failed to match InfrastructureMachine")
 	}
 	if !match {
-		reasons = append(reasons, "InfrastructureMachine cannot be updated in-place: "+diff)
+		reasons = append(reasons, uncoveredSpecReason(kind, "InfrastructureMachine"))
 	}
 	return len(reasons) == 0, reasons, nil
 }
@@ -297,8 +312,20 @@ func matchesUnstructuredSpec(current, desired runtime.RawExtension) (bool, strin
 	if !ok {
 		return false, "", errors.New("desired object is not Unstructured")
 	}
-	return compare.Diff(
+	kind := desiredObject.GetKind()
+	if kind == "" {
+		kind = currentObject.GetKind()
+	}
+	match, _, err := compare.Diff(
 		&unstructured.Unstructured{Object: map[string]interface{}{"spec": currentObject.Object["spec"]}},
 		&unstructured.Unstructured{Object: map[string]interface{}{"spec": desiredObject.Object["spec"]}},
 	)
+	return match, kind, err
+}
+
+func uncoveredSpecReason(kind, fallback string) string {
+	if kind == "" {
+		kind = fallback
+	}
+	return fmt.Sprintf("%s spec is not fully covered for in-place update", kind)
 }

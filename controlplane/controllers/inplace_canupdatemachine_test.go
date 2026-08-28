@@ -19,8 +19,10 @@ package controllers
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
+	"github.com/go-logr/logr/funcr"
 	. "github.com/onsi/gomega"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -35,6 +37,7 @@ import (
 	runtimecatalog "sigs.k8s.io/cluster-api/exp/runtime/catalog"
 	runtimeclient "sigs.k8s.io/cluster-api/exp/runtime/client"
 	"sigs.k8s.io/cluster-api/feature"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -338,6 +341,125 @@ func TestCanUpdateMachineDesiredInfraUnexpectedDryRunReturnsError(t *testing.T) 
 	g.Expect(err).To(MatchError(ContainSubstring("server side apply dry-run failed for desired InfraMachine")))
 	g.Expect(canUpdate).To(BeFalse())
 	g.Expect(runtimeClient.callCount).To(BeZero())
+}
+
+func TestCanUpdateMachineNonCoverableInfraReasonIsSanitized(t *testing.T) {
+	const sentinel = "sentinel-dry-run-secret"
+	g := NewWithT(t)
+	machine, result, c := canUpdateFixtures(t)
+	r := &KThreesControlPlaneReconciler{
+		Client: &infraPatchErrorClient{
+			Client: c,
+			err: apierrors.NewInvalid(
+				schema.GroupKind{Group: "infrastructure.cluster.x-k8s.io", Kind: "TestMachine"},
+				"infra-1",
+				field.ErrorList{field.Invalid(field.NewPath("spec", "credentials", "password"), sentinel, "invalid")},
+			),
+		},
+		RuntimeClient: &fakeRuntimeClient{},
+	}
+
+	canUpdate, reasons, err := r.canExtensionsUpdateMachine(context.Background(), machine, result, []string{"handler"})
+
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(canUpdate).To(BeFalse())
+	g.Expect(reasons).To(Equal([]string{"TestMachine spec is not fully covered for in-place update"}))
+	g.Expect(strings.Join(reasons, ",")).NotTo(ContainSubstring(sentinel))
+}
+
+func TestMatchesMachineReportsOnlySanitizedUncoveredReasons(t *testing.T) {
+	const sentinel = "sentinel-capability-secret"
+	oldContent := "old-content-" + sentinel
+	newContent := "new-content-" + sentinel
+	oldCommand := "old-command-" + sentinel
+	newCommand := "new-command-" + sentinel
+	currentMachine, result, _ := canUpdateFixtures(t)
+
+	request := &runtimehooksv1.CanUpdateMachineRequest{
+		Current: runtimehooksv1.CanUpdateMachineRequestObjects{
+			Machine: *currentMachine,
+			BootstrapConfig: runtime.RawExtension{Object: &unstructured.Unstructured{Object: map[string]interface{}{
+				"apiVersion": bootstrapv1.GroupVersion.String(),
+				"kind":       "KThreesConfig",
+				"spec": map[string]interface{}{
+					"files":          []interface{}{map[string]interface{}{"path": "/etc/sensitive", "content": oldContent}},
+					"preK3sCommands": []interface{}{oldCommand},
+				},
+			}}},
+			InfrastructureMachine: runtime.RawExtension{Object: &unstructured.Unstructured{Object: map[string]interface{}{
+				"apiVersion": "infrastructure.cluster.x-k8s.io/v1beta1",
+				"kind":       "TestMachine",
+				"spec":       map[string]interface{}{"credentials": map[string]interface{}{"password": oldContent}},
+			}}},
+		},
+		Desired: runtimehooksv1.CanUpdateMachineRequestObjects{
+			Machine: *result.DesiredMachine,
+			BootstrapConfig: runtime.RawExtension{Object: &unstructured.Unstructured{Object: map[string]interface{}{
+				"apiVersion": bootstrapv1.GroupVersion.String(),
+				"kind":       "KThreesConfig",
+				"spec": map[string]interface{}{
+					"files":          []interface{}{map[string]interface{}{"path": "/etc/sensitive", "content": newContent}},
+					"preK3sCommands": []interface{}{newCommand},
+				},
+			}}},
+			InfrastructureMachine: runtime.RawExtension{Object: &unstructured.Unstructured{Object: map[string]interface{}{
+				"apiVersion": "infrastructure.cluster.x-k8s.io/v1beta1",
+				"kind":       "TestMachine",
+				"spec":       map[string]interface{}{"credentials": map[string]interface{}{"password": newContent}},
+			}}},
+		},
+	}
+
+	matches, reasons, err := matchesMachine(request)
+
+	g := NewWithT(t)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(matches).To(BeFalse())
+	g.Expect(reasons).To(Equal([]string{
+		`Machine version "v1.31.1+k3s1" is not equal to desired version "v1.31.2+k3s1"`,
+		"KThreesConfig spec is not fully covered for in-place update",
+		"TestMachine spec is not fully covered for in-place update",
+	}))
+	for _, sensitiveValue := range []string{sentinel, oldContent, newContent, oldCommand, newCommand} {
+		g.Expect(strings.Join(reasons, ", ")).NotTo(ContainSubstring(sensitiveValue))
+	}
+}
+
+func TestCanUpdateMachineLogsOnlySanitizedReasons(t *testing.T) {
+	const sentinel = "sentinel-capability-log-secret"
+	oldValue := "old-" + sentinel
+	newValue := "new-" + sentinel
+	g := NewWithT(t)
+	utilfeature.SetFeatureGateDuringTest(t, feature.Gates, feature.InPlaceUpdates, true)
+	machine, result, c := canUpdateFixtures(t)
+	result.CurrentKThreesConfig.Spec.PostK3sCommands = []string{oldValue}
+	result.DesiredKThreesConfig.Spec.PostK3sCommands = []string{newValue}
+	result.CurrentInfraMachine.Object["spec"] = map[string]interface{}{"credentials": map[string]interface{}{"password": oldValue}}
+	result.DesiredInfraMachine.Object["spec"] = map[string]interface{}{"credentials": map[string]interface{}{"password": newValue}}
+
+	var logLines []string
+	logger := funcr.New(func(prefix, args string) {
+		logLines = append(logLines, prefix+args)
+	}, funcr.Options{})
+	ctx := ctrl.LoggerInto(context.Background(), logger)
+	r := &KThreesControlPlaneReconciler{
+		Client:        c,
+		RuntimeClient: &fakeRuntimeClient{handlers: []string{"handler"}},
+	}
+
+	canUpdate, err := r.canUpdateMachine(ctx, machine, result)
+
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(canUpdate).To(BeFalse())
+	logOutput := strings.Join(logLines, "\n")
+	g.Expect(logOutput).To(ContainSubstring(
+		`Machine version \"v1.31.1+k3s1\" is not equal to desired version \"v1.31.2+k3s1\"`,
+	))
+	g.Expect(logOutput).To(ContainSubstring("KThreesConfig spec is not fully covered for in-place update"))
+	g.Expect(logOutput).To(ContainSubstring("TestMachine spec is not fully covered for in-place update"))
+	for _, sensitiveValue := range []string{sentinel, oldValue, newValue} {
+		g.Expect(logOutput).NotTo(ContainSubstring(sensitiveValue))
+	}
 }
 
 func canUpdateFixtures(t *testing.T) (*clusterv1.Machine, k3s.UpToDateResult, client.Client) {
