@@ -22,6 +22,7 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -177,6 +178,106 @@ var _ = Describe("related object managedFields migration", func() {
 			Expect(object.GetResourceVersion()).To(Equal(resourceVersion))
 			Expect(object.GetManagedFields()).To(Equal(managedFields))
 		}
+	})
+
+	It("preserves controller-owned annotations through migration and normal metadata synchronization", func() {
+		ctx := context.Background()
+		fixture := createManagedFieldsSyncFixture(ctx, "protected-annotations", false)
+		defer fixture.cleanup(ctx)
+
+		templateName := "template-current"
+		templateGroupKind := "TestMachineTemplate.infrastructure.cluster.x-k8s.io"
+		fixture.controlPlane.KCP.Spec.MachineTemplate.InfrastructureRef = corev1.ObjectReference{
+			APIVersion: relatedObjectTestGroup + "/" + relatedObjectTestVersion,
+			Kind:       "TestMachineTemplate",
+			Name:       templateName,
+		}
+
+		infraMachine := getInfraMachine(ctx, fixture.infraMachine)
+		applyRelatedObjectMetadata(
+			ctx,
+			infraMachine,
+			infraMachine.GroupVersionKind(),
+			kcpManagerName,
+			nil,
+			map[string]string{
+				clusterv1.TemplateClonedFromNameAnnotation:      templateName,
+				clusterv1.TemplateClonedFromGroupKindAnnotation: templateGroupKind,
+				clusterv1.UpdateInProgressAnnotation:            "",
+			},
+		)
+
+		kthreesConfig := getKThreesConfig(ctx, fixture.kthreesConfig)
+		kthreesConfig.Annotations[clusterv1.UpdateInProgressAnnotation] = ""
+		Expect(k8sClient.Update(ctx, kthreesConfig, client.FieldOwner("manager"))).To(Succeed())
+
+		infraMachine = getInfraMachine(ctx, infraMachine)
+		kthreesConfig = getKThreesConfig(ctx, kthreesConfig)
+		fixture.controlPlane.InfraResources[fixture.machine.Name] = infraMachine
+		fixture.controlPlane.KthreesConfigs[fixture.machine.Name] = kthreesConfig
+
+		migrationCompleted, err := fixture.reconciler.syncMachines(ctx, fixture.controlPlane)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(migrationCompleted).To(BeTrue())
+
+		infraMachine = getInfraMachine(ctx, infraMachine)
+		kthreesConfig = getKThreesConfig(ctx, kthreesConfig)
+		fixture.controlPlane.InfraResources[fixture.machine.Name] = infraMachine
+		fixture.controlPlane.KthreesConfigs[fixture.machine.Name] = kthreesConfig
+
+		migrationCompleted, err = fixture.reconciler.syncMachines(ctx, fixture.controlPlane)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(migrationCompleted).To(BeFalse())
+
+		infraMachine = getInfraMachine(ctx, infraMachine)
+		kthreesConfig = getKThreesConfig(ctx, kthreesConfig)
+		Expect(infraMachine.GetAnnotations()).To(HaveKeyWithValue(
+			clusterv1.TemplateClonedFromNameAnnotation,
+			fixture.controlPlane.KCP.Spec.MachineTemplate.InfrastructureRef.Name,
+		))
+		Expect(infraMachine.GetAnnotations()).To(HaveKeyWithValue(
+			clusterv1.TemplateClonedFromGroupKindAnnotation,
+			fixture.controlPlane.KCP.Spec.MachineTemplate.InfrastructureRef.GroupVersionKind().GroupKind().String(),
+		))
+		Expect(infraMachine.GetAnnotations()).To(HaveKey(clusterv1.UpdateInProgressAnnotation))
+		Expect(kthreesConfig.GetAnnotations()).To(HaveKey(clusterv1.UpdateInProgressAnnotation))
+		for _, object := range []client.Object{infraMachine, kthreesConfig} {
+			Expect(object.GetAnnotations()).To(HaveKeyWithValue(managedFieldsCurrentAnnotation, "current"))
+			Expect(object.GetAnnotations()).NotTo(HaveKey(managedFieldsStaleAnnotation))
+			Expect(object.GetLabels()).To(HaveKeyWithValue(managedFieldsCurrentLabel, "current"))
+			Expect(object.GetLabels()).NotTo(HaveKey(managedFieldsStaleLabel))
+
+			mainEntry := findManagedField(object, kcpManagerName, metav1.ManagedFieldsOperationApply, "")
+			Expect(mainEntry).NotTo(BeNil())
+			Expect(managedFieldOwns(
+				mainEntry,
+				"f:metadata",
+				"f:annotations",
+				"f:"+clusterv1.UpdateInProgressAnnotation,
+			)).To(BeTrue())
+
+			metadataEntry := findManagedField(object, kcpMetadataManagerName, metav1.ManagedFieldsOperationApply, "")
+			Expect(metadataEntry).NotTo(BeNil())
+			Expect(managedFieldOwns(
+				metadataEntry,
+				"f:metadata",
+				"f:annotations",
+				"f:"+clusterv1.UpdateInProgressAnnotation,
+			)).To(BeFalse())
+		}
+		infraMainEntry := findManagedField(infraMachine, kcpManagerName, metav1.ManagedFieldsOperationApply, "")
+		Expect(managedFieldOwns(
+			infraMainEntry,
+			"f:metadata",
+			"f:annotations",
+			"f:"+clusterv1.TemplateClonedFromNameAnnotation,
+		)).To(BeTrue())
+		Expect(managedFieldOwns(
+			infraMainEntry,
+			"f:metadata",
+			"f:annotations",
+			"f:"+clusterv1.TemplateClonedFromGroupKindAnnotation,
+		)).To(BeTrue())
 	})
 
 	It("keeps classic manager Update compatibility when syncing related-object metadata", func() {

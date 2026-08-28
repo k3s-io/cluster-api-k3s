@@ -407,6 +407,7 @@ func TestSyncMachinesRefreshesRolloutMachineBeforeInPlaceSelection(t *testing.T)
 
 func TestSyncMachinesMarksUnsupportedOwnershipAndContinuesNormalSync(t *testing.T) {
 	g := NewWithT(t)
+	ctx := context.Background()
 	fixture := newRolloutControlPlaneFixture(t, 1, 1, 0, []int{0}, false)
 	fixture.controlPlane.KthreesConfigs = map[string]*bootstrapv1.KThreesConfig{}
 	infraMachine := fixture.controlPlane.InfraResources["machine-0"]
@@ -426,15 +427,19 @@ func TestSyncMachinesMarksUnsupportedOwnershipAndContinuesNormalSync(t *testing.
 			FieldsV1:   &metav1.FieldsV1{Raw: []byte(`{"f:spec":{"f:storage":{"f:size":{}}}}`)},
 		},
 	})
+	apiReader := &fixedUnstructuredReader{
+		Reader: fixture.client,
+		object: infraMachine.DeepCopy(),
+	}
 
 	trackingClient := &relatedObjectSyncTrackingClient{Client: fixture.client}
 	r := &KThreesControlPlaneReconciler{
 		Client:    trackingClient,
-		apiReader: trackingClient,
+		apiReader: apiReader,
 		ssaCache:  ssa.NewCache(),
 	}
 
-	migrationCompleted, err := r.syncMachines(context.Background(), fixture.controlPlane)
+	migrationCompleted, err := r.syncMachines(ctx, fixture.controlPlane)
 
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(migrationCompleted).To(BeFalse())
@@ -445,6 +450,28 @@ func TestSyncMachinesMarksUnsupportedOwnershipAndContinuesNormalSync(t *testing.
 	g.Expect(result.LogMessages).To(ContainElement("related-object spec ownership spans multiple API versions"))
 	g.Expect(result.ConditionMessages).To(ContainElement("Related-object ownership requires Machine replacement"))
 	g.Expect(fixture.controlPlane.MachinesNeedingRollout().Names()).To(ConsistOf("machine-0"))
+}
+
+type fixedUnstructuredReader struct {
+	client.Reader
+	object *unstructured.Unstructured
+}
+
+func (r *fixedUnstructuredReader) Get(
+	_ context.Context,
+	key client.ObjectKey,
+	object client.Object,
+	_ ...client.GetOption,
+) error {
+	if key != client.ObjectKeyFromObject(r.object) {
+		return fmt.Errorf("unexpected object key %s", key)
+	}
+	unstructuredObject, ok := object.(*unstructured.Unstructured)
+	if !ok {
+		return fmt.Errorf("expected Unstructured, got %T", object)
+	}
+	*unstructuredObject = *r.object.DeepCopy()
+	return nil
 }
 
 type rolloutControlPlaneFixture struct {

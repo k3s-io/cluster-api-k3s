@@ -34,6 +34,12 @@ import (
 
 const relatedObjectOwnershipReplacementMessage = "Related-object ownership requires Machine replacement"
 
+var relatedObjectMainManagerAnnotations = []string{
+	clusterv1.TemplateClonedFromNameAnnotation,
+	clusterv1.TemplateClonedFromGroupKindAnnotation,
+	clusterv1.UpdateInProgressAnnotation,
+}
+
 func (r *KThreesControlPlaneReconciler) createRelatedObject(
 	ctx context.Context,
 	obj client.Object,
@@ -50,6 +56,7 @@ func (r *KThreesControlPlaneReconciler) createRelatedObject(
 		r.apiReader,
 		obj,
 		kcpManagerName,
+		relatedObjectMainManagerAnnotations...,
 	); err != nil {
 		return errors.Wrapf(err, "failed to split managedFields ownership for %s", gvk.Kind)
 	}
@@ -76,6 +83,7 @@ func (r *KThreesControlPlaneReconciler) reconcileRelatedObjectManagedFields(
 				infraMachine,
 				kcpManagerName,
 				kcpMetadataManagerName,
+				relatedObjectMainManagerAnnotations...,
 			)
 			if err != nil {
 				return false, errors.Wrapf(err, "failed to migrate managedFields of InfrastructureMachine %s", klog.KObj(infraMachine))
@@ -117,6 +125,7 @@ func (r *KThreesControlPlaneReconciler) reconcileRelatedObjectManagedFields(
 			kthreesConfig,
 			kcpManagerName,
 			kcpMetadataManagerName,
+			relatedObjectMainManagerAnnotations...,
 		)
 		if err != nil {
 			return false, errors.Wrapf(err, "failed to migrate managedFields of KThreesConfigs %s", klog.KObj(kthreesConfig))

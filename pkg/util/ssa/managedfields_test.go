@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -31,6 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/util/retry"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
@@ -89,20 +91,26 @@ func (c *managedFieldsPatchClient) Patch(_ context.Context, obj client.Object, p
 
 type configMapReader struct {
 	client.Reader
-	object *corev1.ConfigMap
-	gets   int
+	object  *corev1.ConfigMap
+	objects []*corev1.ConfigMap
+	gets    int
 }
 
 func (r *configMapReader) Get(_ context.Context, key client.ObjectKey, obj client.Object, _ ...client.GetOption) error {
 	r.gets++
-	if key != client.ObjectKeyFromObject(r.object) {
+	current := r.object
+	if len(r.objects) > 0 {
+		index := min(r.gets-1, len(r.objects)-1)
+		current = r.objects[index]
+	}
+	if key != client.ObjectKeyFromObject(current) {
 		return apierrors.NewNotFound(schema.GroupResource{Resource: "configmaps"}, key.Name)
 	}
 	configMap, ok := obj.(*corev1.ConfigMap)
 	if !ok {
 		return errors.New("expected ConfigMap")
 	}
-	*configMap = *r.object.DeepCopy()
+	*configMap = *current.DeepCopy()
 	return nil
 }
 
@@ -627,8 +635,9 @@ func TestMigrateManagedFieldsHistoricalLayouts(t *testing.T) {
 				},
 			}
 			c := &managedFieldsPatchClient{Client: fake.NewClientBuilder().WithScheme(scheme).Build()}
+			apiReader := &configMapReader{Reader: c, object: obj.DeepCopy()}
 
-			result, err := MigrateManagedFields(context.Background(), c, c, obj, mainManager, metadataManager)
+			result, err := MigrateManagedFields(context.Background(), c, apiReader, obj, mainManager, metadataManager)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(result).To(Equal(ManagedFieldsMigrationResult{Outcome: tt.wantOutcome}))
 			if tt.wantOutcome == ManagedFieldsMigrationCompleted {
@@ -677,7 +686,8 @@ func TestMigrateManagedFieldsHistoricalLayouts(t *testing.T) {
 			resourceVersion := obj.GetResourceVersion()
 			managedFields := obj.GetManagedFields()
 			patchAttempts := c.patchAttempts
-			result, err = MigrateManagedFields(context.Background(), c, c, obj, mainManager, metadataManager)
+			apiReader.object = obj.DeepCopy()
+			result, err = MigrateManagedFields(context.Background(), c, apiReader, obj, mainManager, metadataManager)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(result).To(Equal(ManagedFieldsMigrationResult{Outcome: ManagedFieldsMigrationUnchanged}))
 			g.Expect(c.patchAttempts).To(Equal(patchAttempts))
@@ -718,11 +728,12 @@ func TestMigrateManagedFieldsPreservesSpecEntryTimestampWhenEarlierMainEntryBeco
 		},
 	}
 	c := &managedFieldsPatchClient{Client: fake.NewClientBuilder().WithScheme(scheme).Build()}
+	apiReader := &configMapReader{Reader: c, object: obj.DeepCopy()}
 
 	result, err := MigrateManagedFields(
 		context.Background(),
 		c,
-		c,
+		apiReader,
 		obj,
 		managedFieldsTestMainManager,
 		managedFieldsTestMetadataManager,
@@ -734,6 +745,77 @@ func TestMigrateManagedFieldsPreservesSpecEntryTimestampWhenEarlierMainEntryBeco
 	g.Expect(mainEntry).NotTo(BeNil())
 	g.Expect(mainEntry.Time).To(Equal(&specTime))
 	g.Expect(managedFieldsEntryOwns(t, mainEntry, "f:spec", "f:diskSize")).To(BeTrue())
+}
+
+func TestMigrateManagedFieldsKeepsControllerOwnedAnnotationsWithMainManager(t *testing.T) {
+	g := NewWithT(t)
+	scheme := runtime.NewScheme()
+	g.Expect(corev1.AddToScheme(scheme)).To(Succeed())
+
+	obj := &corev1.ConfigMap{
+		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "ConfigMap"},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "related-object",
+			Namespace:       metav1.NamespaceDefault,
+			ResourceVersion: "1",
+			ManagedFields: []metav1.ManagedFieldsEntry{
+				managedFieldsEntry(classicManager, metav1.ManagedFieldsOperationUpdate, managedFieldsTestAPIVersion, fmt.Sprintf(`{
+					"f:metadata":{"f:annotations":{
+						"f:%s":{},
+						"f:%s":{},
+						"f:ordinary.example.io/value":{}
+					}},
+					"f:spec":{"f:diskSize":{}}
+				}`, clusterv1.TemplateClonedFromNameAnnotation, clusterv1.UpdateInProgressAnnotation)),
+				managedFieldsEntry(managedFieldsTestMetadataManager, metav1.ManagedFieldsOperationApply, managedFieldsTestAPIVersion, fmt.Sprintf(`{
+					"f:metadata":{"f:annotations":{"f:%s":{}}}
+				}`, clusterv1.TemplateClonedFromGroupKindAnnotation)),
+			},
+		},
+	}
+	c := &managedFieldsPatchClient{Client: fake.NewClientBuilder().WithScheme(scheme).Build()}
+	apiReader := &configMapReader{Reader: c, object: obj.DeepCopy()}
+
+	result, err := MigrateManagedFields(
+		context.Background(),
+		c,
+		apiReader,
+		obj,
+		managedFieldsTestMainManager,
+		managedFieldsTestMetadataManager,
+		clusterv1.TemplateClonedFromNameAnnotation,
+		clusterv1.TemplateClonedFromGroupKindAnnotation,
+		clusterv1.UpdateInProgressAnnotation,
+	)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(result).To(Equal(ManagedFieldsMigrationResult{Outcome: ManagedFieldsMigrationCompleted}))
+
+	mainEntry := findManagedFieldsEntry(obj, managedFieldsTestMainManager, metav1.ManagedFieldsOperationApply)
+	g.Expect(mainEntry).NotTo(BeNil())
+	for _, annotation := range []string{
+		clusterv1.TemplateClonedFromNameAnnotation,
+		clusterv1.TemplateClonedFromGroupKindAnnotation,
+		clusterv1.UpdateInProgressAnnotation,
+	} {
+		g.Expect(managedFieldsEntryOwns(t, mainEntry, "f:metadata", "f:annotations", "f:"+annotation)).To(BeTrue())
+	}
+
+	metadataEntry := findManagedFieldsEntry(obj, managedFieldsTestMetadataManager, metav1.ManagedFieldsOperationApply)
+	g.Expect(metadataEntry).NotTo(BeNil())
+	g.Expect(managedFieldsEntryOwns(
+		t,
+		metadataEntry,
+		"f:metadata",
+		"f:annotations",
+		"f:ordinary.example.io/value",
+	)).To(BeTrue())
+	for _, annotation := range []string{
+		clusterv1.TemplateClonedFromNameAnnotation,
+		clusterv1.TemplateClonedFromGroupKindAnnotation,
+		clusterv1.UpdateInProgressAnnotation,
+	} {
+		g.Expect(managedFieldsEntryOwns(t, metadataEntry, "f:metadata", "f:annotations", "f:"+annotation)).To(BeFalse())
+	}
 }
 
 func TestMigrateManagedFieldsRejectsMultipleSpecAPIVersions(t *testing.T) {
@@ -801,11 +883,12 @@ func TestMigrateManagedFieldsRejectsMultipleSpecAPIVersions(t *testing.T) {
 				metav1.ManagedFieldsOperationApply,
 			)
 			c := &managedFieldsPatchClient{Client: fake.NewClientBuilder().WithScheme(scheme).Build()}
+			apiReader := &configMapReader{Reader: c, object: obj.DeepCopy()}
 
 			result, err := MigrateManagedFields(
 				context.Background(),
 				c,
-				c,
+				apiReader,
 				obj,
 				managedFieldsTestMainManager,
 				managedFieldsTestMetadataManager,
@@ -855,11 +938,12 @@ func TestMigrateManagedFieldsRejectsInvalidFieldsV1(t *testing.T) {
 				},
 			}
 			c := &managedFieldsPatchClient{Client: fake.NewClientBuilder().WithScheme(scheme).Build()}
+			apiReader := &configMapReader{Reader: c, object: obj.DeepCopy()}
 
 			_, err := MigrateManagedFields(
 				context.Background(),
 				c,
-				c,
+				apiReader,
 				obj,
 				managedFieldsTestMainManager,
 				managedFieldsTestMetadataManager,
@@ -911,12 +995,104 @@ func TestMigrateManagedFieldsRetriesConflictFromLiveState(t *testing.T) {
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(result).To(Equal(ManagedFieldsMigrationResult{Outcome: ManagedFieldsMigrationCompleted}))
 	g.Expect(c.patchAttempts).To(Equal(2))
-	g.Expect(c.resourceVersions).To(Equal([]string{"1", "2"}))
-	g.Expect(c.optimisticLockResourceVersions).To(Equal([]string{"1", "2"}))
-	g.Expect(apiReader.gets).To(Equal(1))
+	g.Expect(c.resourceVersions).To(Equal([]string{"2", "2"}))
+	g.Expect(c.optimisticLockResourceVersions).To(Equal([]string{"2", "2"}))
+	g.Expect(apiReader.gets).To(Equal(2))
 	g.Expect(obj.GetResourceVersion()).To(Equal("3"))
 	g.Expect(obj.GetManagedFields()).To(ContainElement(concurrentEntry))
 	g.Expect(obj.Data).To(Equal(newer.Data))
+}
+
+func TestMigrateManagedFieldsUsesLiveStateBeforeClassifyingMigration(t *testing.T) {
+	g := NewWithT(t)
+	scheme := runtime.NewScheme()
+	g.Expect(corev1.AddToScheme(scheme)).To(Succeed())
+
+	cached := &corev1.ConfigMap{
+		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "ConfigMap"},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "related-object",
+			Namespace:       metav1.NamespaceDefault,
+			ResourceVersion: "1",
+			ManagedFields: []metav1.ManagedFieldsEntry{
+				managedFieldsEntry(
+					managedFieldsTestMainManager,
+					metav1.ManagedFieldsOperationApply,
+					managedFieldsTestAPIVersion,
+					`{"f:spec":{"f:diskSize":{}}}`,
+				),
+				managedFieldsEntry(
+					managedFieldsTestMetadataManager,
+					metav1.ManagedFieldsOperationApply,
+					managedFieldsTestAPIVersion,
+					`{"f:metadata":{"f:labels":{"f:cluster.x-k8s.io/cluster-name":{}}}}`,
+				),
+			},
+		},
+	}
+	live := cached.DeepCopy()
+	live.ResourceVersion = "2"
+	live.ManagedFields = []metav1.ManagedFieldsEntry{
+		managedFieldsEntry(classicManager, metav1.ManagedFieldsOperationUpdate, managedFieldsTestAPIVersion, `{
+			"f:metadata":{"f:labels":{"f:cluster.x-k8s.io/cluster-name":{}}},
+			"f:spec":{"f:diskSize":{}}
+		}`),
+	}
+	baseClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	c := &managedFieldsPatchClient{Client: baseClient, successResourceVersion: "3"}
+	apiReader := &configMapReader{Reader: baseClient, object: live}
+
+	result, err := MigrateManagedFields(
+		context.Background(),
+		c,
+		apiReader,
+		cached,
+		managedFieldsTestMainManager,
+		managedFieldsTestMetadataManager,
+	)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(result).To(Equal(ManagedFieldsMigrationResult{Outcome: ManagedFieldsMigrationCompleted}))
+	g.Expect(apiReader.gets).To(Equal(1))
+	g.Expect(c.patchAttempts).To(Equal(1))
+	g.Expect(c.resourceVersions).To(Equal([]string{"2"}))
+	g.Expect(cached.GetResourceVersion()).To(Equal("3"))
+}
+
+func TestMigrateManagedFieldsUsesLiveStateForUnsupportedClassification(t *testing.T) {
+	g := NewWithT(t)
+	scheme := runtime.NewScheme()
+	g.Expect(corev1.AddToScheme(scheme)).To(Succeed())
+
+	cached := migratableConfigMap()
+	live := cached.DeepCopy()
+	live.ResourceVersion = "2"
+	live.ManagedFields = append(live.ManagedFields, managedFieldsEntry(
+		classicManager,
+		metav1.ManagedFieldsOperationUpdate,
+		"infrastructure.cluster.x-k8s.io/v1beta2",
+		`{"f:spec":{"f:storage":{"f:size":{}}}}`,
+	))
+	baseClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	c := &managedFieldsPatchClient{Client: baseClient}
+	apiReader := &configMapReader{Reader: baseClient, object: live}
+
+	result, err := MigrateManagedFields(
+		context.Background(),
+		c,
+		apiReader,
+		cached,
+		managedFieldsTestMainManager,
+		managedFieldsTestMetadataManager,
+	)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(result).To(Equal(ManagedFieldsMigrationResult{
+		Outcome: ManagedFieldsMigrationInPlaceUpdateUnsupported,
+		Reason:  "related-object spec ownership spans multiple API versions",
+	}))
+	g.Expect(apiReader.gets).To(Equal(1))
+	g.Expect(c.patchAttempts).To(BeZero())
+	g.Expect(cached.GetResourceVersion()).To(Equal("2"))
+	g.Expect(cached.GetManagedFields()).To(Equal(live.GetManagedFields()))
 }
 
 func TestMigrateManagedFieldsRecomputesUnsupportedAfterConflict(t *testing.T) {
@@ -936,7 +1112,9 @@ func TestMigrateManagedFieldsRecomputesUnsupportedAfterConflict(t *testing.T) {
 	}
 	newer := obj.DeepCopy()
 	newer.ResourceVersion = "2"
-	newer.ManagedFields = append(newer.ManagedFields, managedFieldsEntry(
+	unsupported := newer.DeepCopy()
+	unsupported.ResourceVersion = "3"
+	unsupported.ManagedFields = append(unsupported.ManagedFields, managedFieldsEntry(
 		classicManager,
 		metav1.ManagedFieldsOperationUpdate,
 		"infrastructure.cluster.x-k8s.io/v1beta2",
@@ -944,7 +1122,7 @@ func TestMigrateManagedFieldsRecomputesUnsupportedAfterConflict(t *testing.T) {
 	))
 	baseClient := fake.NewClientBuilder().WithScheme(scheme).Build()
 	c := &managedFieldsPatchClient{Client: baseClient, conflictsRemaining: 1}
-	apiReader := &configMapReader{Reader: baseClient, object: newer}
+	apiReader := &configMapReader{Reader: baseClient, objects: []*corev1.ConfigMap{newer, unsupported}}
 
 	result, err := MigrateManagedFields(
 		context.Background(),
@@ -960,7 +1138,7 @@ func TestMigrateManagedFieldsRecomputesUnsupportedAfterConflict(t *testing.T) {
 		Reason:  "related-object spec ownership spans multiple API versions",
 	}))
 	g.Expect(c.patchAttempts).To(Equal(1))
-	g.Expect(apiReader.gets).To(Equal(1))
+	g.Expect(apiReader.gets).To(Equal(2))
 }
 
 func TestMigrateManagedFieldsReturnsLiveReadError(t *testing.T) {
@@ -981,7 +1159,7 @@ func TestMigrateManagedFieldsReturnsLiveReadError(t *testing.T) {
 		managedFieldsTestMetadataManager,
 	)
 	g.Expect(err).To(MatchError(ContainSubstring("live read failed")))
-	g.Expect(c.patchAttempts).To(Equal(1))
+	g.Expect(c.patchAttempts).To(BeZero())
 	g.Expect(apiReader.gets).To(Equal(1))
 }
 
@@ -1010,7 +1188,7 @@ func TestMigrateManagedFieldsLimitsConflictRetries(t *testing.T) {
 	g.Expect(err).To(HaveOccurred())
 	g.Expect(apierrors.IsConflict(err)).To(BeTrue())
 	g.Expect(c.patchAttempts).To(Equal(retry.DefaultRetry.Steps))
-	g.Expect(apiReader.gets).To(Equal(retry.DefaultRetry.Steps - 1))
+	g.Expect(apiReader.gets).To(Equal(retry.DefaultRetry.Steps))
 }
 
 type errorReader struct {

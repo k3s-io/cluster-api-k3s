@@ -109,13 +109,38 @@ var _ = Describe("new related object ownership", func() {
 			Expect(mainEntry).NotTo(BeNil())
 			Expect(managedFieldOwns(mainEntry, "f:spec")).To(BeTrue())
 			Expect(managedFieldOwns(mainEntry, "f:metadata", "f:labels")).To(BeFalse())
-			Expect(managedFieldOwns(mainEntry, "f:metadata", "f:annotations")).To(BeFalse())
 
 			metadataEntry := findManagedField(object, kcpMetadataManagerName, metav1.ManagedFieldsOperationApply, "")
 			Expect(metadataEntry).NotTo(BeNil())
 			Expect(managedFieldOwns(metadataEntry, "f:metadata", "f:labels")).To(BeTrue())
 			Expect(managedFieldOwns(metadataEntry, "f:metadata", "f:annotations")).To(BeTrue())
+			for _, annotation := range relatedObjectMainManagerAnnotations {
+				Expect(managedFieldOwns(metadataEntry, "f:metadata", "f:annotations", "f:"+annotation)).To(BeFalse())
+			}
 		}
+
+		infraMainEntry := findManagedField(infraMachine, kcpManagerName, metav1.ManagedFieldsOperationApply, "")
+		Expect(managedFieldOwns(
+			infraMainEntry,
+			"f:metadata",
+			"f:annotations",
+			"f:"+clusterv1.TemplateClonedFromNameAnnotation,
+		)).To(BeTrue())
+		Expect(managedFieldOwns(
+			infraMainEntry,
+			"f:metadata",
+			"f:annotations",
+			"f:"+clusterv1.TemplateClonedFromGroupKindAnnotation,
+		)).To(BeTrue())
+		Expect(managedFieldOwns(
+			infraMainEntry,
+			"f:metadata",
+			"f:annotations",
+			"f:"+clusterv1.UpdateInProgressAnnotation,
+		)).To(BeFalse())
+
+		configMainEntry := findManagedField(kthreesConfig, kcpManagerName, metav1.ManagedFieldsOperationApply, "")
+		Expect(managedFieldOwns(configMainEntry, "f:metadata", "f:annotations")).To(BeFalse())
 	})
 
 	It("removes omitted related-object spec fields on a later main-manager apply", func() {
@@ -139,7 +164,10 @@ var _ = Describe("new related object ownership", func() {
 		infraMachine := fixture.getInfraMachine(ctx, machine.Spec.InfrastructureRef)
 		desiredInfraMachine := infraMachine.DeepCopy()
 		desiredInfraMachine.SetLabels(nil)
-		desiredInfraMachine.SetAnnotations(nil)
+		desiredInfraMachine.SetAnnotations(map[string]string{
+			clusterv1.TemplateClonedFromNameAnnotation:      infraMachine.GetAnnotations()[clusterv1.TemplateClonedFromNameAnnotation],
+			clusterv1.TemplateClonedFromGroupKindAnnotation: infraMachine.GetAnnotations()[clusterv1.TemplateClonedFromGroupKindAnnotation],
+		})
 		unstructured.RemoveNestedField(desiredInfraMachine.Object, "spec", "settings", "legacy")
 		Expect(ssa.Patch(ctx, k8sClient, kcpManagerName, desiredInfraMachine)).To(Succeed())
 

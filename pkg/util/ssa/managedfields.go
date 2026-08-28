@@ -31,24 +31,18 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
-
-	"github.com/k3s-io/cluster-api-k3s/pkg/util/contract"
 )
 
 const classicManager = "manager"
 
-var labelsAndAnnotationsPaths = []contract.Path{
-	{"f:metadata", "f:labels"},
-	{"f:metadata", "f:annotations"},
-}
-
-// RemoveManagedFieldsForLabelsAndAnnotations drops label and annotation ownership from fieldManager's main Apply entry.
+// RemoveManagedFieldsForLabelsAndAnnotations drops label and ordinary annotation ownership from fieldManager's main Apply entry.
 func RemoveManagedFieldsForLabelsAndAnnotations(
 	ctx context.Context,
 	c client.Client,
 	apiReader client.Reader,
 	obj client.Object,
 	fieldManager string,
+	protectedAnnotations ...string,
 ) error {
 	objectKey := client.ObjectKeyFromObject(obj)
 	current := obj.DeepCopyObject().(client.Object)
@@ -65,7 +59,11 @@ func RemoveManagedFieldsForLabelsAndAnnotations(
 		}
 		firstAttempt = false
 
-		managedFields, changed, err := removeManagedFieldsForLabelsAndAnnotations(current.GetManagedFields(), fieldManager)
+		managedFields, changed, err := removeManagedFieldsForLabelsAndAnnotations(
+			current.GetManagedFields(),
+			fieldManager,
+			protectedAnnotations,
+		)
 		if err != nil {
 			return err
 		}
@@ -91,6 +89,7 @@ func RemoveManagedFieldsForLabelsAndAnnotations(
 func removeManagedFieldsForLabelsAndAnnotations(
 	originalManagedFields []metav1.ManagedFieldsEntry,
 	fieldManager string,
+	protectedAnnotations []string,
 ) ([]metav1.ManagedFieldsEntry, bool, error) {
 	managedFields := make([]metav1.ManagedFieldsEntry, 0, len(originalManagedFields))
 	changed := false
@@ -107,11 +106,13 @@ func removeManagedFieldsForLabelsAndAnnotations(
 			return nil, false, err
 		}
 		originalFieldsV1 := runtime.DeepCopyJSON(fieldsV1)
-		FilterIntent(&FilterIntentInput{
-			Path:         contract.Path{},
-			Value:        fieldsV1,
-			ShouldFilter: IsPathIgnored(labelsAndAnnotationsPaths),
-		})
+		if _, _, err := moveOrdinaryMetadataManagedFields(
+			fieldsV1,
+			map[string]interface{}{},
+			protectedAnnotationFieldNames(protectedAnnotations),
+		); err != nil {
+			return nil, false, err
+		}
 		if reflect.DeepEqual(fieldsV1, originalFieldsV1) {
 			managedFields = append(managedFields, managedField)
 			continue
@@ -157,6 +158,7 @@ func MigrateManagedFields(
 	obj client.Object,
 	fieldManager string,
 	metadataFieldManager string,
+	protectedAnnotations ...string,
 ) (ManagedFieldsMigrationResult, error) {
 	objectKey := client.ObjectKeyFromObject(obj)
 	objectGVK, err := apiutil.GVKForObject(obj, c.Scheme())
@@ -166,24 +168,22 @@ func MigrateManagedFields(
 	}
 
 	current := obj.DeepCopyObject().(client.Object)
-	firstAttempt := true
 	result := ManagedFieldsMigrationResult{Outcome: ManagedFieldsMigrationUnchanged}
 	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		if !firstAttempt {
-			current = obj.DeepCopyObject().(client.Object)
-			current.SetResourceVersion("")
-			current.SetManagedFields(nil)
-			if err := apiReader.Get(ctx, objectKey, current); err != nil {
-				return err
-			}
+		current = obj.DeepCopyObject().(client.Object)
+		current.SetResourceVersion("")
+		current.SetManagedFields(nil)
+		if err := apiReader.Get(ctx, objectKey, current); err != nil {
+			return err
 		}
-		firstAttempt = false
+		current.GetObjectKind().SetGroupVersionKind(objectGVK)
 
 		managedFields, migrationResult, err := migrateManagedFields(
 			current.GetManagedFields(),
 			fieldManager,
 			metadataFieldManager,
 			objectGVK.GroupVersion().String(),
+			protectedAnnotations,
 		)
 		if err != nil {
 			return err
@@ -223,6 +223,7 @@ type managedFieldsMigration struct {
 	mainVersions         map[string]struct{}
 	specByVersion        map[string]map[string]interface{}
 	metadataFields       map[string]interface{}
+	mainMetadataFields   map[string]interface{}
 }
 
 func migrateManagedFields(
@@ -230,8 +231,14 @@ func migrateManagedFields(
 	fieldManager string,
 	metadataFieldManager string,
 	objectAPIVersion string,
+	protectedAnnotations []string,
 ) ([]metav1.ManagedFieldsEntry, ManagedFieldsMigrationResult, error) {
-	migration, err := collectManagedFieldsMigration(originalManagedFields, fieldManager, metadataFieldManager)
+	migration, err := collectManagedFieldsMigration(
+		originalManagedFields,
+		fieldManager,
+		metadataFieldManager,
+		protectedAnnotationFieldNames(protectedAnnotations),
+	)
 	if err != nil {
 		return nil, ManagedFieldsMigrationResult{}, err
 	}
@@ -242,6 +249,10 @@ func migrateManagedFields(
 			Outcome: ManagedFieldsMigrationInPlaceUpdateUnsupported,
 			Reason:  managedFieldsMigrationUnsupportedReason,
 		}, nil
+	}
+	if !hasDestinationVersion && len(migration.mainMetadataFields) > 0 {
+		destinationVersion = objectAPIVersion
+		hasDestinationVersion = true
 	}
 
 	if err := migration.mergeMainEntries(fieldManager, destinationVersion, hasDestinationVersion); err != nil {
@@ -265,12 +276,14 @@ func collectManagedFieldsMigration(
 	originalManagedFields []metav1.ManagedFieldsEntry,
 	fieldManager string,
 	metadataFieldManager string,
+	protectedAnnotationFields map[string]struct{},
 ) (*managedFieldsMigration, error) {
 	migration := &managedFieldsMigration{
-		entries:        make([]managedFieldsMigrationEntry, len(originalManagedFields)),
-		mainVersions:   map[string]struct{}{},
-		specByVersion:  map[string]map[string]interface{}{},
-		metadataFields: map[string]interface{}{},
+		entries:            make([]managedFieldsMigrationEntry, len(originalManagedFields)),
+		mainVersions:       map[string]struct{}{},
+		specByVersion:      map[string]map[string]interface{}{},
+		metadataFields:     map[string]interface{}{},
+		mainMetadataFields: map[string]interface{}{},
 	}
 
 	for i := range originalManagedFields {
@@ -289,22 +302,71 @@ func collectManagedFieldsMigration(
 
 		if entryType == managedFieldsMigrationEntryMetadata {
 			migration.metadataEntryIndexes = append(migration.metadataEntryIndexes, i)
+			changed, err := moveProtectedAnnotationManagedFields(
+				fields,
+				migration.mainMetadataFields,
+				protectedAnnotationFields,
+			)
+			if err != nil {
+				return nil, errors.Wrapf(
+					err,
+					"failed to migrate FieldsV1 for managed fields entry %q",
+					entry.Manager,
+				)
+			}
+			migration.entries[i].changed = changed
 			continue
 		}
 
-		changed, err := moveMetadataManagedFields(fields, migration.metadataFields, entry.Manager)
-		if err != nil {
-			return nil, err
-		}
-		migration.entries[i].changed = changed
-
 		if entryType == managedFieldsMigrationEntryClassic {
+			changed, protectedChanged, err := moveOrdinaryMetadataManagedFields(
+				fields,
+				migration.metadataFields,
+				protectedAnnotationFields,
+			)
+			if err != nil {
+				return nil, errors.Wrapf(
+					err,
+					"failed to migrate FieldsV1 for managed fields entry %q",
+					entry.Manager,
+				)
+			}
+			if protectedChanged {
+				protectedFields, found, err := removeNestedFieldSet(fields, "f:metadata", "f:annotations")
+				if err != nil {
+					return nil, err
+				}
+				if found {
+					if err := mergeNestedFieldSet(
+						migration.mainMetadataFields,
+						protectedFields,
+						"f:metadata",
+						"f:annotations",
+					); err != nil {
+						return nil, err
+					}
+				}
+			}
+			migration.entries[i].changed = changed || protectedChanged
 			if err := migration.moveClassicSpecFields(i); err != nil {
 				return nil, err
 			}
 			continue
 		}
 
+		changed, _, err := moveOrdinaryMetadataManagedFields(
+			fields,
+			migration.metadataFields,
+			protectedAnnotationFields,
+		)
+		if err != nil {
+			return nil, errors.Wrapf(
+				err,
+				"failed to migrate FieldsV1 for managed fields entry %q",
+				entry.Manager,
+			)
+		}
+		migration.entries[i].changed = changed
 		if err := migration.trackMainEntry(i); err != nil {
 			return nil, err
 		}
@@ -341,30 +403,113 @@ func managedFieldsMigrationEntryTypeFor(
 	return managedFieldsMigrationEntryUnrelated
 }
 
-func moveMetadataManagedFields(
+func moveOrdinaryMetadataManagedFields(
 	fields map[string]interface{},
 	metadataFields map[string]interface{},
-	manager string,
-) (bool, error) {
+	protectedAnnotationFields map[string]struct{},
+) (ordinaryChanged bool, protectedFound bool, err error) {
 	changed := false
-	for _, path := range labelsAndAnnotationsPaths {
-		ownedFields, found, err := removeNestedFieldSet(fields, path...)
-		if err != nil {
-			return false, errors.Wrapf(
-				err,
-				"failed to migrate FieldsV1 for managed fields entry %q",
-				manager,
-			)
-		}
-		if !found {
-			continue
-		}
-		if err := mergeNestedFieldSet(metadataFields, ownedFields, path...); err != nil {
-			return false, err
+	labelFields, found, err := removeNestedFieldSet(fields, "f:metadata", "f:labels")
+	if err != nil {
+		return false, false, err
+	}
+	if found {
+		if err := mergeNestedFieldSet(metadataFields, labelFields, "f:metadata", "f:labels"); err != nil {
+			return false, false, err
 		}
 		changed = true
 	}
-	return changed, nil
+
+	annotationFields, found, err := removeNestedFieldSet(fields, "f:metadata", "f:annotations")
+	if err != nil {
+		return false, false, err
+	}
+	if !found {
+		return changed, false, nil
+	}
+
+	ordinaryAnnotations, protectedAnnotations := splitAnnotationManagedFields(
+		annotationFields,
+		protectedAnnotationFields,
+	)
+	if len(ordinaryAnnotations) > 0 {
+		if err := mergeNestedFieldSet(
+			metadataFields,
+			ordinaryAnnotations,
+			"f:metadata",
+			"f:annotations",
+		); err != nil {
+			return false, false, err
+		}
+		changed = true
+	}
+	if len(protectedAnnotations) > 0 {
+		if err := mergeNestedFieldSet(
+			fields,
+			protectedAnnotations,
+			"f:metadata",
+			"f:annotations",
+		); err != nil {
+			return false, false, err
+		}
+	}
+	return changed, len(protectedAnnotations) > 0, nil
+}
+
+func moveProtectedAnnotationManagedFields(
+	fields map[string]interface{},
+	mainMetadataFields map[string]interface{},
+	protectedAnnotationFields map[string]struct{},
+) (bool, error) {
+	annotationFields, found, err := removeNestedFieldSet(fields, "f:metadata", "f:annotations")
+	if err != nil || !found {
+		return false, err
+	}
+	ordinaryAnnotations, protectedAnnotations := splitAnnotationManagedFields(
+		annotationFields,
+		protectedAnnotationFields,
+	)
+	if len(ordinaryAnnotations) > 0 {
+		if err := mergeNestedFieldSet(fields, ordinaryAnnotations, "f:metadata", "f:annotations"); err != nil {
+			return false, err
+		}
+	}
+	if len(protectedAnnotations) == 0 {
+		return false, nil
+	}
+	if err := mergeNestedFieldSet(
+		mainMetadataFields,
+		protectedAnnotations,
+		"f:metadata",
+		"f:annotations",
+	); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func splitAnnotationManagedFields(
+	annotationFields map[string]interface{},
+	protectedAnnotationFields map[string]struct{},
+) (ordinary, protected map[string]interface{}) {
+	ordinary = map[string]interface{}{}
+	protected = map[string]interface{}{}
+	for field, value := range annotationFields {
+		if _, ok := protectedAnnotationFields[field]; ok {
+			protected[field] = runtime.DeepCopyJSONValue(value)
+			continue
+		}
+		ordinary[field] = runtime.DeepCopyJSONValue(value)
+	}
+	return ordinary, protected
+}
+
+func protectedAnnotationFieldNames(annotations []string) map[string]struct{} {
+	fields := make(map[string]struct{}, len(annotations))
+	for _, annotation := range annotations {
+		fields["f:"+annotation] = struct{}{}
+	}
+	return fields
 }
 
 func (m *managedFieldsMigration) moveClassicSpecFields(index int) error {
@@ -451,6 +596,9 @@ func (m *managedFieldsMigration) mergeMainEntries(
 		if err := mergeNestedFieldSet(mainFields, specFields, "f:spec"); err != nil {
 			return errors.Wrap(err, "failed to merge migrated spec fields")
 		}
+	}
+	if err := mergeFieldSet(mainFields, m.mainMetadataFields); err != nil {
+		return errors.Wrap(err, "failed to merge controller-owned annotation managed fields")
 	}
 	if len(mainFields) == 0 {
 		return nil
