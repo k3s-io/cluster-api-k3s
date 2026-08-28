@@ -35,4 +35,9 @@ limitations under the License.
 // Source paths and version are documented in this package so the copied code
 // can be compared with upstream and removed if public equivalents become
 // available.
+//
+// The patch helper deliberately diverges from Cluster API v1.12.9 and CAPRKE2
+// by redacting patch bodies and parser/application details from logs and
+// returned errors. It logs only the patch type and, for decoded JSON patches,
+// the operation count because Runtime Extension patches can contain secrets.
 package capi

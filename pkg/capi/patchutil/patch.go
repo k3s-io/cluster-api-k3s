@@ -93,13 +93,14 @@ func ApplyPatchToObject(ctx context.Context, obj *runtime.RawExtension, patch ru
 
 	switch patch.PatchType {
 	case runtimehooksv1.JSONPatchType:
-		log.V(5).Info("Accumulating JSON patch", "patch", string(patch.Patch))
 		jsonPatch, err := jsonpatch.DecodePatch(patch.Patch)
 		if err != nil {
-			log.Error(err, "Failed to apply patch: error decoding json patch (RFC6902)", "patch", string(patch.Patch))
-			return false, errors.Wrap(err, "failed to apply patch: error decoding json patch (RFC6902)")
+			log.Error(errors.New("failed to decode JSON patch"), "Failed to apply patch: error decoding json patch (RFC6902)",
+				"patchType", patch.PatchType)
+			return false, errors.New("failed to apply patch: error decoding json patch (RFC6902)")
 		}
 
+		log.V(5).Info("Applying patch", "patchType", patch.PatchType, "operationCount", len(jsonPatch))
 		if len(jsonPatch) == 0 {
 			// Return if there are no patches, nothing to do.
 			return false, nil
@@ -107,8 +108,9 @@ func ApplyPatchToObject(ctx context.Context, obj *runtime.RawExtension, patch ru
 
 		patchedObject, err = jsonPatch.Apply(patchedObject)
 		if err != nil {
-			log.Error(err, "Failed to apply patch: error applying json patch (RFC6902)", "patch", string(patch.Patch))
-			return false, errors.Wrap(err, "failed to apply patch: error applying json patch (RFC6902)")
+			log.Error(errors.New("failed to apply JSON patch"), "Failed to apply patch: error applying json patch (RFC6902)",
+				"patchType", patch.PatchType)
+			return false, errors.New("failed to apply patch: error applying json patch (RFC6902)")
 		}
 	case runtimehooksv1.JSONMergePatchType:
 		if len(patch.Patch) == 0 || bytes.Equal(patch.Patch, []byte("{}")) {
@@ -116,11 +118,12 @@ func ApplyPatchToObject(ctx context.Context, obj *runtime.RawExtension, patch ru
 			return false, nil
 		}
 
-		log.V(5).Info("Accumulating JSON merge patch", "patch", string(patch.Patch))
+		log.V(5).Info("Applying patch", "patchType", patch.PatchType)
 		patchedObject, err = jsonpatch.MergePatch(patchedObject, patch.Patch)
 		if err != nil {
-			log.Error(err, "Failed to apply patch: error applying json merge patch (RFC7386)", "patch", string(patch.Patch))
-			return false, errors.Wrap(err, "failed to apply patch: error applying json merge patch (RFC7386)")
+			log.Error(errors.New("failed to apply JSON merge patch"), "Failed to apply patch: error applying json merge patch (RFC7386)",
+				"patchType", patch.PatchType)
+			return false, errors.New("failed to apply patch: error applying json merge patch (RFC7386)")
 		}
 	default:
 		return false, errors.Errorf("failed to apply patch: unknown patchType %s", patch.PatchType)
