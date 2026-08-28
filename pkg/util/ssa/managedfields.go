@@ -392,12 +392,12 @@ func migrateManagedFields(
 	mainDestinationIndex := -1
 	mainFields := map[string]interface{}{}
 	for _, i := range mainEntryIndexes {
-		if entries[i].entry.APIVersion == destinationVersion && mainDestinationIndex == -1 {
-			mainDestinationIndex = i
-		}
 		if len(entries[i].fields) == 0 {
 			entries[i].removed = true
 			continue
+		}
+		if entries[i].entry.APIVersion == destinationVersion && mainDestinationIndex == -1 {
+			mainDestinationIndex = i
 		}
 		if err := mergeFieldSet(mainFields, entries[i].fields); err != nil {
 			return nil, ManagedFieldsMigrationResult{}, errors.Wrap(err, "failed to merge main manager fields")

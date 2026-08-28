@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
@@ -676,6 +677,51 @@ func TestMigrateManagedFieldsHistoricalLayouts(t *testing.T) {
 			g.Expect(obj.GetManagedFields()).To(Equal(managedFields))
 		})
 	}
+}
+
+func TestMigrateManagedFieldsPreservesSpecEntryTimestampWhenEarlierMainEntryBecomesEmpty(t *testing.T) {
+	g := NewWithT(t)
+	scheme := runtime.NewScheme()
+	g.Expect(corev1.AddToScheme(scheme)).To(Succeed())
+
+	mainManager := "capi-kthreescontrolplane"
+	metadataManager := "capi-kthreescontrolplane-metadata"
+	apiVersion := "infrastructure.cluster.x-k8s.io/v1beta1"
+	metadataOnlyTime := metav1.NewTime(time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC))
+	specTime := metav1.NewTime(time.Date(2026, time.February, 1, 0, 0, 0, 0, time.UTC))
+	metadataOnlyEntry := managedFieldsEntry(
+		mainManager,
+		metav1.ManagedFieldsOperationApply,
+		apiVersion,
+		`{"f:metadata":{"f:labels":{"f:cluster.x-k8s.io/cluster-name":{}}}}`,
+	)
+	metadataOnlyEntry.Time = &metadataOnlyTime
+	specEntry := managedFieldsEntry(
+		mainManager,
+		metav1.ManagedFieldsOperationApply,
+		apiVersion,
+		`{"f:spec":{"f:diskSize":{}}}`,
+	)
+	specEntry.Time = &specTime
+	obj := &corev1.ConfigMap{
+		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "ConfigMap"},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "related-object",
+			Namespace:       metav1.NamespaceDefault,
+			ResourceVersion: "1",
+			ManagedFields:   []metav1.ManagedFieldsEntry{metadataOnlyEntry, specEntry},
+		},
+	}
+	c := &managedFieldsPatchClient{Client: fake.NewClientBuilder().WithScheme(scheme).Build()}
+
+	result, err := MigrateManagedFields(context.Background(), c, c, obj, mainManager, metadataManager)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(result).To(Equal(ManagedFieldsMigrationResult{Outcome: ManagedFieldsMigrationCompleted}))
+
+	mainEntry := findManagedFieldsEntry(obj, mainManager, metav1.ManagedFieldsOperationApply, "")
+	g.Expect(mainEntry).NotTo(BeNil())
+	g.Expect(mainEntry.Time).To(Equal(&specTime))
+	g.Expect(managedFieldsEntryOwns(t, mainEntry, "f:spec", "f:diskSize")).To(BeTrue())
 }
 
 func TestMigrateManagedFieldsRejectsMultipleSpecAPIVersions(t *testing.T) {
