@@ -19,6 +19,8 @@ package controllers
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -29,12 +31,16 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/uuid"
+	"k8s.io/utils/ptr"
 	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
+	"sigs.k8s.io/cluster-api/feature"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
 	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
+	"github.com/k3s-io/cluster-api-k3s/pkg/k3s"
 	"github.com/k3s-io/cluster-api-k3s/pkg/util/ssa"
 )
 
@@ -64,6 +70,12 @@ var _ = Describe("new related object ownership", func() {
 			clusterv1.GroupVersion.Group,
 			"Machine",
 			"machines",
+		)
+		ensureManagedFieldsTestCRD(
+			"testmachines."+relatedObjectTestGroup,
+			relatedObjectTestGroup,
+			"TestMachine",
+			"testmachines",
 		)
 		ensureRelatedObjectContractLabels()
 		ensureKThreesConfigContractLabel()
@@ -278,7 +290,156 @@ var _ = Describe("new related object ownership", func() {
 		Expect(err.Error()).To(ContainSubstring("injected cleanup failure"))
 		fixture.expectObjectCounts(ctx, 0, 1, 0)
 	})
+
+	It("requeues managedFields migration before CanUpdateMachine", func() {
+		wasEnabled := feature.Gates.Enabled(feature.InPlaceUpdates)
+		Expect(feature.MutableGates.Set("InPlaceUpdates=true")).To(Succeed())
+		defer func() {
+			Expect(feature.MutableGates.Set(fmt.Sprintf("InPlaceUpdates=%t", wasEnabled))).To(Succeed())
+		}()
+		ctx := context.Background()
+		fixture, reconciler, trackingClient, cleanup := newManagedFieldsReconcileFixture(ctx, "requeue")
+		defer cleanup()
+		fixture.controlPlane.KCP.Spec.Replicas = ptr.To[int32](1)
+
+		canUpdateCalled := false
+		reconciler.overrides = &reconcilerOverrides{
+			canUpdateMachine: func(context.Context, *clusterv1.Machine, k3s.UpToDateResult) (bool, error) {
+				canUpdateCalled = true
+				return true, nil
+			},
+		}
+
+		result, err := reconciler.reconcile(ctx, fixture.controlPlane.Cluster, fixture.controlPlane.KCP)
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result).To(Equal(ctrl.Result{Requeue: true}))
+		Expect(canUpdateCalled).To(BeFalse())
+		Expect(trackingClient.machinePatchCount).To(BeZero())
+		Expect(trackingClient.machineCreateCount).To(BeZero())
+	})
+
+	It("requeues managedFields migration before a pending trigger write", func() {
+		ctx := context.Background()
+		fixture, reconciler, trackingClient, cleanup := newManagedFieldsReconcileFixture(ctx, "trigger")
+		defer cleanup()
+		machine := &clusterv1.Machine{}
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(fixture.machine), machine)).To(Succeed())
+		if machine.Annotations == nil {
+			machine.Annotations = map[string]string{}
+		}
+		machine.Annotations[clusterv1.UpdateInProgressAnnotation] = ""
+		Expect(k8sClient.Update(ctx, machine)).To(Succeed())
+
+		triggerCalled := false
+		reconciler.overrides = &reconcilerOverrides{
+			triggerInPlaceUpdate: func(context.Context, *clusterv1.Machine, k3s.UpToDateResult) error {
+				triggerCalled = true
+				return nil
+			},
+		}
+
+		result, err := reconciler.reconcile(ctx, fixture.controlPlane.Cluster, fixture.controlPlane.KCP)
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result).To(Equal(ctrl.Result{Requeue: true}))
+		Expect(triggerCalled).To(BeFalse())
+		Expect(trackingClient.machinePatchCount).To(BeZero())
+		Expect(trackingClient.machineCreateCount).To(BeZero())
+	})
+
+	It("requeues managedFields migration before Machine creation", func() {
+		ctx := context.Background()
+		fixture, reconciler, trackingClient, cleanup := newManagedFieldsReconcileFixture(ctx, "scale-up")
+		defer cleanup()
+		fixture.controlPlane.KCP.Spec.Replicas = ptr.To[int32](2)
+
+		scaleUpCalled := false
+		reconciler.overrides = &reconcilerOverrides{
+			scaleUpControlPlane: func(context.Context, *clusterv1.Cluster, *controlplanev1.KThreesControlPlane, *k3s.ControlPlane) (ctrl.Result, error) {
+				scaleUpCalled = true
+				return ctrl.Result{}, nil
+			},
+		}
+
+		result, err := reconciler.reconcile(ctx, fixture.controlPlane.Cluster, fixture.controlPlane.KCP)
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result).To(Equal(ctrl.Result{Requeue: true}))
+		Expect(scaleUpCalled).To(BeFalse())
+		Expect(trackingClient.machinePatchCount).To(BeZero())
+		Expect(trackingClient.machineCreateCount).To(BeZero())
+	})
 })
+
+func newManagedFieldsReconcileFixture(
+	ctx context.Context,
+	suffix string,
+) (*managedFieldsSyncFixture, *KThreesControlPlaneReconciler, *relatedObjectSyncTrackingClient, func()) {
+	fixture := createManagedFieldsSyncFixture(ctx, suffix, true)
+	template := &unstructured.Unstructured{Object: map[string]interface{}{
+		"apiVersion": relatedObjectTestGroup + "/" + relatedObjectTestVersion,
+		"kind":       relatedObjectTestTemplateKind,
+		"metadata": map[string]interface{}{
+			"name":      "migration-template-" + suffix,
+			"namespace": fixture.controlPlane.KCP.Namespace,
+		},
+		"spec": map[string]interface{}{
+			"template": map[string]interface{}{
+				"spec": map[string]interface{}{
+					"value": "initial",
+					"removable": map[string]interface{}{
+						"nested": "remove",
+					},
+				},
+			},
+		},
+	}}
+	Expect(k8sClient.Create(ctx, template)).To(Succeed())
+	fixture.controlPlane.KCP.Spec.MachineTemplate.InfrastructureRef = corev1.ObjectReference{
+		APIVersion: template.GetAPIVersion(),
+		Kind:       template.GetKind(),
+		Name:       template.GetName(),
+		Namespace:  template.GetNamespace(),
+	}
+	fixture.controlPlane.Cluster.TypeMeta = metav1.TypeMeta{APIVersion: clusterv1.GroupVersion.String(), Kind: "Cluster"}
+	fixture.controlPlane.Cluster.UID = types.UID("cluster-" + suffix)
+	fixture.controlPlane.Cluster.Spec.ControlPlaneEndpoint = clusterv1.APIEndpoint{Host: "192.0.2.10", Port: 6443}
+
+	machine := &clusterv1.Machine{}
+	Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(fixture.machine), machine)).To(Succeed())
+	if machine.Labels == nil {
+		machine.Labels = map[string]string{}
+	}
+	machine.Labels[clusterv1.MachineControlPlaneLabel] = ""
+	machine.Labels[clusterv1.MachineControlPlaneNameLabel] = fixture.controlPlane.KCP.Name
+	machine.OwnerReferences = []metav1.OwnerReference{*metav1.NewControllerRef(
+		fixture.controlPlane.KCP,
+		controlplanev1.GroupVersion.WithKind("KThreesControlPlane"),
+	)}
+	machine.Spec.Version = "v1.31.0+k3s1"
+	Expect(k8sClient.Update(ctx, machine)).To(Succeed())
+	fixture.machine = machine
+
+	trackingClient := &relatedObjectSyncTrackingClient{Client: k8sClient}
+	reconciler := &KThreesControlPlaneReconciler{
+		Client:                    trackingClient,
+		apiReader:                 k8sClient,
+		managementClusterUncached: &k3s.Management{Client: k8sClient},
+		ssaCache:                  ssa.NewCache(),
+	}
+	return fixture, reconciler, trackingClient, func() {
+		secrets := &corev1.SecretList{}
+		Expect(k8sClient.List(ctx, secrets, client.InNamespace(fixture.controlPlane.Cluster.Namespace))).To(Succeed())
+		for i := range secrets.Items {
+			if strings.HasPrefix(secrets.Items[i].Name, fixture.controlPlane.Cluster.Name+"-") {
+				Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, &secrets.Items[i]))).To(Succeed())
+			}
+		}
+		fixture.cleanup(ctx)
+		Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, template))).To(Succeed())
+	}
+}
 
 type relatedObjectSetupFailureClient struct {
 	client.Client
@@ -500,6 +661,7 @@ func ensureRelatedObjectContractLabels() {
 	for _, name := range []string{
 		"ownershiptestmachines." + relatedObjectTestGroup,
 		"ownershiptestmachinetemplates." + relatedObjectTestGroup,
+		"testmachines." + relatedObjectTestGroup,
 	} {
 		crd := &apiextensionsv1.CustomResourceDefinition{}
 		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: name}, crd)).To(Succeed())

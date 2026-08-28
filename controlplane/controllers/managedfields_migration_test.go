@@ -60,6 +60,8 @@ var _ = Describe("related object managedFields migration", func() {
 		ctx := context.Background()
 		fixture := createManagedFieldsSyncFixture(ctx, "apply", true)
 		defer fixture.cleanup(ctx)
+		trackingClient := &relatedObjectSyncTrackingClient{Client: k8sClient}
+		fixture.reconciler.Client = trackingClient
 
 		for _, object := range []client.Object{fixture.infraMachine, fixture.kthreesConfig} {
 			oldMainEntry := findManagedField(object, kcpManagerName, metav1.ManagedFieldsOperationApply, "")
@@ -67,28 +69,31 @@ var _ = Describe("related object managedFields migration", func() {
 			Expect(managedFieldOwns(oldMainEntry, "f:metadata", "f:labels", "f:"+clusterv1.ClusterNameLabel)).To(BeTrue())
 		}
 
-		Expect(fixture.reconciler.syncMachines(ctx, fixture.controlPlane)).To(Succeed())
+		migrationCompleted, err := fixture.reconciler.syncMachines(ctx, fixture.controlPlane)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(migrationCompleted).To(BeTrue())
+		Expect(trackingClient.applyPatchCount).To(BeZero())
+		Expect(trackingClient.machineCreateCount).To(BeZero())
 
 		infraMachine := getInfraMachine(ctx, fixture.infraMachine)
 		kthreesConfig := getKThreesConfig(ctx, fixture.kthreesConfig)
-		assertMigratedRelatedObject(infraMachine)
-		assertMigratedRelatedObject(kthreesConfig)
+		assertTransferredOwnership(infraMachine, []string{"f:value"}, []string{"f:removable", "f:nested"})
+		assertTransferredOwnership(kthreesConfig, []string{"f:version"}, []string{"f:serverConfig", "f:bindAddress"})
 
 		fixture.controlPlane.InfraResources[fixture.machine.Name] = infraMachine
 		fixture.controlPlane.KthreesConfigs[fixture.machine.Name] = kthreesConfig
-		infraResourceVersion := infraMachine.GetResourceVersion()
-		configResourceVersion := kthreesConfig.GetResourceVersion()
-		infraManagedFields := infraMachine.GetManagedFields()
-		configManagedFields := kthreesConfig.GetManagedFields()
+		trackingClient.reset()
 
-		Expect(fixture.reconciler.syncMachines(ctx, fixture.controlPlane)).To(Succeed())
+		migrationCompleted, err = fixture.reconciler.syncMachines(ctx, fixture.controlPlane)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(migrationCompleted).To(BeFalse())
+		Expect(trackingClient.applyPatchCount).To(BeNumerically(">", 0))
+		Expect(trackingClient.machineCreateCount).To(BeZero())
 
 		infraMachine = getInfraMachine(ctx, fixture.infraMachine)
 		kthreesConfig = getKThreesConfig(ctx, fixture.kthreesConfig)
-		Expect(infraMachine.GetResourceVersion()).To(Equal(infraResourceVersion))
-		Expect(kthreesConfig.GetResourceVersion()).To(Equal(configResourceVersion))
-		Expect(infraMachine.GetManagedFields()).To(Equal(infraManagedFields))
-		Expect(kthreesConfig.GetManagedFields()).To(Equal(configManagedFields))
+		assertMigratedRelatedObject(infraMachine)
+		assertMigratedRelatedObject(kthreesConfig)
 	})
 
 	It("transfers removable spec and metadata ownership and remains idempotent", func() {
@@ -179,14 +184,55 @@ var _ = Describe("related object managedFields migration", func() {
 		fixture := createManagedFieldsSyncFixture(ctx, "classic", false)
 		defer fixture.cleanup(ctx)
 
-		Expect(fixture.reconciler.syncMachines(ctx, fixture.controlPlane)).To(Succeed())
+		migrationCompleted, err := fixture.reconciler.syncMachines(ctx, fixture.controlPlane)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(migrationCompleted).To(BeTrue())
 
 		infraMachine := getInfraMachine(ctx, fixture.infraMachine)
 		kthreesConfig := getKThreesConfig(ctx, fixture.kthreesConfig)
+		fixture.controlPlane.InfraResources[fixture.machine.Name] = infraMachine
+		fixture.controlPlane.KthreesConfigs[fixture.machine.Name] = kthreesConfig
+
+		migrationCompleted, err = fixture.reconciler.syncMachines(ctx, fixture.controlPlane)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(migrationCompleted).To(BeFalse())
+
+		infraMachine = getInfraMachine(ctx, fixture.infraMachine)
+		kthreesConfig = getKThreesConfig(ctx, fixture.kthreesConfig)
 		assertClassicRelatedObjectMigrated(infraMachine)
 		assertClassicRelatedObjectMigrated(kthreesConfig)
 	})
 })
+
+type relatedObjectSyncTrackingClient struct {
+	client.Client
+	applyPatchCount    int
+	machinePatchCount  int
+	machineCreateCount int
+}
+
+func (c *relatedObjectSyncTrackingClient) Patch(ctx context.Context, object client.Object, patch client.Patch, opts ...client.PatchOption) error {
+	if patch.Type() == types.ApplyPatchType {
+		c.applyPatchCount++
+	}
+	if _, ok := object.(*clusterv1.Machine); ok {
+		c.machinePatchCount++
+	}
+	return c.Client.Patch(ctx, object, patch, opts...)
+}
+
+func (c *relatedObjectSyncTrackingClient) Create(ctx context.Context, object client.Object, opts ...client.CreateOption) error {
+	if _, ok := object.(*clusterv1.Machine); ok {
+		c.machineCreateCount++
+	}
+	return c.Client.Create(ctx, object, opts...)
+}
+
+func (c *relatedObjectSyncTrackingClient) reset() {
+	c.applyPatchCount = 0
+	c.machinePatchCount = 0
+	c.machineCreateCount = 0
+}
 
 type managedFieldsSyncFixture struct {
 	reconciler    *KThreesControlPlaneReconciler

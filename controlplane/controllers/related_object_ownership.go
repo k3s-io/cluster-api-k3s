@@ -18,15 +18,21 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/pkg/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/klog/v2"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
+	pkgcontract "github.com/k3s-io/cluster-api-k3s/pkg/contract"
+	"github.com/k3s-io/cluster-api-k3s/pkg/k3s"
 	"github.com/k3s-io/cluster-api-k3s/pkg/util/ssa"
 )
+
+const relatedObjectOwnershipReplacementMessage = "Related-object ownership requires Machine replacement"
 
 func (r *KThreesControlPlaneReconciler) createRelatedObject(
 	ctx context.Context,
@@ -51,4 +57,81 @@ func (r *KThreesControlPlaneReconciler) createRelatedObject(
 		return errors.Wrapf(err, "failed to establish metadata ownership for %s", gvk.Kind)
 	}
 	return nil
+}
+
+func (r *KThreesControlPlaneReconciler) reconcileRelatedObjectManagedFields(
+	ctx context.Context,
+	controlPlane *k3s.ControlPlane,
+) (migrationCompleted bool, err error) {
+	for machineName, machine := range controlPlane.Machines {
+		if !machine.DeletionTimestamp.IsZero() {
+			continue
+		}
+
+		if infraMachine, ok := controlPlane.InfraResources[machineName]; ok {
+			result, err := ssa.MigrateManagedFields(
+				ctx,
+				r.Client,
+				r.apiReader,
+				infraMachine,
+				kcpManagerName,
+				kcpMetadataManagerName,
+			)
+			if err != nil {
+				return false, errors.Wrapf(err, "failed to migrate managedFields of InfrastructureMachine %s", klog.KObj(infraMachine))
+			}
+			switch result.Outcome {
+			case ssa.ManagedFieldsMigrationCompleted:
+				migrationCompleted = true
+			case ssa.ManagedFieldsMigrationInPlaceUpdateUnsupported:
+				controlPlane.MarkInPlaceUpdateUnsupported(
+					machineName,
+					result.Reason,
+					relatedObjectOwnershipReplacementMessage,
+				)
+			}
+		}
+
+		kthreesConfig, ok := controlPlane.KthreesConfigs[machineName]
+		if !ok {
+			continue
+		}
+
+		version, err := pkgcontract.GetAPIVersion(ctx, r.Client, schema.GroupKind{
+			Group: machine.Spec.Bootstrap.ConfigRef.APIGroup,
+			Kind:  machine.Spec.Bootstrap.ConfigRef.Kind,
+		})
+		if err != nil {
+			return false, fmt.Errorf("failed to get api version for bootstrap config: %w", err)
+		}
+		groupVersion, err := schema.ParseGroupVersion(version)
+		if err != nil {
+			return false, fmt.Errorf("failed to parse api version for bootstrap config: %w", err)
+		}
+		kthreesConfig.SetGroupVersionKind(groupVersion.WithKind(machine.Spec.Bootstrap.ConfigRef.Kind))
+
+		result, err := ssa.MigrateManagedFields(
+			ctx,
+			r.Client,
+			r.apiReader,
+			kthreesConfig,
+			kcpManagerName,
+			kcpMetadataManagerName,
+		)
+		if err != nil {
+			return false, errors.Wrapf(err, "failed to migrate managedFields of KThreesConfigs %s", klog.KObj(kthreesConfig))
+		}
+		switch result.Outcome {
+		case ssa.ManagedFieldsMigrationCompleted:
+			migrationCompleted = true
+		case ssa.ManagedFieldsMigrationInPlaceUpdateUnsupported:
+			controlPlane.MarkInPlaceUpdateUnsupported(
+				machineName,
+				result.Reason,
+				relatedObjectOwnershipReplacementMessage,
+			)
+		}
+	}
+
+	return migrationCompleted, nil
 }

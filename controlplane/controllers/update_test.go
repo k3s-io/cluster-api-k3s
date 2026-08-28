@@ -141,7 +141,7 @@ func TestRollingUpdate(t *testing.T) {
 			wantScaleDowns: 1,
 		},
 		{
-			name:     "one replica ineligible diff fails closed",
+			name:     "one replica ownership replacement with zero surge fails closed",
 			current:  1,
 			desired:  1,
 			maxSurge: 0,
@@ -149,8 +149,39 @@ func TestRollingUpdate(t *testing.T) {
 			enabled:  true,
 			mutateResult: func(result *k3s.UpToDateResult) {
 				result.EligibleForInPlaceUpdate = false
+				result.LogMessages = append(result.LogMessages, "related-object spec ownership spans multiple API versions")
+				result.ConditionMessages = append(result.ConditionMessages, "Related-object ownership requires Machine replacement")
 			},
 			wantErrContains: "maxSurge=0 with fewer than three replicas cannot fall back to Machine replacement; enable or fix a working in-place update extension or set maxSurge to 1",
+		},
+		{
+			name:     "three replica ownership replacement with zero surge scales down",
+			current:  3,
+			desired:  3,
+			maxSurge: 0,
+			outdated: []int{0},
+			enabled:  true,
+			mutateResult: func(result *k3s.UpToDateResult) {
+				result.EligibleForInPlaceUpdate = false
+				result.LogMessages = append(result.LogMessages, "related-object spec ownership spans multiple API versions")
+				result.ConditionMessages = append(result.ConditionMessages, "Related-object ownership requires Machine replacement")
+			},
+			wantAction:     "scale-down",
+			wantScaleDowns: 1,
+		},
+		{
+			name:     "one replica ownership replacement with surge scales up",
+			current:  1,
+			desired:  1,
+			maxSurge: 1,
+			outdated: []int{0},
+			enabled:  true,
+			mutateResult: func(result *k3s.UpToDateResult) {
+				result.EligibleForInPlaceUpdate = false
+				result.LogMessages = append(result.LogMessages, "related-object spec ownership spans multiple API versions")
+				result.ConditionMessages = append(result.ConditionMessages, "Related-object ownership requires Machine replacement")
+			},
+			wantAction: "scale-up",
 		},
 		{
 			name:            "one replica coverage false fallback fails closed",
@@ -357,9 +388,11 @@ func TestSyncMachinesRefreshesRolloutMachineBeforeInPlaceSelection(t *testing.T)
 		},
 	}
 
-	g.Expect(r.syncMachines(context.Background(), controlPlane)).To(Succeed())
+	migrationCompleted, err := r.syncMachines(context.Background(), controlPlane)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(migrationCompleted).To(BeFalse())
 	machinesNeedingRollout, results := controlPlane.MachinesNeedingRolloutWithResults()
-	_, err := r.updateControlPlane(context.Background(), cluster, kcp, controlPlane, machinesNeedingRollout, results)
+	_, err = r.updateControlPlane(context.Background(), cluster, kcp, controlPlane, machinesNeedingRollout, results)
 	g.Expect(err).NotTo(HaveOccurred())
 
 	g.Expect(selectedMachine).NotTo(BeNil())
@@ -370,6 +403,48 @@ func TestSyncMachinesRefreshesRolloutMachineBeforeInPlaceSelection(t *testing.T)
 	g.Expect(selectedMachine.Annotations).To(HaveKeyWithValue("updated", "annotation"))
 	g.Expect(selectedMachine.Spec.Deletion.NodeDrainTimeoutSeconds).NotTo(BeNil())
 	g.Expect(*selectedMachine.Spec.Deletion.NodeDrainTimeoutSeconds).To(Equal(int32(60)))
+}
+
+func TestSyncMachinesMarksUnsupportedOwnershipAndContinuesNormalSync(t *testing.T) {
+	g := NewWithT(t)
+	controlPlane, _, _, _, _, c := newRolloutControlPlane(t, 1, 1, 0, []int{0}, false)
+	controlPlane.KthreesConfigs = map[string]*bootstrapv1.KThreesConfig{}
+	infraMachine := controlPlane.InfraResources["machine-0"]
+	infraMachine.SetManagedFields([]metav1.ManagedFieldsEntry{
+		{
+			Manager:    "manager",
+			Operation:  metav1.ManagedFieldsOperationUpdate,
+			APIVersion: "infrastructure.cluster.x-k8s.io/v1beta1",
+			FieldsType: "FieldsV1",
+			FieldsV1:   &metav1.FieldsV1{Raw: []byte(`{"f:spec":{"f:size":{}}}`)},
+		},
+		{
+			Manager:    "manager",
+			Operation:  metav1.ManagedFieldsOperationUpdate,
+			APIVersion: "infrastructure.cluster.x-k8s.io/v1beta2",
+			FieldsType: "FieldsV1",
+			FieldsV1:   &metav1.FieldsV1{Raw: []byte(`{"f:spec":{"f:storage":{"f:size":{}}}}`)},
+		},
+	})
+
+	trackingClient := &relatedObjectSyncTrackingClient{Client: c}
+	r := &KThreesControlPlaneReconciler{
+		Client:    trackingClient,
+		apiReader: trackingClient,
+		ssaCache:  ssa.NewCache(),
+	}
+
+	migrationCompleted, err := r.syncMachines(context.Background(), controlPlane)
+
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(migrationCompleted).To(BeFalse())
+	g.Expect(trackingClient.applyPatchCount).To(BeNumerically(">", 0))
+	_, results := controlPlane.MachinesNeedingRolloutWithResults()
+	result := results["machine-0"]
+	g.Expect(result.EligibleForInPlaceUpdate).To(BeFalse())
+	g.Expect(result.LogMessages).To(ContainElement("related-object spec ownership spans multiple API versions"))
+	g.Expect(result.ConditionMessages).To(ContainElement("Related-object ownership requires Machine replacement"))
+	g.Expect(controlPlane.MachinesNeedingRollout().Names()).To(ConsistOf("machine-0"))
 }
 
 func newRolloutControlPlane(

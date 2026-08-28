@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -338,6 +339,23 @@ func (c *ControlPlane) ReplaceMachine(machine *clusterv1.Machine) {
 	if _, ok := c.machinesNotUpToDate[machine.Name]; ok {
 		c.machinesNotUpToDate[machine.Name] = machine
 	}
+}
+
+// MarkInPlaceUpdateUnsupported disables in-place update for one cached Machine result.
+func (c *ControlPlane) MarkInPlaceUpdateUnsupported(machineName, logMessage, conditionMessage string) {
+	result, ok := c.machinesUpToDateResults[machineName]
+	if !ok {
+		return
+	}
+
+	result.EligibleForInPlaceUpdate = false
+	if !slices.Contains(result.LogMessages, logMessage) {
+		result.LogMessages = append(result.LogMessages, logMessage)
+	}
+	if !slices.Contains(result.ConditionMessages, conditionMessage) {
+		result.ConditionMessages = append(result.ConditionMessages, conditionMessage)
+	}
+	c.machinesUpToDateResults[machineName] = result
 }
 
 // MachinesNeedingRollout returns Machines that need rollout.

@@ -29,7 +29,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
@@ -58,12 +57,10 @@ import (
 
 	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
 	"github.com/k3s-io/cluster-api-k3s/pkg/capi/inplace"
-	pkgcontract "github.com/k3s-io/cluster-api-k3s/pkg/contract"
 	k3s "github.com/k3s-io/cluster-api-k3s/pkg/k3s"
 	"github.com/k3s-io/cluster-api-k3s/pkg/kubeconfig"
 	"github.com/k3s-io/cluster-api-k3s/pkg/secret"
 	"github.com/k3s-io/cluster-api-k3s/pkg/token"
-	"github.com/k3s-io/cluster-api-k3s/pkg/util/contract"
 	"github.com/k3s-io/cluster-api-k3s/pkg/util/ssa"
 )
 
@@ -560,8 +557,12 @@ func (r *KThreesControlPlaneReconciler) reconcile(ctx context.Context, cluster *
 		return reconcile.Result{}, err
 	}
 
-	if err := r.syncMachines(ctx, controlPlane); err != nil {
+	migrationCompleted, err := r.syncMachines(ctx, controlPlane)
+	if err != nil {
 		return ctrl.Result{}, errors.Wrap(err, "failed to sync Machines")
+	}
+	if migrationCompleted {
+		return ctrl.Result{Requeue: true}, nil
 	}
 
 	// Aggregate the operational state of all the machines; while aggregating we are adding the
@@ -756,10 +757,16 @@ func (r *KThreesControlPlaneReconciler) reconcileKubeconfig(ctx context.Context,
 // syncMachines updates Machines, InfrastructureMachines and KThreesConfigs to propagate in-place mutable fields from KCP.
 // Note: It also cleans up managed fields of all Machines so that Machines that were
 // created/patched before (<= v0.2.0) the controller adopted Server-Side-Apply (SSA) can also work with SSA.
-// Note: For InfrastructureMachines and KThreesConfigs it also migrates ownership of "metadata.labels" and
-// "metadata.annotations" from the main manager to the metadata-only manager. It retains the older cleanup
-// for objects created before SSA adoption so both upgrade paths can drop labels and annotations.
-func (r *KThreesControlPlaneReconciler) syncMachines(ctx context.Context, controlPlane *k3s.ControlPlane) error {
+// Related-object managed fields migration runs first and causes an immediate requeue before ordinary synchronization.
+func (r *KThreesControlPlaneReconciler) syncMachines(
+	ctx context.Context,
+	controlPlane *k3s.ControlPlane,
+) (migrationCompleted bool, err error) {
+	migrationCompleted, err = r.reconcileRelatedObjectManagedFields(ctx, controlPlane)
+	if err != nil || migrationCompleted {
+		return migrationCompleted, err
+	}
+
 	patchHelpers := map[string]*patch.Helper{}
 	for machineName := range controlPlane.Machines {
 		m := controlPlane.Machines[machineName]
@@ -773,12 +780,12 @@ func (r *KThreesControlPlaneReconciler) syncMachines(ctx context.Context, contro
 		// (<= v0.2.0) can also work with SSA. Otherwise, fields would be co-owned by our "old" "manager" and
 		// "capi-kthreescontrolplane" and then we would not be able to e.g. drop labels and annotations.
 		if err := ssa.CleanUpManagedFieldsForSSAAdoption(ctx, r.Client, m, kcpManagerName); err != nil {
-			return errors.Wrapf(err, "failed to update Machine: failed to adjust the managedFields of the Machine %s", klog.KObj(m))
+			return false, errors.Wrapf(err, "failed to update Machine: failed to adjust the managedFields of the Machine %s", klog.KObj(m))
 		}
 		// Update Machine to propagate in-place mutable fields from KCP.
 		updatedMachine, err := r.updateMachine(ctx, m, controlPlane.KCP, controlPlane.Cluster)
 		if err != nil {
-			return errors.Wrapf(err, "failed to update Machine: %s", klog.KObj(m))
+			return false, errors.Wrapf(err, "failed to update Machine: %s", klog.KObj(m))
 		}
 		controlPlane.ReplaceMachine(updatedMachine)
 		// Since the machine is updated, re-create the patch helper so that any subsequent
@@ -791,36 +798,17 @@ func (r *KThreesControlPlaneReconciler) syncMachines(ctx context.Context, contro
 		// TODO: This should be cleaned-up to have a more streamline way of constructing and using patchHelpers.
 		patchHelper, err := patch.NewHelper(updatedMachine, r.Client)
 		if err != nil {
-			return err
+			return false, err
 		}
 		patchHelpers[machineName] = patchHelper
 
-		labelsAndAnnotationsManagedFieldPaths := []contract.Path{
-			{"f:metadata", "f:annotations"},
-			{"f:metadata", "f:labels"},
-		}
 		infraMachine, infraMachineFound := controlPlane.InfraResources[machineName]
 		// Only update the InfraMachine if it is already found, otherwise just skip it.
 		// This could happen e.g. if the cache is not up-to-date yet.
 		if infraMachineFound {
-			// Migrate related objects created through v0.4.0 to the current spec and metadata ownership.
-			if _, err := ssa.MigrateManagedFields(
-				ctx,
-				r.Client,
-				r.apiReader,
-				infraMachine,
-				kcpManagerName,
-				kcpMetadataManagerName,
-			); err != nil {
-				return errors.Wrapf(err, "failed to migrate managedFields of InfrastructureMachine %s", klog.KObj(infraMachine))
-			}
-			// Preserve cleanup for objects created before Cluster API K3s adopted SSA (<= v0.2.0).
-			if err := ssa.DropManagedFields(ctx, r.Client, infraMachine, kcpMetadataManagerName, labelsAndAnnotationsManagedFieldPaths); err != nil {
-				return errors.Wrapf(err, "failed to clean up managedFields of InfrastructureMachine %s", klog.KObj(infraMachine))
-			}
 			// Update in-place mutating fields on InfrastructureMachine.
 			if err := r.updateExternalObject(ctx, infraMachine, infraMachine.GroupVersionKind(), controlPlane.KCP, controlPlane.Cluster); err != nil {
-				return errors.Wrapf(err, "failed to update InfrastructureMachine %s", klog.KObj(infraMachine))
+				return false, errors.Wrapf(err, "failed to update InfrastructureMachine %s", klog.KObj(infraMachine))
 			}
 		}
 
@@ -828,43 +816,15 @@ func (r *KThreesControlPlaneReconciler) syncMachines(ctx context.Context, contro
 		// Only update the kthreesConfigs if it is already found, otherwise just skip it.
 		// This could happen e.g. if the cache is not up-to-date yet.
 		if kthreesConfigsFound {
-			version, err := pkgcontract.GetAPIVersion(ctx, r.Client, schema.GroupKind{Group: m.Spec.Bootstrap.ConfigRef.APIGroup, Kind: m.Spec.Bootstrap.ConfigRef.Kind})
-			if err != nil {
-				return fmt.Errorf("failed to get api version for bootstrap config: %w", err)
-			}
-
-			// version string returned by the discovery API is a full group/version string (e.g. "bootstrap.cluster.x-k8s.io/v1beta2"),
-			// but we need to split it into group and version to construct the GVK of the KThreesConfig object.
-			groupVersion, err := schema.ParseGroupVersion(version)
-			if err != nil {
-				return fmt.Errorf("failed to parse api version for bootstrap config: %w", err)
-			}
-			gvk := groupVersion.WithKind(m.Spec.Bootstrap.ConfigRef.Kind)
-			kthreesConfigs.SetGroupVersionKind(gvk)
-			// Migrate related objects created through v0.4.0 to the current spec and metadata ownership.
-			if _, err := ssa.MigrateManagedFields(
-				ctx,
-				r.Client,
-				r.apiReader,
-				kthreesConfigs,
-				kcpManagerName,
-				kcpMetadataManagerName,
-			); err != nil {
-				return errors.Wrapf(err, "failed to migrate managedFields of KThreesConfigs %s", klog.KObj(kthreesConfigs))
-			}
-			// Preserve cleanup for objects created before Cluster API K3s adopted SSA (<= v0.2.0).
-			if err := ssa.DropManagedFields(ctx, r.Client, kthreesConfigs, kcpMetadataManagerName, labelsAndAnnotationsManagedFieldPaths); err != nil {
-				return errors.Wrapf(err, "failed to clean up managedFields of kthreesConfigs %s", klog.KObj(kthreesConfigs))
-			}
 			// Update in-place mutating fields on BootstrapConfig.
 			if err := r.updateExternalObject(ctx, kthreesConfigs, kthreesConfigs.GroupVersionKind(), controlPlane.KCP, controlPlane.Cluster); err != nil {
-				return errors.Wrapf(err, "failed to update KThreesConfigs %s", klog.KObj(kthreesConfigs))
+				return false, errors.Wrapf(err, "failed to update KThreesConfigs %s", klog.KObj(kthreesConfigs))
 			}
 		}
 	}
 	// Update the patch helpers.
 	controlPlane.SetPatchHelpers(patchHelpers)
-	return nil
+	return false, nil
 }
 
 // reconcileControlPlaneConditions is responsible of reconciling conditions reporting the status of static pods and

@@ -94,6 +94,45 @@ func TestMachinesNeedingRolloutCompatibilityAndDetailedResults(t *testing.T) {
 	g.Expect(controlPlane.UpToDateMachines().Names()).To(ConsistOf(upToDate.Name))
 }
 
+func TestMarkInPlaceUpdateUnsupportedMutatesOnlyNamedCachedResult(t *testing.T) {
+	g := NewWithT(t)
+	machine1 := &clusterv1.Machine{ObjectMeta: metav1.ObjectMeta{Name: "machine-1"}}
+	machine2 := &clusterv1.Machine{ObjectMeta: metav1.ObjectMeta{Name: "machine-2"}}
+	controlPlane := &ControlPlane{
+		Machines:            collections.FromMachines(machine1, machine2),
+		machinesNotUpToDate: collections.FromMachines(machine1, machine2),
+		machinesUpToDateResults: map[string]UpToDateResult{
+			machine1.Name: {
+				LogMessages:              []string{"machine-1 existing log"},
+				ConditionMessages:        []string{"machine-1 existing condition"},
+				EligibleForInPlaceUpdate: true,
+			},
+			machine2.Name: {
+				LogMessages:              []string{"machine-2 existing log"},
+				ConditionMessages:        []string{"machine-2 existing condition"},
+				EligibleForInPlaceUpdate: true,
+			},
+		},
+	}
+
+	const (
+		logMessage       = "related-object spec ownership spans multiple API versions"
+		conditionMessage = "Related-object ownership requires Machine replacement"
+	)
+	controlPlane.MarkInPlaceUpdateUnsupported(machine1.Name, logMessage, conditionMessage)
+	controlPlane.MarkInPlaceUpdateUnsupported(machine1.Name, logMessage, conditionMessage)
+	controlPlane.MarkInPlaceUpdateUnsupported("unknown-machine", logMessage, conditionMessage)
+
+	_, results := controlPlane.MachinesNeedingRolloutWithResults()
+	g.Expect(results[machine1.Name].EligibleForInPlaceUpdate).To(BeFalse())
+	g.Expect(results[machine1.Name].LogMessages).To(Equal([]string{"machine-1 existing log", logMessage}))
+	g.Expect(results[machine1.Name].ConditionMessages).To(Equal([]string{"machine-1 existing condition", conditionMessage}))
+	g.Expect(results[machine2.Name].EligibleForInPlaceUpdate).To(BeTrue())
+	g.Expect(results[machine2.Name].LogMessages).To(Equal([]string{"machine-2 existing log"}))
+	g.Expect(results[machine2.Name].ConditionMessages).To(Equal([]string{"machine-2 existing condition"}))
+	g.Expect(controlPlane.MachinesNeedingRollout().Names()).To(ConsistOf(machine1.Name, machine2.Name))
+}
+
 func TestReplaceMachineUpdatesCachedCollectionsWithoutChangingMembership(t *testing.T) {
 	g := NewWithT(t)
 	outdated := &clusterv1.Machine{ObjectMeta: metav1.ObjectMeta{Name: "outdated", ResourceVersion: "1"}}
