@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/apiserver/pkg/storage/names"
 	"k8s.io/utils/ptr"
 	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
@@ -248,6 +249,69 @@ func (c *ControlPlane) JoinControlPlaneConfig() *bootstrapv1.KThreesConfigSpec {
 	return bootstrapSpec
 }
 
+// GenerateKThreesConfig generates a new KThreesConfig config for creating new control plane nodes.
+//
+// Deprecated: use desiredstate.ComputeDesiredKThreesConfig for controller-managed desired state.
+func (c *ControlPlane) GenerateKThreesConfig(spec *bootstrapv1.KThreesConfigSpec) *bootstrapv1.KThreesConfig {
+	// Create an owner reference without a controller reference because the owning controller is the machine controller
+	owner := metav1.OwnerReference{
+		APIVersion: controlplanev1.GroupVersion.String(),
+		Kind:       "KThreesControlPlane",
+		Name:       c.KCP.Name,
+		UID:        c.KCP.UID,
+	}
+
+	bootstrapConfig := &bootstrapv1.KThreesConfig{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            names.SimpleNameGenerator.GenerateName(c.KCP.Name + "-"),
+			Namespace:       c.KCP.Namespace,
+			Labels:          ControlPlaneLabelsForCluster(c.Cluster.Name, c.KCP.Spec.MachineTemplate),
+			OwnerReferences: []metav1.OwnerReference{owner},
+		},
+		Spec: *spec,
+	}
+	return bootstrapConfig
+}
+
+// ControlPlaneLabelsForCluster returns a set of labels to add to a control plane machine for this specific cluster.
+//
+// Deprecated: use desiredstate.ControlPlaneMachineLabels when a KThreesControlPlane is available.
+func ControlPlaneLabelsForCluster(clusterName string, machineTemplate controlplanev1.KThreesControlPlaneMachineTemplate) map[string]string {
+	labels := make(map[string]string)
+	for key, value := range machineTemplate.ObjectMeta.Labels {
+		labels[key] = value
+	}
+	labels[clusterv1beta1.ClusterNameLabel] = clusterName
+	labels[clusterv1beta1.MachineControlPlaneNameLabel] = ""
+	labels[clusterv1beta1.MachineControlPlaneLabel] = ""
+	return labels
+}
+
+// NewMachine returns a machine configured to be a part of the control plane.
+//
+// Deprecated: use desiredstate.ComputeDesiredMachine for controller-managed desired state.
+func (c *ControlPlane) NewMachine(infraRef, bootstrapRef *corev1.ObjectReference, failureDomain *string) *clusterv1beta1.Machine {
+	return &clusterv1beta1.Machine{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      names.SimpleNameGenerator.GenerateName(c.KCP.Name + "-"),
+			Namespace: c.KCP.Namespace,
+			Labels:    ControlPlaneLabelsForCluster(c.Cluster.Name, c.KCP.Spec.MachineTemplate),
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(c.KCP, controlplanev1.GroupVersion.WithKind("KThreesControlPlane")),
+			},
+		},
+		Spec: clusterv1beta1.MachineSpec{
+			ClusterName:       c.Cluster.Name,
+			Version:           c.Version(),
+			InfrastructureRef: *infraRef,
+			Bootstrap: clusterv1beta1.Bootstrap{
+				ConfigRef: bootstrapRef,
+			},
+			FailureDomain: failureDomain,
+		},
+	}
+}
+
 // NeedsReplacementNode determines if the control plane needs to create a replacement node during upgrade.
 func (c *ControlPlane) NeedsReplacementNode() bool {
 	// Can't do anything with an unknown number of desired replicas.
@@ -276,8 +340,14 @@ func (c *ControlPlane) ReplaceMachine(machine *clusterv1.Machine) {
 	}
 }
 
-// MachinesNeedingRollout returns Machines that need rollout and their cached desired-state results.
-func (c *ControlPlane) MachinesNeedingRollout() (collections.Machines, map[string]UpToDateResult) {
+// MachinesNeedingRollout returns Machines that need rollout.
+func (c *ControlPlane) MachinesNeedingRollout() collections.Machines {
+	machines, _ := c.MachinesNeedingRolloutWithResults()
+	return machines
+}
+
+// MachinesNeedingRolloutWithResults returns Machines that need rollout and their cached desired-state results.
+func (c *ControlPlane) MachinesNeedingRolloutWithResults() (collections.Machines, map[string]UpToDateResult) {
 	return c.machinesNotUpToDate.Filter(collections.Not(collections.HasDeletionTimestamp)), c.machinesUpToDateResults
 }
 

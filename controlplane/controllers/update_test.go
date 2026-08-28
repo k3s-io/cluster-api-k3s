@@ -354,7 +354,7 @@ func TestSyncMachinesRefreshesRolloutMachineBeforeInPlaceSelection(t *testing.T)
 	}
 
 	g.Expect(r.syncMachines(context.Background(), controlPlane)).To(Succeed())
-	machinesNeedingRollout, results := controlPlane.MachinesNeedingRollout()
+	machinesNeedingRollout, results := controlPlane.MachinesNeedingRolloutWithResults()
 	_, err := r.updateControlPlane(context.Background(), cluster, kcp, controlPlane, machinesNeedingRollout, results)
 	g.Expect(err).NotTo(HaveOccurred())
 
@@ -473,7 +473,7 @@ func newRolloutControlPlane(
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
 	controlPlane, err := k3s.NewControlPlane(context.Background(), c, cluster, kcp, machines)
 	g.Expect(err).NotTo(HaveOccurred())
-	machinesNeedingRollout, results := controlPlane.MachinesNeedingRollout()
+	machinesNeedingRollout, results := controlPlane.MachinesNeedingRolloutWithResults()
 	return controlPlane, cluster, kcp, machinesNeedingRollout, results, c
 }
 

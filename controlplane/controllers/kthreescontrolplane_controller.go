@@ -612,7 +612,7 @@ func (r *KThreesControlPlaneReconciler) reconcileControlPlaneOperations(
 	}
 
 	// Control plane machines rollout due to configuration changes (e.g. upgrades) takes precedence over other operations.
-	needRollout, upToDateResults := controlPlane.MachinesNeedingRollout()
+	needRollout, upToDateResults := controlPlane.MachinesNeedingRolloutWithResults()
 	switch {
 	case len(needRollout) > 0:
 		machineNames, reasons := rolloutLogDetails(needRollout, upToDateResults)

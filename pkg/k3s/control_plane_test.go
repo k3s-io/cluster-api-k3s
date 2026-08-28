@@ -75,7 +75,7 @@ func TestInPlaceProgressSelectors(t *testing.T) {
 	}
 }
 
-func TestMachinesNeedingRolloutReturnsCachedResults(t *testing.T) {
+func TestMachinesNeedingRolloutCompatibilityAndDetailedResults(t *testing.T) {
 	g := NewWithT(t)
 	outdated := &clusterv1.Machine{ObjectMeta: metav1.ObjectMeta{Name: "outdated"}}
 	upToDate := &clusterv1.Machine{ObjectMeta: metav1.ObjectMeta{Name: "up-to-date"}}
@@ -86,8 +86,10 @@ func TestMachinesNeedingRolloutReturnsCachedResults(t *testing.T) {
 		machinesUpToDateResults: map[string]UpToDateResult{outdated.Name: result, upToDate.Name: {}},
 	}
 
-	machines, results := controlPlane.MachinesNeedingRollout()
+	machines := controlPlane.MachinesNeedingRollout()
+	machinesWithResults, results := controlPlane.MachinesNeedingRolloutWithResults()
 	g.Expect(machines.Names()).To(ConsistOf(outdated.Name))
+	g.Expect(machinesWithResults).To(Equal(machines))
 	g.Expect(results).To(HaveKeyWithValue(outdated.Name, result))
 	g.Expect(controlPlane.UpToDateMachines().Names()).To(ConsistOf(upToDate.Name))
 }
@@ -107,7 +109,7 @@ func TestReplaceMachineUpdatesCachedCollectionsWithoutChangingMembership(t *test
 	updatedOutdated.Labels = map[string]string{"updated": "true"}
 	controlPlane.ReplaceMachine(updatedOutdated)
 
-	machinesNeedingRollout, _ := controlPlane.MachinesNeedingRollout()
+	machinesNeedingRollout, _ := controlPlane.MachinesNeedingRolloutWithResults()
 	g.Expect(controlPlane.Machines[outdated.Name]).To(BeIdenticalTo(updatedOutdated))
 	g.Expect(machinesNeedingRollout[outdated.Name]).To(BeIdenticalTo(updatedOutdated))
 	g.Expect(controlPlane.Machines[otherOutdated.Name]).To(BeIdenticalTo(otherOutdated))
@@ -117,7 +119,7 @@ func TestReplaceMachineUpdatesCachedCollectionsWithoutChangingMembership(t *test
 	updatedUpToDate.ResourceVersion = "2"
 	controlPlane.ReplaceMachine(updatedUpToDate)
 
-	machinesNeedingRollout, _ = controlPlane.MachinesNeedingRollout()
+	machinesNeedingRollout, _ = controlPlane.MachinesNeedingRolloutWithResults()
 	g.Expect(controlPlane.Machines[upToDate.Name]).To(BeIdenticalTo(updatedUpToDate))
 	g.Expect(machinesNeedingRollout).NotTo(HaveKey(upToDate.Name))
 }
