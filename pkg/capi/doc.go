@@ -37,7 +37,9 @@ limitations under the License.
 // available.
 //
 // The patch helper deliberately diverges from Cluster API v1.12.9 and CAPRKE2
-// by redacting patch bodies and parser/application details from logs and
-// returned errors. It logs only the patch type and, for decoded JSON patches,
-// the operation count because Runtime Extension patches can contain secrets.
+// by using fixed diagnostics for patch parsing, application, conversion, and
+// panic recovery. Those logs and returned errors exclude patch and object
+// bodies and underlying error text because Runtime Extension patches can
+// contain secrets. Successful verbose logs include only the recognized patch
+// type and, for decoded JSON patches, the operation count.
 package capi

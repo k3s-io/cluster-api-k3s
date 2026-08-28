@@ -24,8 +24,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
-	"runtime/debug"
 	"strings"
 
 	jsonpatch "github.com/evanphx/json-patch/v5"
@@ -33,7 +31,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
-	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/klog/v2"
 	runtimehooksv1 "sigs.k8s.io/cluster-api/api/runtime/hooks/v1alpha1"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -48,7 +45,7 @@ func ApplyPatchToTypedObject[T any](ctx context.Context, currentMachine *T, mach
 	//       a runtime.RawExtension so we can avoid making the code in applyPatchToObject more complex.
 	currentMachineRaw, err := ConvertToRawExtension(currentMachine)
 	if err != nil {
-		return err
+		return errors.New("failed to apply patch: typed object conversion failed")
 	}
 
 	machineChanged, err := ApplyPatchToObject(ctx, &currentMachineRaw, machinePath, patchPath)
@@ -63,7 +60,7 @@ func ApplyPatchToTypedObject[T any](ctx context.Context, currentMachine *T, mach
 	// Note: json.Unmarshal can't be used directly on *currentMachine as json.Unmarshal does not unset fields.
 	patchedCurrentMachine := new(T)
 	if err := json.Unmarshal(currentMachineRaw.Raw, patchedCurrentMachine); err != nil {
-		return err
+		return errors.New("failed to apply patch: patched typed object is invalid")
 	}
 	*currentMachine = *patchedCurrentMachine
 	return nil
@@ -81,8 +78,9 @@ func ApplyPatchToObject(ctx context.Context, obj *runtime.RawExtension, patch ru
 
 	defer func() {
 		if r := recover(); r != nil {
-			log.Info(fmt.Sprintf("Observed a panic when applying patch: %v\n%s", r, string(debug.Stack())))
-			reterr = kerrors.NewAggregate([]error{reterr, fmt.Errorf("observed a panic when applying patch: %v", r)})
+			log.Error(errors.New("patch application panic"), "Patch application panicked")
+			objChanged = false
+			reterr = errors.New("failed to apply patch: internal error")
 		}
 	}()
 
@@ -95,9 +93,9 @@ func ApplyPatchToObject(ctx context.Context, obj *runtime.RawExtension, patch ru
 	case runtimehooksv1.JSONPatchType:
 		jsonPatch, err := jsonpatch.DecodePatch(patch.Patch)
 		if err != nil {
-			log.Error(errors.New("failed to decode JSON patch"), "Failed to apply patch: error decoding json patch (RFC6902)",
+			log.Error(errors.New("invalid JSON patch"), "Failed to apply patch",
 				"patchType", patch.PatchType)
-			return false, errors.New("failed to apply patch: error decoding json patch (RFC6902)")
+			return false, errors.New("failed to apply patch: invalid JSON patch")
 		}
 
 		log.V(5).Info("Applying patch", "patchType", patch.PatchType, "operationCount", len(jsonPatch))
@@ -108,9 +106,9 @@ func ApplyPatchToObject(ctx context.Context, obj *runtime.RawExtension, patch ru
 
 		patchedObject, err = jsonPatch.Apply(patchedObject)
 		if err != nil {
-			log.Error(errors.New("failed to apply JSON patch"), "Failed to apply patch: error applying json patch (RFC6902)",
+			log.Error(errors.New("JSON patch application failed"), "Failed to apply patch",
 				"patchType", patch.PatchType)
-			return false, errors.New("failed to apply patch: error applying json patch (RFC6902)")
+			return false, errors.New("failed to apply patch: JSON patch could not be applied")
 		}
 	case runtimehooksv1.JSONMergePatchType:
 		if len(patch.Patch) == 0 || bytes.Equal(patch.Patch, []byte("{}")) {
@@ -121,18 +119,18 @@ func ApplyPatchToObject(ctx context.Context, obj *runtime.RawExtension, patch ru
 		log.V(5).Info("Applying patch", "patchType", patch.PatchType)
 		patchedObject, err = jsonpatch.MergePatch(patchedObject, patch.Patch)
 		if err != nil {
-			log.Error(errors.New("failed to apply JSON merge patch"), "Failed to apply patch: error applying json merge patch (RFC7386)",
+			log.Error(errors.New("invalid JSON merge patch"), "Failed to apply patch",
 				"patchType", patch.PatchType)
-			return false, errors.New("failed to apply patch: error applying json merge patch (RFC7386)")
+			return false, errors.New("failed to apply patch: invalid JSON merge patch")
 		}
 	default:
-		return false, errors.Errorf("failed to apply patch: unknown patchType %s", patch.PatchType)
+		return false, errors.New("failed to apply patch: unsupported patch type")
 	}
 
 	// Overwrite the spec of obj with the spec of the patchedObject,
 	// to ensure that we only pick up changes to the spec.
 	if err := Patch(obj, patchedObject, patchPath); err != nil {
-		return false, errors.Wrap(err, "failed to apply patch to object")
+		return false, err
 	}
 
 	return true, nil
@@ -142,7 +140,7 @@ func ApplyPatchToObject(ctx context.Context, obj *runtime.RawExtension, patch ru
 func ConvertToRawExtension(object any) (runtime.RawExtension, error) {
 	objectBytes, err := json.Marshal(object)
 	if err != nil {
-		return runtime.RawExtension{}, errors.Wrap(err, "failed to marshal object to JSON")
+		return runtime.RawExtension{}, errors.New("failed to convert object to raw extension")
 	}
 
 	objectUnstructured, ok := object.(*unstructured.Unstructured)
@@ -150,7 +148,7 @@ func ConvertToRawExtension(object any) (runtime.RawExtension, error) {
 		objectUnstructured = &unstructured.Unstructured{}
 		// Note: This only succeeds if object has apiVersion & kind set (which is always the case).
 		if err := json.Unmarshal(objectBytes, objectUnstructured); err != nil {
-			return runtime.RawExtension{}, errors.Wrap(err, "failed to Unmarshal object into Unstructured")
+			return runtime.RawExtension{}, errors.New("failed to convert object to raw extension")
 		}
 	}
 
@@ -166,11 +164,11 @@ func ConvertToRawExtension(object any) (runtime.RawExtension, error) {
 func Patch(object *runtime.RawExtension, patchedObjectBytes []byte, patchPath string) error {
 	objectUnstructured, err := bytesToUnstructured(object.Raw)
 	if err != nil {
-		return errors.Wrap(err, "failed to convert object to Unstructured")
+		return errors.New("failed to apply patch: source object is invalid")
 	}
 	patchedObjectUnstructured, err := bytesToUnstructured(patchedObjectBytes)
 	if err != nil {
-		return errors.Wrap(err, "failed to convert patched object to Unstructured")
+		return errors.New("failed to apply patch: patched object is invalid")
 	}
 
 	// Copy spec from patchedObjectUnstructured to objectUnstructured.
@@ -180,13 +178,13 @@ func Patch(object *runtime.RawExtension, patchedObjectBytes []byte, patchPath st
 		SrcSpecPath:  patchPath,
 		DestSpecPath: patchPath,
 	}); err != nil {
-		return errors.Wrap(err, "failed to apply patch to object")
+		return errors.New("failed to apply patch: spec could not be copied")
 	}
 
 	// Marshal objectUnstructured and store it in object.
 	objectBytes, err := objectUnstructured.MarshalJSON()
 	if err != nil {
-		return errors.Wrapf(err, "failed to marshal patched object")
+		return errors.New("failed to apply patch: patched object could not be serialized")
 	}
 	object.Object = objectUnstructured
 	object.Raw = objectBytes
@@ -249,7 +247,7 @@ func bytesToUnstructured(b []byte) (*unstructured.Unstructured, error) {
 	// Unmarshal the JSON.
 	u := &unstructured.Unstructured{}
 	if _, _, err := unstructuredDecoder.Decode(b, nil, u); err != nil {
-		return nil, errors.Wrap(err, "failed to unmarshal object from json")
+		return nil, errors.New("failed to convert JSON object")
 	}
 
 	return u, nil

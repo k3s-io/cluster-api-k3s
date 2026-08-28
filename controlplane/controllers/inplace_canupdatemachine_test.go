@@ -367,6 +367,43 @@ func TestCanUpdateMachineNonCoverableInfraReasonIsSanitized(t *testing.T) {
 	g.Expect(strings.Join(reasons, ",")).NotTo(ContainSubstring(sentinel))
 }
 
+func TestCanUpdateMachineDoesNotExposeSensitivePostPatchConversionError(t *testing.T) {
+	const sentinel = "sentinel-can-update-patch-secret"
+	g := NewWithT(t)
+	utilfeature.SetFeatureGateDuringTest(t, feature.Gates, feature.InPlaceUpdates, true)
+	machine, result, c := canUpdateFixtures(t)
+	patchBody := []byte(`[
+		{"op":"add","path":"/spec/credentials","value":{"password":"` + sentinel + `"}},
+		{"op":"remove","path":"/kind"}
+	]`)
+	runtimeClient := &fakeRuntimeClient{
+		handlers: []string{"handler"},
+		response: runtimehooksv1.CanUpdateMachineResponse{
+			BootstrapConfigPatch: runtimehooksv1.Patch{
+				PatchType: runtimehooksv1.JSONPatchType,
+				Patch:     patchBody,
+			},
+		},
+	}
+	var logLines []string
+	logger := funcr.New(func(prefix, args string) {
+		logLines = append(logLines, prefix+args)
+	}, funcr.Options{Verbosity: 5})
+	ctx := ctrl.LoggerInto(context.Background(), logger)
+	r := &KThreesControlPlaneReconciler{
+		Client:        c,
+		RuntimeClient: runtimeClient,
+	}
+
+	canUpdate, err := r.canUpdateMachine(ctx, machine, result)
+
+	g.Expect(err).To(MatchError("failed to apply patches from extension handler to the CanUpdateMachine request: failed to apply patch: patched object is invalid"))
+	g.Expect(canUpdate).To(BeFalse())
+	output := strings.Join(logLines, "\n") + "\n" + err.Error()
+	g.Expect(output).NotTo(ContainSubstring(sentinel))
+	g.Expect(output).NotTo(ContainSubstring(string(patchBody)))
+}
+
 func TestMatchesMachineReportsOnlySanitizedUncoveredReasons(t *testing.T) {
 	const sentinel = "sentinel-capability-secret"
 	oldContent := "old-content-" + sentinel

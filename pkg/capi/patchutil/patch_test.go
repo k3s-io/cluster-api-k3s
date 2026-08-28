@@ -107,7 +107,7 @@ func TestApplyPatchToObjectDoesNotExposeSensitiveMalformedJSONPatch(t *testing.T
 		Patch:     patchBody,
 	}, "spec")
 
-	g.Expect(err).To(MatchError(ContainSubstring("failed to apply patch: error decoding json patch (RFC6902)")))
+	g.Expect(err).To(MatchError("failed to apply patch: invalid JSON patch"))
 	g.Expect(changed).To(BeFalse())
 	g.Expect(obj.Raw).To(Equal(original))
 	output := logs() + "\n" + err.Error()
@@ -132,7 +132,7 @@ func TestApplyPatchToObjectDoesNotExposeSensitiveJSONPatchApplicationError(t *te
 		Patch:     patchBody,
 	}, "spec")
 
-	g.Expect(err).To(MatchError(ContainSubstring("failed to apply patch: error applying json patch (RFC6902)")))
+	g.Expect(err).To(MatchError("failed to apply patch: JSON patch could not be applied"))
 	g.Expect(changed).To(BeFalse())
 	g.Expect(obj.Raw).To(Equal(original))
 	output := logs() + "\n" + err.Error()
@@ -140,6 +140,160 @@ func TestApplyPatchToObjectDoesNotExposeSensitiveJSONPatchApplicationError(t *te
 	g.Expect(output).To(ContainSubstring(`"operationCount"=1`))
 	g.Expect(output).NotTo(ContainSubstring(sentinel))
 	g.Expect(output).NotTo(ContainSubstring(string(patchBody)))
+}
+
+func TestApplyPatchToObjectDoesNotExposeSensitiveJSONPatchConversionError(t *testing.T) {
+	const sentinel = "sentinel-json-patch-conversion-secret"
+	g := NewWithT(t)
+	ctx, logs := contextWithVerboseLogger()
+	obj := testRawExtension()
+	original := bytes.Clone(obj.Raw)
+	patchBody := []byte(fmt.Sprintf(`[
+		{"op":"add","path":"/spec/credentials","value":{"password":%q}},
+		{"op":"remove","path":"/kind"}
+	]`, sentinel))
+
+	changed, err := ApplyPatchToObject(ctx, &obj, runtimehooksv1.Patch{
+		PatchType: runtimehooksv1.JSONPatchType,
+		Patch:     patchBody,
+	}, "spec")
+
+	g.Expect(err).To(MatchError("failed to apply patch: patched object is invalid"))
+	g.Expect(changed).To(BeFalse())
+	g.Expect(obj.Raw).To(Equal(original))
+	expectNoDisclosure(g, logs(), err, sentinel, string(patchBody))
+}
+
+func TestApplyPatchToObjectDoesNotExposeSensitiveJSONMergePatchConversionError(t *testing.T) {
+	const sentinel = "sentinel-json-merge-patch-conversion-secret"
+	g := NewWithT(t)
+	ctx, logs := contextWithVerboseLogger()
+	obj := testRawExtension()
+	original := bytes.Clone(obj.Raw)
+	patchBody := []byte(fmt.Sprintf(`{
+		"kind":null,
+		"spec":{"credentials":{"password":%q}}
+	}`, sentinel))
+
+	changed, err := ApplyPatchToObject(ctx, &obj, runtimehooksv1.Patch{
+		PatchType: runtimehooksv1.JSONMergePatchType,
+		Patch:     patchBody,
+	}, "spec")
+
+	g.Expect(err).To(MatchError("failed to apply patch: patched object is invalid"))
+	g.Expect(changed).To(BeFalse())
+	g.Expect(obj.Raw).To(Equal(original))
+	expectNoDisclosure(g, logs(), err, sentinel, string(patchBody))
+}
+
+func TestApplyPatchToObjectDoesNotExposeSensitiveMalformedJSONMergePatch(t *testing.T) {
+	const sentinel = "sentinel-malformed-json-merge-patch-secret"
+	g := NewWithT(t)
+	ctx, logs := contextWithVerboseLogger()
+	obj := testRawExtension()
+	original := bytes.Clone(obj.Raw)
+	patchBody := []byte(fmt.Sprintf(`{"spec":{"credentials":{"password":%q}`, sentinel))
+
+	changed, err := ApplyPatchToObject(ctx, &obj, runtimehooksv1.Patch{
+		PatchType: runtimehooksv1.JSONMergePatchType,
+		Patch:     patchBody,
+	}, "spec")
+
+	g.Expect(err).To(MatchError("failed to apply patch: invalid JSON merge patch"))
+	g.Expect(changed).To(BeFalse())
+	g.Expect(obj.Raw).To(Equal(original))
+	expectNoDisclosure(g, logs(), err, sentinel, string(patchBody))
+}
+
+func TestApplyPatchToObjectPanicDiagnosticsDoNotExposeSensitivePatch(t *testing.T) {
+	const sentinel = "sentinel-panic-patch-secret"
+	g := NewWithT(t)
+	ctx, logs := contextWithVerboseLogger()
+	patchBody := []byte(fmt.Sprintf(
+		`[{"op":"add","path":"/spec/credentials","value":{"password":%q}}]`,
+		sentinel,
+	))
+
+	changed, err := ApplyPatchToObject(ctx, nil, runtimehooksv1.Patch{
+		PatchType: runtimehooksv1.JSONPatchType,
+		Patch:     patchBody,
+	}, "spec")
+
+	g.Expect(err).To(MatchError("failed to apply patch: internal error"))
+	g.Expect(changed).To(BeFalse())
+	g.Expect(logs()).To(ContainSubstring("Patch application panicked"))
+	expectNoDisclosure(g, logs(), err, sentinel, string(patchBody))
+}
+
+func TestPatchDoesNotExposeSensitiveInvalidDocuments(t *testing.T) {
+	const sentinel = "sentinel-invalid-document-secret"
+
+	t.Run("source object", func(t *testing.T) {
+		g := NewWithT(t)
+		object := runtime.RawExtension{Raw: []byte(fmt.Sprintf(`{"spec":{"password":%q}}`, sentinel))}
+
+		err := Patch(&object, testRawExtension().Raw, "spec")
+
+		g.Expect(err).To(MatchError("failed to apply patch: source object is invalid"))
+		g.Expect(err.Error()).NotTo(ContainSubstring(sentinel))
+		g.Expect(err.Error()).NotTo(ContainSubstring(string(object.Raw)))
+	})
+
+	t.Run("patched object", func(t *testing.T) {
+		g := NewWithT(t)
+		object := testRawExtension()
+		patchedObject := []byte(fmt.Sprintf(`{"spec":{"password":%q}}`, sentinel))
+
+		err := Patch(&object, patchedObject, "spec")
+
+		g.Expect(err).To(MatchError("failed to apply patch: patched object is invalid"))
+		g.Expect(err.Error()).NotTo(ContainSubstring(sentinel))
+		g.Expect(err.Error()).NotTo(ContainSubstring(string(patchedObject)))
+	})
+}
+
+func TestApplyPatchToObjectPreservesEmptyAndDeletionBehavior(t *testing.T) {
+	g := NewWithT(t)
+
+	for _, patch := range []runtimehooksv1.Patch{
+		{PatchType: runtimehooksv1.JSONPatchType, Patch: []byte(`[]`)},
+		{PatchType: runtimehooksv1.JSONMergePatchType},
+		{PatchType: runtimehooksv1.JSONMergePatchType, Patch: []byte(`{}`)},
+	} {
+		obj := testRawExtension()
+		original := bytes.Clone(obj.Raw)
+
+		changed, err := ApplyPatchToObject(context.Background(), &obj, patch, "spec")
+
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(changed).To(BeFalse())
+		g.Expect(obj.Raw).To(Equal(original))
+	}
+
+	obj := testRawExtension()
+	changed, err := ApplyPatchToObject(context.Background(), &obj, runtimehooksv1.Patch{
+		PatchType: runtimehooksv1.JSONMergePatchType,
+		Patch:     []byte(`{"spec":{"commands":null}}`),
+	}, "spec")
+
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(changed).To(BeTrue())
+	g.Expect(obj.Raw).To(MatchJSON(`{
+		"apiVersion":"infrastructure.cluster.x-k8s.io/v1beta1",
+		"kind":"TestMachine",
+		"metadata":{"name":"machine-1","labels":{"preserved":"true"}},
+		"spec":{"version":"v1"}
+	}`))
+}
+
+func expectNoDisclosure(g *WithT, logs string, err error, sensitiveValues ...string) {
+	output := logs
+	if err != nil {
+		output += "\n" + err.Error()
+	}
+	for _, sensitiveValue := range sensitiveValues {
+		g.Expect(output).NotTo(ContainSubstring(sensitiveValue))
+	}
 }
 
 func contextWithVerboseLogger() (context.Context, func() string) {
