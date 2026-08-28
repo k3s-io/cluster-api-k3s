@@ -209,17 +209,19 @@ func TestReconcileControlPlaneOperationsBlocksAnotherRolloutDuringActiveInPlaceU
 
 	operations := []string{}
 	r := &KThreesControlPlaneReconciler{
-		overrideScaleUpControlPlane: func(context.Context, *clusterv1.Cluster, *controlplanev1.KThreesControlPlane, *k3s.ControlPlane) (ctrl.Result, error) {
-			operations = append(operations, "scale-up")
-			return ctrl.Result{}, nil
-		},
-		overrideScaleDownControlPlane: func(context.Context, *clusterv1.Cluster, *controlplanev1.KThreesControlPlane, *k3s.ControlPlane, collections.Machines) (ctrl.Result, error) {
-			operations = append(operations, "scale-down")
-			return ctrl.Result{}, nil
-		},
-		overrideTryInPlaceUpdate: func(context.Context, *k3s.ControlPlane, *clusterv1.Machine, k3s.UpToDateResult) (bool, ctrl.Result, error) {
-			operations = append(operations, "in-place")
-			return false, ctrl.Result{}, nil
+		overrides: &reconcilerOverrides{
+			scaleUpControlPlane: func(context.Context, *clusterv1.Cluster, *controlplanev1.KThreesControlPlane, *k3s.ControlPlane) (ctrl.Result, error) {
+				operations = append(operations, "scale-up")
+				return ctrl.Result{}, nil
+			},
+			scaleDownControlPlane: func(context.Context, *clusterv1.Cluster, *controlplanev1.KThreesControlPlane, *k3s.ControlPlane, collections.Machines) (ctrl.Result, error) {
+				operations = append(operations, "scale-down")
+				return ctrl.Result{}, nil
+			},
+			tryInPlaceUpdate: func(context.Context, *k3s.ControlPlane, *clusterv1.Machine, k3s.UpToDateResult) (bool, ctrl.Result, error) {
+				operations = append(operations, "in-place")
+				return false, ctrl.Result{}, nil
+			},
 		},
 	}
 
@@ -252,13 +254,15 @@ func TestResumeTriggerUsesLatestDesiredStateWithoutRepeatingCoverage(t *testing.
 	canUpdateCalled := false
 	triggeredVersion := ""
 	r := &KThreesControlPlaneReconciler{
-		overrideCanUpdateMachine: func(context.Context, *clusterv1.Machine, k3s.UpToDateResult) (bool, error) {
-			canUpdateCalled = true
-			return false, nil
-		},
-		overrideTriggerInPlaceUpdate: func(_ context.Context, _ *clusterv1.Machine, result k3s.UpToDateResult) error {
-			triggeredVersion = result.DesiredMachine.Spec.Version
-			return nil
+		overrides: &reconcilerOverrides{
+			canUpdateMachine: func(context.Context, *clusterv1.Machine, k3s.UpToDateResult) (bool, error) {
+				canUpdateCalled = true
+				return false, nil
+			},
+			triggerInPlaceUpdate: func(_ context.Context, _ *clusterv1.Machine, result k3s.UpToDateResult) error {
+				triggeredVersion = result.DesiredMachine.Spec.Version
+				return nil
+			},
 		},
 	}
 

@@ -68,12 +68,14 @@ func TestTryInPlaceUpdatePreflightFallback(t *testing.T) {
 			canUpdateCalled := false
 			r := &KThreesControlPlaneReconciler{
 				recorder: record.NewFakeRecorder(10),
-				overrideCanUpdateMachine: func(context.Context, *clusterv1.Machine, k3s.UpToDateResult) (bool, error) {
-					canUpdateCalled = true
-					return true, nil
-				},
-				overrideTriggerInPlaceUpdate: func(context.Context, *clusterv1.Machine, k3s.UpToDateResult) error {
-					return nil
+				overrides: &reconcilerOverrides{
+					canUpdateMachine: func(context.Context, *clusterv1.Machine, k3s.UpToDateResult) (bool, error) {
+						canUpdateCalled = true
+						return true, nil
+					},
+					triggerInPlaceUpdate: func(context.Context, *clusterv1.Machine, k3s.UpToDateResult) error {
+						return nil
+					},
 				},
 			}
 

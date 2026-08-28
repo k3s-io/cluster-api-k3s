@@ -237,19 +237,21 @@ func TestRollingUpdate(t *testing.T) {
 			scaleDowns := 0
 			r := &KThreesControlPlaneReconciler{
 				Client: c,
-				overrideScaleUpControlPlane: func(context.Context, *clusterv1.Cluster, *controlplanev1.KThreesControlPlane, *k3s.ControlPlane) (ctrl.Result, error) {
-					action = "scale-up"
-					return ctrl.Result{}, nil
-				},
-				overrideScaleDownControlPlane: func(_ context.Context, _ *clusterv1.Cluster, _ *controlplanev1.KThreesControlPlane, _ *k3s.ControlPlane, machines collections.Machines) (ctrl.Result, error) {
-					scaleDowns++
-					action = "scale-down"
-					g.Expect(machines).NotTo(BeEmpty())
-					return ctrl.Result{}, nil
-				},
-				overrideTryInPlaceUpdate: func(context.Context, *k3s.ControlPlane, *clusterv1.Machine, k3s.UpToDateResult) (bool, ctrl.Result, error) {
-					action = "in-place"
-					return tt.tryFallback, ctrl.Result{}, tt.tryErr
+				overrides: &reconcilerOverrides{
+					scaleUpControlPlane: func(context.Context, *clusterv1.Cluster, *controlplanev1.KThreesControlPlane, *k3s.ControlPlane) (ctrl.Result, error) {
+						action = "scale-up"
+						return ctrl.Result{}, nil
+					},
+					scaleDownControlPlane: func(_ context.Context, _ *clusterv1.Cluster, _ *controlplanev1.KThreesControlPlane, _ *k3s.ControlPlane, machines collections.Machines) (ctrl.Result, error) {
+						scaleDowns++
+						action = "scale-down"
+						g.Expect(machines).NotTo(BeEmpty())
+						return ctrl.Result{}, nil
+					},
+					tryInPlaceUpdate: func(context.Context, *k3s.ControlPlane, *clusterv1.Machine, k3s.UpToDateResult) (bool, ctrl.Result, error) {
+						action = "in-place"
+						return tt.tryFallback, ctrl.Result{}, tt.tryErr
+					},
 				},
 			}
 
@@ -347,9 +349,11 @@ func TestSyncMachinesRefreshesRolloutMachineBeforeInPlaceSelection(t *testing.T)
 	r := &KThreesControlPlaneReconciler{
 		Client:   syncClient,
 		ssaCache: ssa.NewCache(),
-		overrideTryInPlaceUpdate: func(_ context.Context, _ *k3s.ControlPlane, machine *clusterv1.Machine, _ k3s.UpToDateResult) (bool, ctrl.Result, error) {
-			selectedMachine = machine
-			return false, ctrl.Result{}, nil
+		overrides: &reconcilerOverrides{
+			tryInPlaceUpdate: func(_ context.Context, _ *k3s.ControlPlane, machine *clusterv1.Machine, _ k3s.UpToDateResult) (bool, ctrl.Result, error) {
+				selectedMachine = machine
+				return false, ctrl.Result{}, nil
+			},
 		},
 	}
 

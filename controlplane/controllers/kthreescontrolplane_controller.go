@@ -83,11 +83,15 @@ type KThreesControlPlaneReconciler struct {
 	managementClusterUncached k3s.ManagementCluster
 	ssaCache                  ssa.Cache
 
-	overrideScaleUpControlPlane   func(context.Context, *clusterv1.Cluster, *controlplanev1.KThreesControlPlane, *k3s.ControlPlane) (ctrl.Result, error)
-	overrideScaleDownControlPlane func(context.Context, *clusterv1.Cluster, *controlplanev1.KThreesControlPlane, *k3s.ControlPlane, collections.Machines) (ctrl.Result, error)
-	overrideTryInPlaceUpdate      func(context.Context, *k3s.ControlPlane, *clusterv1.Machine, k3s.UpToDateResult) (bool, ctrl.Result, error)
-	overrideCanUpdateMachine      func(context.Context, *clusterv1.Machine, k3s.UpToDateResult) (bool, error)
-	overrideTriggerInPlaceUpdate  func(context.Context, *clusterv1.Machine, k3s.UpToDateResult) error
+	overrides *reconcilerOverrides
+}
+
+type reconcilerOverrides struct {
+	scaleUpControlPlane   func(context.Context, *clusterv1.Cluster, *controlplanev1.KThreesControlPlane, *k3s.ControlPlane) (ctrl.Result, error)
+	scaleDownControlPlane func(context.Context, *clusterv1.Cluster, *controlplanev1.KThreesControlPlane, *k3s.ControlPlane, collections.Machines) (ctrl.Result, error)
+	tryInPlaceUpdate      func(context.Context, *k3s.ControlPlane, *clusterv1.Machine, k3s.UpToDateResult) (bool, ctrl.Result, error)
+	canUpdateMachine      func(context.Context, *clusterv1.Machine, k3s.UpToDateResult) (bool, error)
+	triggerInPlaceUpdate  func(context.Context, *clusterv1.Machine, k3s.UpToDateResult) error
 }
 
 // +kubebuilder:rbac:groups=core,resources=events,verbs=get;list;watch;create;patch

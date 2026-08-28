@@ -60,8 +60,8 @@ func (r *KThreesControlPlaneReconciler) rollingUpdate(
 	maxReplicas := desiredReplicas + maxSurge
 
 	if currentReplicas < maxReplicas {
-		if r.overrideScaleUpControlPlane != nil {
-			return r.overrideScaleUpControlPlane(ctx, cluster, kcp, controlPlane)
+		if r.overrides != nil && r.overrides.scaleUpControlPlane != nil {
+			return r.overrides.scaleUpControlPlane(ctx, cluster, kcp, controlPlane)
 		}
 		return r.scaleUpControlPlane(ctx, cluster, kcp, controlPlane)
 	}
@@ -89,8 +89,8 @@ func (r *KThreesControlPlaneReconciler) rollingUpdate(
 			fallback bool
 			res      ctrl.Result
 		)
-		if r.overrideTryInPlaceUpdate != nil {
-			fallback, res, err = r.overrideTryInPlaceUpdate(ctx, controlPlane, machine, result)
+		if r.overrides != nil && r.overrides.tryInPlaceUpdate != nil {
+			fallback, res, err = r.overrides.tryInPlaceUpdate(ctx, controlPlane, machine, result)
 		} else {
 			fallback, res, err = r.tryInPlaceUpdate(ctx, controlPlane, machine, result)
 		}
@@ -128,8 +128,8 @@ func (r *KThreesControlPlaneReconciler) scaleDownForUpdate(
 			currentReplicas,
 		)
 	}
-	if r.overrideScaleDownControlPlane != nil {
-		return r.overrideScaleDownControlPlane(ctx, cluster, kcp, controlPlane, machines)
+	if r.overrides != nil && r.overrides.scaleDownControlPlane != nil {
+		return r.overrides.scaleDownControlPlane(ctx, cluster, kcp, controlPlane, machines)
 	}
 	return r.scaleDownControlPlane(ctx, cluster, kcp, controlPlane, machines)
 }

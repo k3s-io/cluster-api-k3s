@@ -49,8 +49,8 @@ func (r *KThreesControlPlaneReconciler) tryInPlaceUpdate(
 	}
 
 	var canUpdate bool
-	if r.overrideCanUpdateMachine != nil {
-		canUpdate, err = r.overrideCanUpdateMachine(ctx, machine, result)
+	if r.overrides != nil && r.overrides.canUpdateMachine != nil {
+		canUpdate, err = r.overrides.canUpdateMachine(ctx, machine, result)
 	} else {
 		canUpdate, err = r.canUpdateMachine(ctx, machine, result)
 	}
@@ -61,8 +61,8 @@ func (r *KThreesControlPlaneReconciler) tryInPlaceUpdate(
 		return true, ctrl.Result{}, nil
 	}
 
-	if r.overrideTriggerInPlaceUpdate != nil {
-		return false, ctrl.Result{}, r.overrideTriggerInPlaceUpdate(ctx, machine, result)
+	if r.overrides != nil && r.overrides.triggerInPlaceUpdate != nil {
+		return false, ctrl.Result{}, r.overrides.triggerInPlaceUpdate(ctx, machine, result)
 	}
 	return false, ctrl.Result{}, r.triggerInPlaceUpdate(ctx, machine, result)
 }
@@ -88,8 +88,8 @@ func (r *KThreesControlPlaneReconciler) reconcilePendingInPlaceUpdateTrigger(
 		if !ok {
 			return false, fmt.Errorf("missing UpToDateResult for Machine %s", machine.Name)
 		}
-		if r.overrideTriggerInPlaceUpdate != nil {
-			if err := r.overrideTriggerInPlaceUpdate(ctx, machine, result); err != nil {
+		if r.overrides != nil && r.overrides.triggerInPlaceUpdate != nil {
+			if err := r.overrides.triggerInPlaceUpdate(ctx, machine, result); err != nil {
 				return false, err
 			}
 			continue
