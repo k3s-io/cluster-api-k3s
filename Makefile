@@ -276,9 +276,9 @@ uninstall-controlplane: manifests-controlplane
 	$(KUSTOMIZE) build controlplane/config/crd | kubectl delete -f -
 
 # Deploy controller in the configured Kubernetes cluster in ~/.kube/config
-deploy-controlplane: manifests-controlplane
+deploy-controlplane: manifests-controlplane $(ENVSUBST)
 	cd controlplane/config/manager && $(KUSTOMIZE) edit set image controller=${CONTROLPLANE_IMG}:$(CONTROLPLANE_IMG_TAG)
-	$(KUSTOMIZE) build controlplane/config/default | kubectl apply -f -
+	$(KUSTOMIZE) build controlplane/config/default | $(ENVSUBST) | kubectl apply -f -
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests-controlplane: $(KUSTOMIZE) $(CONTROLLER_GEN)
