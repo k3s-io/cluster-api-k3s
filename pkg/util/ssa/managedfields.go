@@ -216,204 +216,310 @@ type managedFieldsMigrationEntry struct {
 	removed bool
 }
 
+type managedFieldsMigration struct {
+	entries              []managedFieldsMigrationEntry
+	mainEntryIndexes     []int
+	metadataEntryIndexes []int
+	mainVersions         map[string]struct{}
+	specByVersion        map[string]map[string]interface{}
+	metadataFields       map[string]interface{}
+}
+
 func migrateManagedFields(
 	originalManagedFields []metav1.ManagedFieldsEntry,
 	fieldManager string,
 	metadataFieldManager string,
 	objectAPIVersion string,
 ) ([]metav1.ManagedFieldsEntry, ManagedFieldsMigrationResult, error) {
-	entries := make([]managedFieldsMigrationEntry, len(originalManagedFields))
-	mainEntryIndexes := []int{}
-	metadataEntryIndexes := []int{}
-	mainVersions := map[string]struct{}{}
-	specByVersion := map[string]map[string]interface{}{}
-	metadataFields := map[string]interface{}{}
-
-	for i := range originalManagedFields {
-		entry := originalManagedFields[i]
-		entries[i].entry = entry
-		if entry.Subresource != "" {
-			continue
-		}
-
-		isMainEntry := entry.Manager == fieldManager && entry.Operation == metav1.ManagedFieldsOperationApply
-		isClassicEntry := entry.Manager == classicManager && entry.Operation == metav1.ManagedFieldsOperationUpdate
-		isMetadataEntry := entry.Manager == metadataFieldManager && entry.Operation == metav1.ManagedFieldsOperationApply
-		if !isMainEntry && !isClassicEntry && !isMetadataEntry {
-			continue
-		}
-
-		fields, err := parseManagedFieldsEntry(entry)
-		if err != nil {
-			return nil, ManagedFieldsMigrationResult{}, err
-		}
-		entries[i].fields = fields
-
-		if isMetadataEntry {
-			metadataEntryIndexes = append(metadataEntryIndexes, i)
-			continue
-		}
-
-		for _, path := range labelsAndAnnotationsPaths {
-			ownedFields, found, err := removeNestedFieldSet(fields, path...)
-			if err != nil {
-				return nil, ManagedFieldsMigrationResult{}, errors.Wrapf(
-					err,
-					"failed to migrate FieldsV1 for managed fields entry %q",
-					entry.Manager,
-				)
-			}
-			if found {
-				if err := mergeNestedFieldSet(metadataFields, ownedFields, path...); err != nil {
-					return nil, ManagedFieldsMigrationResult{}, err
-				}
-				entries[i].changed = true
-			}
-		}
-
-		if isClassicEntry {
-			specFields, found, err := removeNestedFieldSet(fields, "f:spec")
-			if err != nil {
-				return nil, ManagedFieldsMigrationResult{}, errors.Wrapf(
-					err,
-					"failed to migrate FieldsV1 for managed fields entry %q",
-					entry.Manager,
-				)
-			}
-			if found {
-				if specByVersion[entry.APIVersion] == nil {
-					specByVersion[entry.APIVersion] = map[string]interface{}{}
-				}
-				if err := mergeFieldSet(specByVersion[entry.APIVersion], specFields); err != nil {
-					return nil, ManagedFieldsMigrationResult{}, errors.Wrap(err, "failed to merge spec managed fields")
-				}
-				entries[i].changed = true
-			}
-			continue
-		}
-
-		mainEntryIndexes = append(mainEntryIndexes, i)
-		if _, found, err := nestedFieldSet(fields, "f:spec"); err != nil {
-			return nil, ManagedFieldsMigrationResult{}, errors.Wrap(err, "failed to inspect main manager spec FieldsV1")
-		} else if found {
-			if specByVersion[entry.APIVersion] == nil {
-				specByVersion[entry.APIVersion] = map[string]interface{}{}
-			}
-		}
-		if len(fields) > 0 {
-			mainVersions[entry.APIVersion] = struct{}{}
-		}
+	migration, err := collectManagedFieldsMigration(originalManagedFields, fieldManager, metadataFieldManager)
+	if err != nil {
+		return nil, ManagedFieldsMigrationResult{}, err
 	}
 
-	destinationVersions := map[string]struct{}{}
-	for version := range specByVersion {
-		destinationVersions[version] = struct{}{}
-	}
-	for version := range mainVersions {
-		destinationVersions[version] = struct{}{}
-	}
-	if len(destinationVersions) > 1 {
+	destinationVersion, hasDestinationVersion, supported := migration.destinationVersion()
+	if !supported {
 		return originalManagedFields, ManagedFieldsMigrationResult{
 			Outcome: ManagedFieldsMigrationInPlaceUpdateUnsupported,
 			Reason:  managedFieldsMigrationUnsupportedReason,
 		}, nil
 	}
 
-	destinationVersion := ""
-	hasDestinationVersion := false
-	for version := range destinationVersions {
-		destinationVersion = version
-		hasDestinationVersion = true
+	if err := migration.mergeMainEntries(fieldManager, destinationVersion, hasDestinationVersion); err != nil {
+		return nil, ManagedFieldsMigrationResult{}, err
+	}
+	if err := migration.mergeMetadataEntry(metadataFieldManager, objectAPIVersion); err != nil {
+		return nil, ManagedFieldsMigrationResult{}, err
 	}
 
-	mainDestinationIndex := -1
-	mainFields := map[string]interface{}{}
-	for _, i := range mainEntryIndexes {
-		if len(entries[i].fields) == 0 {
-			entries[i].removed = true
+	managedFields, err := migration.managedFields()
+	if err != nil {
+		return nil, ManagedFieldsMigrationResult{}, err
+	}
+	if reflect.DeepEqual(managedFields, originalManagedFields) {
+		return originalManagedFields, ManagedFieldsMigrationResult{Outcome: ManagedFieldsMigrationUnchanged}, nil
+	}
+	return managedFields, ManagedFieldsMigrationResult{Outcome: ManagedFieldsMigrationCompleted}, nil
+}
+
+func collectManagedFieldsMigration(
+	originalManagedFields []metav1.ManagedFieldsEntry,
+	fieldManager string,
+	metadataFieldManager string,
+) (*managedFieldsMigration, error) {
+	migration := &managedFieldsMigration{
+		entries:        make([]managedFieldsMigrationEntry, len(originalManagedFields)),
+		mainVersions:   map[string]struct{}{},
+		specByVersion:  map[string]map[string]interface{}{},
+		metadataFields: map[string]interface{}{},
+	}
+
+	for i := range originalManagedFields {
+		entry := originalManagedFields[i]
+		migration.entries[i].entry = entry
+		entryType := managedFieldsMigrationEntryTypeFor(entry, fieldManager, metadataFieldManager)
+		if entryType == managedFieldsMigrationEntryUnrelated {
 			continue
 		}
-		if entries[i].entry.APIVersion == destinationVersion && mainDestinationIndex == -1 {
+
+		fields, err := parseManagedFieldsEntry(entry)
+		if err != nil {
+			return nil, err
+		}
+		migration.entries[i].fields = fields
+
+		if entryType == managedFieldsMigrationEntryMetadata {
+			migration.metadataEntryIndexes = append(migration.metadataEntryIndexes, i)
+			continue
+		}
+
+		changed, err := moveMetadataManagedFields(fields, migration.metadataFields, entry.Manager)
+		if err != nil {
+			return nil, err
+		}
+		migration.entries[i].changed = changed
+
+		if entryType == managedFieldsMigrationEntryClassic {
+			if err := migration.moveClassicSpecFields(i); err != nil {
+				return nil, err
+			}
+			continue
+		}
+
+		if err := migration.trackMainEntry(i); err != nil {
+			return nil, err
+		}
+	}
+	return migration, nil
+}
+
+type managedFieldsMigrationEntryType int
+
+const (
+	managedFieldsMigrationEntryUnrelated managedFieldsMigrationEntryType = iota
+	managedFieldsMigrationEntryMain
+	managedFieldsMigrationEntryClassic
+	managedFieldsMigrationEntryMetadata
+)
+
+func managedFieldsMigrationEntryTypeFor(
+	entry metav1.ManagedFieldsEntry,
+	fieldManager string,
+	metadataFieldManager string,
+) managedFieldsMigrationEntryType {
+	if entry.Subresource != "" {
+		return managedFieldsMigrationEntryUnrelated
+	}
+	if entry.Manager == metadataFieldManager && entry.Operation == metav1.ManagedFieldsOperationApply {
+		return managedFieldsMigrationEntryMetadata
+	}
+	if entry.Manager == classicManager && entry.Operation == metav1.ManagedFieldsOperationUpdate {
+		return managedFieldsMigrationEntryClassic
+	}
+	if entry.Manager == fieldManager && entry.Operation == metav1.ManagedFieldsOperationApply {
+		return managedFieldsMigrationEntryMain
+	}
+	return managedFieldsMigrationEntryUnrelated
+}
+
+func moveMetadataManagedFields(
+	fields map[string]interface{},
+	metadataFields map[string]interface{},
+	manager string,
+) (bool, error) {
+	changed := false
+	for _, path := range labelsAndAnnotationsPaths {
+		ownedFields, found, err := removeNestedFieldSet(fields, path...)
+		if err != nil {
+			return false, errors.Wrapf(
+				err,
+				"failed to migrate FieldsV1 for managed fields entry %q",
+				manager,
+			)
+		}
+		if !found {
+			continue
+		}
+		if err := mergeNestedFieldSet(metadataFields, ownedFields, path...); err != nil {
+			return false, err
+		}
+		changed = true
+	}
+	return changed, nil
+}
+
+func (m *managedFieldsMigration) moveClassicSpecFields(index int) error {
+	entry := &m.entries[index]
+	specFields, found, err := removeNestedFieldSet(entry.fields, "f:spec")
+	if err != nil {
+		return errors.Wrapf(
+			err,
+			"failed to migrate FieldsV1 for managed fields entry %q",
+			entry.entry.Manager,
+		)
+	}
+	if !found {
+		return nil
+	}
+	if m.specByVersion[entry.entry.APIVersion] == nil {
+		m.specByVersion[entry.entry.APIVersion] = map[string]interface{}{}
+	}
+	if err := mergeFieldSet(m.specByVersion[entry.entry.APIVersion], specFields); err != nil {
+		return errors.Wrap(err, "failed to merge spec managed fields")
+	}
+	entry.changed = true
+	return nil
+}
+
+func (m *managedFieldsMigration) trackMainEntry(index int) error {
+	entry := m.entries[index]
+	m.mainEntryIndexes = append(m.mainEntryIndexes, index)
+	if _, found, err := nestedFieldSet(entry.fields, "f:spec"); err != nil {
+		return errors.Wrap(err, "failed to inspect main manager spec FieldsV1")
+	} else if found && m.specByVersion[entry.entry.APIVersion] == nil {
+		m.specByVersion[entry.entry.APIVersion] = map[string]interface{}{}
+	}
+	if len(entry.fields) > 0 {
+		m.mainVersions[entry.entry.APIVersion] = struct{}{}
+	}
+	return nil
+}
+
+func (m *managedFieldsMigration) destinationVersion() (string, bool, bool) {
+	destinationVersions := map[string]struct{}{}
+	for version := range m.specByVersion {
+		destinationVersions[version] = struct{}{}
+	}
+	for version := range m.mainVersions {
+		destinationVersions[version] = struct{}{}
+	}
+	if len(destinationVersions) > 1 {
+		return "", false, false
+	}
+
+	for version := range destinationVersions {
+		return version, true, true
+	}
+	return "", false, true
+}
+
+func (m *managedFieldsMigration) mergeMainEntries(
+	fieldManager string,
+	destinationVersion string,
+	hasDestinationVersion bool,
+) error {
+	mainDestinationIndex := -1
+	mainFields := map[string]interface{}{}
+	for _, i := range m.mainEntryIndexes {
+		if len(m.entries[i].fields) == 0 {
+			m.entries[i].removed = true
+			continue
+		}
+		if m.entries[i].entry.APIVersion == destinationVersion && mainDestinationIndex == -1 {
 			mainDestinationIndex = i
 		}
-		if err := mergeFieldSet(mainFields, entries[i].fields); err != nil {
-			return nil, ManagedFieldsMigrationResult{}, errors.Wrap(err, "failed to merge main manager fields")
+		if err := mergeFieldSet(mainFields, m.entries[i].fields); err != nil {
+			return errors.Wrap(err, "failed to merge main manager fields")
 		}
 		if i != mainDestinationIndex {
-			entries[i].removed = true
+			m.entries[i].removed = true
 		}
 	}
-	if hasDestinationVersion {
-		if specFields := specByVersion[destinationVersion]; specFields != nil {
-			if err := mergeNestedFieldSet(mainFields, specFields, "f:spec"); err != nil {
-				return nil, ManagedFieldsMigrationResult{}, errors.Wrap(err, "failed to merge migrated spec fields")
-			}
+	if !hasDestinationVersion {
+		return nil
+	}
+	if specFields := m.specByVersion[destinationVersion]; specFields != nil {
+		if err := mergeNestedFieldSet(mainFields, specFields, "f:spec"); err != nil {
+			return errors.Wrap(err, "failed to merge migrated spec fields")
 		}
-		if len(mainFields) > 0 {
-			if mainDestinationIndex == -1 {
-				mainDestinationIndex = len(entries)
-				entries = append(entries, managedFieldsMigrationEntry{
-					entry: metav1.ManagedFieldsEntry{
-						Manager:    fieldManager,
-						Operation:  metav1.ManagedFieldsOperationApply,
-						APIVersion: destinationVersion,
-						Time:       ptr.To(metav1.Now()),
-						FieldsType: "FieldsV1",
-					},
-					fields:  mainFields,
-					changed: true,
-				})
-			} else {
-				entries[mainDestinationIndex].fields = mainFields
-				entries[mainDestinationIndex].removed = false
-				entries[mainDestinationIndex].changed = true
-			}
-		}
+	}
+	if len(mainFields) == 0 {
+		return nil
+	}
+	if mainDestinationIndex == -1 {
+		m.entries = append(m.entries, managedFieldsMigrationEntry{
+			entry: metav1.ManagedFieldsEntry{
+				Manager:    fieldManager,
+				Operation:  metav1.ManagedFieldsOperationApply,
+				APIVersion: destinationVersion,
+				Time:       ptr.To(metav1.Now()),
+				FieldsType: "FieldsV1",
+			},
+			fields:  mainFields,
+			changed: true,
+		})
+		return nil
+	}
+	m.entries[mainDestinationIndex].fields = mainFields
+	m.entries[mainDestinationIndex].removed = false
+	m.entries[mainDestinationIndex].changed = true
+	return nil
+}
+
+func (m *managedFieldsMigration) mergeMetadataEntry(metadataFieldManager, objectAPIVersion string) error {
+	if len(m.metadataFields) == 0 {
+		return nil
 	}
 
-	if len(metadataFields) > 0 {
-		metadataDestinationIndex := -1
-		if len(metadataEntryIndexes) > 0 {
-			metadataDestinationIndex = metadataEntryIndexes[0]
-		} else {
-			metadataDestinationIndex = len(entries)
-			entries = append(entries, managedFieldsMigrationEntry{
-				entry: metav1.ManagedFieldsEntry{
-					Manager:    metadataFieldManager,
-					Operation:  metav1.ManagedFieldsOperationApply,
-					APIVersion: objectAPIVersion,
-					Time:       ptr.To(metav1.Now()),
-					FieldsType: "FieldsV1",
-				},
-				fields:  map[string]interface{}{},
-				changed: true,
-			})
-		}
-		if err := mergeFieldSet(entries[metadataDestinationIndex].fields, metadataFields); err != nil {
-			return nil, ManagedFieldsMigrationResult{}, errors.Wrap(err, "failed to merge metadata manager fields")
-		}
-		entries[metadataDestinationIndex].changed = true
+	metadataDestinationIndex := len(m.entries)
+	if len(m.metadataEntryIndexes) > 0 {
+		metadataDestinationIndex = m.metadataEntryIndexes[0]
+	} else {
+		m.entries = append(m.entries, managedFieldsMigrationEntry{
+			entry: metav1.ManagedFieldsEntry{
+				Manager:    metadataFieldManager,
+				Operation:  metav1.ManagedFieldsOperationApply,
+				APIVersion: objectAPIVersion,
+				Time:       ptr.To(metav1.Now()),
+				FieldsType: "FieldsV1",
+			},
+			fields:  map[string]interface{}{},
+			changed: true,
+		})
 	}
+	if err := mergeFieldSet(m.entries[metadataDestinationIndex].fields, m.metadataFields); err != nil {
+		return errors.Wrap(err, "failed to merge metadata manager fields")
+	}
+	m.entries[metadataDestinationIndex].changed = true
+	return nil
+}
 
-	managedFields := make([]metav1.ManagedFieldsEntry, 0, len(entries))
-	for i := range entries {
-		entry := entries[i]
+func (m *managedFieldsMigration) managedFields() ([]metav1.ManagedFieldsEntry, error) {
+	managedFields := make([]metav1.ManagedFieldsEntry, 0, len(m.entries))
+	for i := range m.entries {
+		entry := m.entries[i]
 		if entry.removed || (entry.fields != nil && len(entry.fields) == 0 && entry.changed) {
 			continue
 		}
 		if entry.changed {
 			raw, err := json.Marshal(entry.fields)
 			if err != nil {
-				return nil, ManagedFieldsMigrationResult{}, errors.Wrap(err, "failed to marshal migrated managed fields")
+				return nil, errors.Wrap(err, "failed to marshal migrated managed fields")
 			}
 			entry.entry.FieldsV1 = &metav1.FieldsV1{Raw: raw}
 		}
 		managedFields = append(managedFields, entry.entry)
 	}
-	if reflect.DeepEqual(managedFields, originalManagedFields) {
-		return originalManagedFields, ManagedFieldsMigrationResult{Outcome: ManagedFieldsMigrationUnchanged}, nil
-	}
-	return managedFields, ManagedFieldsMigrationResult{Outcome: ManagedFieldsMigrationCompleted}, nil
+	return managedFields, nil
 }
 
 func parseManagedFieldsEntry(entry metav1.ManagedFieldsEntry) (map[string]interface{}, error) {

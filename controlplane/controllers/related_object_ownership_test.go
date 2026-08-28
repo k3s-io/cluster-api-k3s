@@ -74,7 +74,7 @@ var _ = Describe("new related object ownership", func() {
 		ensureManagedFieldsTestCRD(
 			"testmachines."+relatedObjectTestGroup,
 			relatedObjectTestGroup,
-			"TestMachine",
+			testMachineKind,
 			"testmachines",
 		)
 		ensureRelatedObjectContractLabels()
@@ -185,7 +185,7 @@ var _ = Describe("new related object ownership", func() {
 			"",
 		)
 		Expect(err).To(MatchError(ContainSubstring("failed to split managedFields ownership for " + relatedObjectTestMachineKind)))
-		fixture.expectObjectCounts(ctx, 0, 0, 0)
+		fixture.expectInfraMachineCount(ctx, 0)
 	})
 
 	It("does not create a Machine when the related-object SSA create fails", func() {
@@ -210,7 +210,7 @@ var _ = Describe("new related object ownership", func() {
 			"",
 		)
 		Expect(err).To(MatchError(ContainSubstring("failed to create " + relatedObjectTestMachineKind)))
-		fixture.expectObjectCounts(ctx, 0, 0, 0)
+		fixture.expectInfraMachineCount(ctx, 0)
 	})
 
 	It("cleans up related objects when metadata ownership establishment fails", func() {
@@ -235,7 +235,7 @@ var _ = Describe("new related object ownership", func() {
 			"",
 		)
 		Expect(err).To(MatchError(ContainSubstring("failed to establish metadata ownership for " + relatedObjectTestMachineKind)))
-		fixture.expectObjectCounts(ctx, 0, 0, 0)
+		fixture.expectInfraMachineCount(ctx, 0)
 	})
 
 	It("cleans up both related objects when KThreesConfig ownership setup fails", func() {
@@ -260,7 +260,7 @@ var _ = Describe("new related object ownership", func() {
 			"",
 		)
 		Expect(err).To(MatchError(ContainSubstring("failed to split managedFields ownership for KThreesConfig")))
-		fixture.expectObjectCounts(ctx, 0, 0, 0)
+		fixture.expectInfraMachineCount(ctx, 0)
 	})
 
 	It("retains ownership setup and cleanup failures in the aggregate", func() {
@@ -288,7 +288,7 @@ var _ = Describe("new related object ownership", func() {
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("failed to split managedFields ownership for KThreesConfig"))
 		Expect(err.Error()).To(ContainSubstring("injected cleanup failure"))
-		fixture.expectObjectCounts(ctx, 0, 1, 0)
+		fixture.expectInfraMachineCount(ctx, 1)
 	})
 
 	It("requeues managedFields migration before CanUpdateMachine", func() {
@@ -622,7 +622,7 @@ func (f *relatedObjectOwnershipFixture) cleanup(ctx context.Context) {
 	Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, f.template))).To(Succeed())
 }
 
-func (f *relatedObjectOwnershipFixture) expectObjectCounts(ctx context.Context, machineCount, infraMachineCount, kthreesConfigCount int) {
+func (f *relatedObjectOwnershipFixture) expectInfraMachineCount(ctx context.Context, infraMachineCount int) {
 	machines := &clusterv1.MachineList{}
 	Expect(k8sClient.List(
 		ctx,
@@ -630,7 +630,7 @@ func (f *relatedObjectOwnershipFixture) expectObjectCounts(ctx context.Context, 
 		client.InNamespace(f.kcp.Namespace),
 		client.MatchingLabels{clusterv1.ClusterNameLabel: f.cluster.Name},
 	)).To(Succeed())
-	Expect(machines.Items).To(HaveLen(machineCount))
+	Expect(machines.Items).To(BeEmpty())
 
 	infraMachines := &unstructured.UnstructuredList{}
 	infraMachines.SetGroupVersionKind(schema.GroupVersionKind{
@@ -653,7 +653,7 @@ func (f *relatedObjectOwnershipFixture) expectObjectCounts(ctx context.Context, 
 		client.InNamespace(f.kcp.Namespace),
 		client.MatchingLabels{clusterv1.ClusterNameLabel: f.cluster.Name},
 	)).To(Succeed())
-	Expect(kthreesConfigs.Items).To(HaveLen(kthreesConfigCount))
+	Expect(kthreesConfigs.Items).To(BeEmpty())
 }
 
 func ensureRelatedObjectContractLabels() {

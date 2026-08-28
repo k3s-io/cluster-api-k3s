@@ -48,6 +48,7 @@ import (
 const (
 	currentK3sVersion = "v1.31.1+k3s1"
 	desiredK3sVersion = "v1.31.2+k3s1"
+	testMachineKind   = "TestMachine"
 )
 
 func TestCanUpdateMachine(t *testing.T) {
@@ -113,7 +114,7 @@ func TestCanUpdateMachine(t *testing.T) {
 			enabled:  true,
 			handlers: []string{"handler"},
 			infraPatchErr: apierrors.NewInvalid(
-				schema.GroupKind{Group: "infrastructure.cluster.x-k8s.io", Kind: "TestMachine"},
+				schema.GroupKind{Group: "infrastructure.cluster.x-k8s.io", Kind: testMachineKind},
 				"infra-1",
 				field.ErrorList{field.Invalid(field.NewPath("spec"), nil, "invalid")},
 			),
@@ -285,7 +286,7 @@ func TestCanUpdateMachineNormalizesCurrentRelatedObjectMetadataWithoutChangingSp
 func TestCanUpdateMachineDesiredInfraExpectedDryRunIsNonCoverable(t *testing.T) {
 	tests := map[string]error{
 		"invalid": apierrors.NewInvalid(
-			schema.GroupKind{Group: "infrastructure.cluster.x-k8s.io", Kind: "TestMachine"},
+			schema.GroupKind{Group: "infrastructure.cluster.x-k8s.io", Kind: testMachineKind},
 			"infra-1",
 			field.ErrorList{field.Invalid(field.NewPath("spec", "size"), "large", "immutable")},
 		),
@@ -351,7 +352,7 @@ func TestCanUpdateMachineNonCoverableInfraReasonIsSanitized(t *testing.T) {
 		Client: &infraPatchErrorClient{
 			Client: c,
 			err: apierrors.NewInvalid(
-				schema.GroupKind{Group: "infrastructure.cluster.x-k8s.io", Kind: "TestMachine"},
+				schema.GroupKind{Group: "infrastructure.cluster.x-k8s.io", Kind: testMachineKind},
 				"infra-1",
 				field.ErrorList{field.Invalid(field.NewPath("spec", "credentials", "password"), sentinel, "invalid")},
 			),
@@ -425,7 +426,7 @@ func TestMatchesMachineReportsOnlySanitizedUncoveredReasons(t *testing.T) {
 			}}},
 			InfrastructureMachine: runtime.RawExtension{Object: &unstructured.Unstructured{Object: map[string]interface{}{
 				"apiVersion": "infrastructure.cluster.x-k8s.io/v1beta1",
-				"kind":       "TestMachine",
+				"kind":       testMachineKind,
 				"spec":       map[string]interface{}{"credentials": map[string]interface{}{"password": oldContent}},
 			}}},
 		},
@@ -441,7 +442,7 @@ func TestMatchesMachineReportsOnlySanitizedUncoveredReasons(t *testing.T) {
 			}}},
 			InfrastructureMachine: runtime.RawExtension{Object: &unstructured.Unstructured{Object: map[string]interface{}{
 				"apiVersion": "infrastructure.cluster.x-k8s.io/v1beta1",
-				"kind":       "TestMachine",
+				"kind":       testMachineKind,
 				"spec":       map[string]interface{}{"credentials": map[string]interface{}{"password": newContent}},
 			}}},
 		},
@@ -524,7 +525,7 @@ func canUpdateFixtures(t *testing.T) (*clusterv1.Machine, k3s.UpToDateResult, cl
 
 	currentInfra := &unstructured.Unstructured{Object: map[string]interface{}{
 		"apiVersion": "infrastructure.cluster.x-k8s.io/v1beta1",
-		"kind":       "TestMachine",
+		"kind":       testMachineKind,
 		"metadata":   map[string]interface{}{"name": "infra-1", "namespace": "default"},
 		"spec":       map[string]interface{}{"size": "small"},
 	}}
@@ -571,7 +572,7 @@ type infraPatchErrorClient struct {
 }
 
 func (c *infraPatchErrorClient) Patch(ctx context.Context, object client.Object, patch client.Patch, opts ...client.PatchOption) error {
-	if object.GetObjectKind().GroupVersionKind().Kind == "TestMachine" {
+	if object.GetObjectKind().GroupVersionKind().Kind == testMachineKind {
 		return c.err
 	}
 	return c.Client.Patch(ctx, object, patch, opts...)
@@ -606,7 +607,7 @@ type nthInfraPatchErrorClient struct {
 }
 
 func (c *nthInfraPatchErrorClient) Patch(ctx context.Context, object client.Object, patch client.Patch, opts ...client.PatchOption) error {
-	if object.GetObjectKind().GroupVersionKind().Kind == "TestMachine" {
+	if object.GetObjectKind().GroupVersionKind().Kind == testMachineKind {
 		c.count++
 		if c.count == c.failAt {
 			return c.err

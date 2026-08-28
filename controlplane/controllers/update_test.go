@@ -407,9 +407,9 @@ func TestSyncMachinesRefreshesRolloutMachineBeforeInPlaceSelection(t *testing.T)
 
 func TestSyncMachinesMarksUnsupportedOwnershipAndContinuesNormalSync(t *testing.T) {
 	g := NewWithT(t)
-	controlPlane, _, _, _, _, c := newRolloutControlPlane(t, 1, 1, 0, []int{0}, false)
-	controlPlane.KthreesConfigs = map[string]*bootstrapv1.KThreesConfig{}
-	infraMachine := controlPlane.InfraResources["machine-0"]
+	fixture := newRolloutControlPlaneFixture(t, 1, 1, 0, []int{0}, false)
+	fixture.controlPlane.KthreesConfigs = map[string]*bootstrapv1.KThreesConfig{}
+	infraMachine := fixture.controlPlane.InfraResources["machine-0"]
 	infraMachine.SetManagedFields([]metav1.ManagedFieldsEntry{
 		{
 			Manager:    "manager",
@@ -427,34 +427,43 @@ func TestSyncMachinesMarksUnsupportedOwnershipAndContinuesNormalSync(t *testing.
 		},
 	})
 
-	trackingClient := &relatedObjectSyncTrackingClient{Client: c}
+	trackingClient := &relatedObjectSyncTrackingClient{Client: fixture.client}
 	r := &KThreesControlPlaneReconciler{
 		Client:    trackingClient,
 		apiReader: trackingClient,
 		ssaCache:  ssa.NewCache(),
 	}
 
-	migrationCompleted, err := r.syncMachines(context.Background(), controlPlane)
+	migrationCompleted, err := r.syncMachines(context.Background(), fixture.controlPlane)
 
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(migrationCompleted).To(BeFalse())
 	g.Expect(trackingClient.applyPatchCount).To(BeNumerically(">", 0))
-	_, results := controlPlane.MachinesNeedingRolloutWithResults()
+	_, results := fixture.controlPlane.MachinesNeedingRolloutWithResults()
 	result := results["machine-0"]
 	g.Expect(result.EligibleForInPlaceUpdate).To(BeFalse())
 	g.Expect(result.LogMessages).To(ContainElement("related-object spec ownership spans multiple API versions"))
 	g.Expect(result.ConditionMessages).To(ContainElement("Related-object ownership requires Machine replacement"))
-	g.Expect(controlPlane.MachinesNeedingRollout().Names()).To(ConsistOf("machine-0"))
+	g.Expect(fixture.controlPlane.MachinesNeedingRollout().Names()).To(ConsistOf("machine-0"))
 }
 
-func newRolloutControlPlane(
+type rolloutControlPlaneFixture struct {
+	controlPlane           *k3s.ControlPlane
+	cluster                *clusterv1.Cluster
+	kcp                    *controlplanev1.KThreesControlPlane
+	machinesNeedingRollout collections.Machines
+	results                map[string]k3s.UpToDateResult
+	client                 client.Client
+}
+
+func newRolloutControlPlaneFixture(
 	t *testing.T,
 	current int,
 	desired int32,
 	maxSurge int,
 	outdated []int,
 	withEtcdSecret bool,
-) (*k3s.ControlPlane, *clusterv1.Cluster, *controlplanev1.KThreesControlPlane, collections.Machines, map[string]k3s.UpToDateResult, client.Client) {
+) *rolloutControlPlaneFixture {
 	t.Helper()
 	g := NewWithT(t)
 	scheme := runtime.NewScheme()
@@ -553,7 +562,32 @@ func newRolloutControlPlane(
 	controlPlane, err := k3s.NewControlPlane(context.Background(), c, cluster, kcp, machines)
 	g.Expect(err).NotTo(HaveOccurred())
 	machinesNeedingRollout, results := controlPlane.MachinesNeedingRolloutWithResults()
-	return controlPlane, cluster, kcp, machinesNeedingRollout, results, c
+	return &rolloutControlPlaneFixture{
+		controlPlane:           controlPlane,
+		cluster:                cluster,
+		kcp:                    kcp,
+		machinesNeedingRollout: machinesNeedingRollout,
+		results:                results,
+		client:                 c,
+	}
+}
+
+func newRolloutControlPlane(
+	t *testing.T,
+	current int,
+	desired int32,
+	maxSurge int,
+	outdated []int,
+	withEtcdSecret bool,
+) (*k3s.ControlPlane, *clusterv1.Cluster, *controlplanev1.KThreesControlPlane, collections.Machines, map[string]k3s.UpToDateResult, client.Client) {
+	t.Helper()
+	fixture := newRolloutControlPlaneFixture(t, current, desired, maxSurge, outdated, withEtcdSecret)
+	return fixture.controlPlane,
+		fixture.cluster,
+		fixture.kcp,
+		fixture.machinesNeedingRollout,
+		fixture.results,
+		fixture.client
 }
 
 // machineApplyResourceVersionClient models the resourceVersion returned by an SSA Machine update.

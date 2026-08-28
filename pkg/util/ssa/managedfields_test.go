@@ -35,6 +35,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
+const (
+	managedFieldsTestMainManager     = "capi-kthreescontrolplane"
+	managedFieldsTestMetadataManager = "capi-kthreescontrolplane-metadata"
+	managedFieldsTestAPIVersion      = "infrastructure.cluster.x-k8s.io/v1beta1"
+)
+
 type managedFieldsPatchClient struct {
 	client.Client
 	patchAttempts                  int
@@ -400,7 +406,7 @@ func TestRemoveManagedFieldsForLabelsAndAnnotationsLimitsConflictRetries(t *test
 		c,
 		apiReader,
 		obj,
-		"capi-kthreescontrolplane",
+		managedFieldsTestMainManager,
 	)
 	g.Expect(err).To(HaveOccurred())
 	g.Expect(apierrors.IsConflict(err)).To(BeTrue())
@@ -417,7 +423,7 @@ func TestRemoveManagedFieldsForLabelsAndAnnotationsRejectsNilFieldsV1(t *testing
 			Name:      "related-object",
 			Namespace: metav1.NamespaceDefault,
 			ManagedFields: []metav1.ManagedFieldsEntry{{
-				Manager:    "capi-kthreescontrolplane",
+				Manager:    managedFieldsTestMainManager,
 				Operation:  metav1.ManagedFieldsOperationApply,
 				APIVersion: "v1",
 				FieldsType: "FieldsV1",
@@ -431,23 +437,25 @@ func TestRemoveManagedFieldsForLabelsAndAnnotationsRejectsNilFieldsV1(t *testing
 		c,
 		c,
 		obj,
-		"capi-kthreescontrolplane",
+		managedFieldsTestMainManager,
 	)
 	g.Expect(err).To(MatchError(ContainSubstring("nil FieldsV1")))
 	g.Expect(c.patchAttempts).To(BeZero())
 }
 
 func TestMigrateManagedFieldsHistoricalLayouts(t *testing.T) {
-	mainManager := "capi-kthreescontrolplane"
-	metadataManager := "capi-kthreescontrolplane-metadata"
-	apiVersion := "infrastructure.cluster.x-k8s.io/v1beta1"
+	const (
+		mainManager     = managedFieldsTestMainManager
+		metadataManager = managedFieldsTestMetadataManager
+		apiVersion      = managedFieldsTestAPIVersion
+	)
 	mainTime := metav1.Now()
 	metadataTime := metav1.Now()
-	mainStatus := managedFieldsEntry(mainManager, metav1.ManagedFieldsOperationApply, apiVersion, `{"f:status":{"f:ready":{}}}`)
+	mainStatus := managedFieldsEntry(managedFieldsTestMainManager, metav1.ManagedFieldsOperationApply, managedFieldsTestAPIVersion, `{"f:status":{"f:ready":{}}}`)
 	mainStatus.Subresource = "status"
-	classicStatus := managedFieldsEntry(classicManager, metav1.ManagedFieldsOperationUpdate, apiVersion, `{"f:status":{"f:ready":{}}}`)
+	classicStatus := managedFieldsEntry(classicManager, metav1.ManagedFieldsOperationUpdate, managedFieldsTestAPIVersion, `{"f:status":{"f:ready":{}}}`)
 	classicStatus.Subresource = "status"
-	unrelatedApply := managedFieldsEntry("provider-defaults", metav1.ManagedFieldsOperationApply, apiVersion, `{"f:spec":{"f:providerDefault":{}}}`)
+	unrelatedApply := managedFieldsEntry("provider-defaults", metav1.ManagedFieldsOperationApply, managedFieldsTestAPIVersion, `{"f:spec":{"f:providerDefault":{}}}`)
 
 	tests := []struct {
 		name                 string
@@ -629,7 +637,7 @@ func TestMigrateManagedFieldsHistoricalLayouts(t *testing.T) {
 				g.Expect(c.patchAttempts).To(BeZero())
 			}
 
-			mainEntry := findManagedFieldsEntry(obj, mainManager, metav1.ManagedFieldsOperationApply, "")
+			mainEntry := findManagedFieldsEntry(obj, mainManager, metav1.ManagedFieldsOperationApply)
 			g.Expect(mainEntry).NotTo(BeNil())
 			g.Expect(mainEntry.APIVersion).To(Equal(tt.wantSpecAPIVersion))
 			for _, path := range tt.wantSpecPaths {
@@ -641,7 +649,7 @@ func TestMigrateManagedFieldsHistoricalLayouts(t *testing.T) {
 				g.Expect(mainEntry.Time).To(Equal(tt.wantMainTime))
 			}
 
-			metadataEntry := findManagedFieldsEntry(obj, metadataManager, metav1.ManagedFieldsOperationApply, "")
+			metadataEntry := findManagedFieldsEntry(obj, metadataManager, metav1.ManagedFieldsOperationApply)
 			g.Expect(metadataEntry).NotTo(BeNil())
 			g.Expect(managedFieldsEntryOwns(t, metadataEntry, "f:metadata", "f:labels", "f:cluster.x-k8s.io/cluster-name")).To(BeTrue())
 			g.Expect(managedFieldsEntryOwns(t, metadataEntry, "f:metadata", "f:annotations", "f:stale.example.io/value")).To(BeTrue())
@@ -649,7 +657,7 @@ func TestMigrateManagedFieldsHistoricalLayouts(t *testing.T) {
 				g.Expect(metadataEntry.Time).To(Equal(tt.wantMetadataTime))
 			}
 
-			classicEntry := findManagedFieldsEntry(obj, classicManager, metav1.ManagedFieldsOperationUpdate, "")
+			classicEntry := findManagedFieldsEntry(obj, classicManager, metav1.ManagedFieldsOperationUpdate)
 			if tt.wantClassicPath == nil {
 				g.Expect(classicEntry).To(BeNil())
 			} else {
@@ -684,22 +692,19 @@ func TestMigrateManagedFieldsPreservesSpecEntryTimestampWhenEarlierMainEntryBeco
 	scheme := runtime.NewScheme()
 	g.Expect(corev1.AddToScheme(scheme)).To(Succeed())
 
-	mainManager := "capi-kthreescontrolplane"
-	metadataManager := "capi-kthreescontrolplane-metadata"
-	apiVersion := "infrastructure.cluster.x-k8s.io/v1beta1"
 	metadataOnlyTime := metav1.NewTime(time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC))
 	specTime := metav1.NewTime(time.Date(2026, time.February, 1, 0, 0, 0, 0, time.UTC))
 	metadataOnlyEntry := managedFieldsEntry(
-		mainManager,
+		managedFieldsTestMainManager,
 		metav1.ManagedFieldsOperationApply,
-		apiVersion,
+		managedFieldsTestAPIVersion,
 		`{"f:metadata":{"f:labels":{"f:cluster.x-k8s.io/cluster-name":{}}}}`,
 	)
 	metadataOnlyEntry.Time = &metadataOnlyTime
 	specEntry := managedFieldsEntry(
-		mainManager,
+		managedFieldsTestMainManager,
 		metav1.ManagedFieldsOperationApply,
-		apiVersion,
+		managedFieldsTestAPIVersion,
 		`{"f:spec":{"f:diskSize":{}}}`,
 	)
 	specEntry.Time = &specTime
@@ -714,11 +719,18 @@ func TestMigrateManagedFieldsPreservesSpecEntryTimestampWhenEarlierMainEntryBeco
 	}
 	c := &managedFieldsPatchClient{Client: fake.NewClientBuilder().WithScheme(scheme).Build()}
 
-	result, err := MigrateManagedFields(context.Background(), c, c, obj, mainManager, metadataManager)
+	result, err := MigrateManagedFields(
+		context.Background(),
+		c,
+		c,
+		obj,
+		managedFieldsTestMainManager,
+		managedFieldsTestMetadataManager,
+	)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(result).To(Equal(ManagedFieldsMigrationResult{Outcome: ManagedFieldsMigrationCompleted}))
 
-	mainEntry := findManagedFieldsEntry(obj, mainManager, metav1.ManagedFieldsOperationApply, "")
+	mainEntry := findManagedFieldsEntry(obj, managedFieldsTestMainManager, metav1.ManagedFieldsOperationApply)
 	g.Expect(mainEntry).NotTo(BeNil())
 	g.Expect(mainEntry.Time).To(Equal(&specTime))
 	g.Expect(managedFieldsEntryOwns(t, mainEntry, "f:spec", "f:diskSize")).To(BeTrue())
@@ -735,7 +747,7 @@ func TestMigrateManagedFieldsRejectsMultipleSpecAPIVersions(t *testing.T) {
 				managedFieldsEntry(
 					classicManager,
 					metav1.ManagedFieldsOperationUpdate,
-					"infrastructure.cluster.x-k8s.io/v1beta1",
+					managedFieldsTestAPIVersion,
 					`{"f:spec":{"f:diskSize":{}}}`,
 				),
 				managedFieldsEntry(
@@ -750,7 +762,7 @@ func TestMigrateManagedFieldsRejectsMultipleSpecAPIVersions(t *testing.T) {
 			name: "preserved main fields would require another Apply identity",
 			managedFields: []metav1.ManagedFieldsEntry{
 				managedFieldsEntry(
-					"capi-kthreescontrolplane",
+					managedFieldsTestMainManager,
 					metav1.ManagedFieldsOperationApply,
 					"infrastructure.cluster.x-k8s.io/v1beta2",
 					`{
@@ -761,7 +773,7 @@ func TestMigrateManagedFieldsRejectsMultipleSpecAPIVersions(t *testing.T) {
 				managedFieldsEntry(
 					classicManager,
 					metav1.ManagedFieldsOperationUpdate,
-					"infrastructure.cluster.x-k8s.io/v1beta1",
+					managedFieldsTestAPIVersion,
 					`{"f:spec":{"f:diskSize":{}}}`,
 				),
 			},
@@ -785,9 +797,8 @@ func TestMigrateManagedFieldsRejectsMultipleSpecAPIVersions(t *testing.T) {
 			originalManagedFields := obj.GetManagedFields()
 			originalMainEntries := countManagedFieldsEntries(
 				obj,
-				"capi-kthreescontrolplane",
+				managedFieldsTestMainManager,
 				metav1.ManagedFieldsOperationApply,
-				"",
 			)
 			c := &managedFieldsPatchClient{Client: fake.NewClientBuilder().WithScheme(scheme).Build()}
 
@@ -796,8 +807,8 @@ func TestMigrateManagedFieldsRejectsMultipleSpecAPIVersions(t *testing.T) {
 				c,
 				c,
 				obj,
-				"capi-kthreescontrolplane",
-				"capi-kthreescontrolplane-metadata",
+				managedFieldsTestMainManager,
+				managedFieldsTestMetadataManager,
 			)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(result).To(Equal(ManagedFieldsMigrationResult{
@@ -808,9 +819,8 @@ func TestMigrateManagedFieldsRejectsMultipleSpecAPIVersions(t *testing.T) {
 			g.Expect(obj.GetManagedFields()).To(Equal(originalManagedFields))
 			g.Expect(countManagedFieldsEntries(
 				obj,
-				"capi-kthreescontrolplane",
+				managedFieldsTestMainManager,
 				metav1.ManagedFieldsOperationApply,
-				"",
 			)).To(Equal(originalMainEntries))
 		})
 	}
@@ -836,9 +846,9 @@ func TestMigrateManagedFieldsRejectsInvalidFieldsV1(t *testing.T) {
 					Name:      "related-object",
 					Namespace: metav1.NamespaceDefault,
 					ManagedFields: []metav1.ManagedFieldsEntry{{
-						Manager:    "capi-kthreescontrolplane",
+						Manager:    managedFieldsTestMainManager,
 						Operation:  metav1.ManagedFieldsOperationApply,
-						APIVersion: "infrastructure.cluster.x-k8s.io/v1beta1",
+						APIVersion: managedFieldsTestAPIVersion,
 						FieldsType: "FieldsV1",
 						FieldsV1:   tt.fieldsV1,
 					}},
@@ -851,8 +861,8 @@ func TestMigrateManagedFieldsRejectsInvalidFieldsV1(t *testing.T) {
 				c,
 				c,
 				obj,
-				"capi-kthreescontrolplane",
-				"capi-kthreescontrolplane-metadata",
+				managedFieldsTestMainManager,
+				managedFieldsTestMetadataManager,
 			)
 			g.Expect(err).To(MatchError(ContainSubstring("FieldsV1")))
 			g.Expect(c.patchAttempts).To(BeZero())
@@ -864,10 +874,7 @@ func TestMigrateManagedFieldsRetriesConflictFromLiveState(t *testing.T) {
 	g := NewWithT(t)
 	scheme := runtime.NewScheme()
 	g.Expect(corev1.AddToScheme(scheme)).To(Succeed())
-	mainManager := "capi-kthreescontrolplane"
-	metadataManager := "capi-kthreescontrolplane-metadata"
-	apiVersion := "infrastructure.cluster.x-k8s.io/v1beta1"
-	classicEntry := managedFieldsEntry(classicManager, metav1.ManagedFieldsOperationUpdate, apiVersion, `{
+	classicEntry := managedFieldsEntry(classicManager, metav1.ManagedFieldsOperationUpdate, managedFieldsTestAPIVersion, `{
 		"f:metadata":{"f:labels":{"f:cluster.x-k8s.io/cluster-name":{}}},
 		"f:spec":{"f:diskSize":{}}
 	}`)
@@ -893,7 +900,14 @@ func TestMigrateManagedFieldsRetriesConflictFromLiveState(t *testing.T) {
 	}
 	apiReader := &configMapReader{Reader: baseClient, object: newer}
 
-	result, err := MigrateManagedFields(context.Background(), c, apiReader, obj, mainManager, metadataManager)
+	result, err := MigrateManagedFields(
+		context.Background(),
+		c,
+		apiReader,
+		obj,
+		managedFieldsTestMainManager,
+		managedFieldsTestMetadataManager,
+	)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(result).To(Equal(ManagedFieldsMigrationResult{Outcome: ManagedFieldsMigrationCompleted}))
 	g.Expect(c.patchAttempts).To(Equal(2))
@@ -909,7 +923,6 @@ func TestMigrateManagedFieldsRecomputesUnsupportedAfterConflict(t *testing.T) {
 	g := NewWithT(t)
 	scheme := runtime.NewScheme()
 	g.Expect(corev1.AddToScheme(scheme)).To(Succeed())
-	apiVersionV1 := "infrastructure.cluster.x-k8s.io/v1beta1"
 	obj := &corev1.ConfigMap{
 		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "ConfigMap"},
 		ObjectMeta: metav1.ObjectMeta{
@@ -917,7 +930,7 @@ func TestMigrateManagedFieldsRecomputesUnsupportedAfterConflict(t *testing.T) {
 			Namespace:       metav1.NamespaceDefault,
 			ResourceVersion: "1",
 			ManagedFields: []metav1.ManagedFieldsEntry{
-				managedFieldsEntry(classicManager, metav1.ManagedFieldsOperationUpdate, apiVersionV1, `{"f:spec":{"f:diskSize":{}}}`),
+				managedFieldsEntry(classicManager, metav1.ManagedFieldsOperationUpdate, managedFieldsTestAPIVersion, `{"f:spec":{"f:diskSize":{}}}`),
 			},
 		},
 	}
@@ -938,8 +951,8 @@ func TestMigrateManagedFieldsRecomputesUnsupportedAfterConflict(t *testing.T) {
 		c,
 		apiReader,
 		obj,
-		"capi-kthreescontrolplane",
-		"capi-kthreescontrolplane-metadata",
+		managedFieldsTestMainManager,
+		managedFieldsTestMetadataManager,
 	)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(result).To(Equal(ManagedFieldsMigrationResult{
@@ -964,8 +977,8 @@ func TestMigrateManagedFieldsReturnsLiveReadError(t *testing.T) {
 		c,
 		apiReader,
 		obj,
-		"capi-kthreescontrolplane",
-		"capi-kthreescontrolplane-metadata",
+		managedFieldsTestMainManager,
+		managedFieldsTestMetadataManager,
 	)
 	g.Expect(err).To(MatchError(ContainSubstring("live read failed")))
 	g.Expect(c.patchAttempts).To(Equal(1))
@@ -991,8 +1004,8 @@ func TestMigrateManagedFieldsLimitsConflictRetries(t *testing.T) {
 		c,
 		apiReader,
 		obj,
-		"capi-kthreescontrolplane",
-		"capi-kthreescontrolplane-metadata",
+		managedFieldsTestMainManager,
+		managedFieldsTestMetadataManager,
 	)
 	g.Expect(err).To(HaveOccurred())
 	g.Expect(apierrors.IsConflict(err)).To(BeTrue())
@@ -1022,7 +1035,7 @@ func migratableConfigMap() *corev1.ConfigMap {
 				managedFieldsEntry(
 					classicManager,
 					metav1.ManagedFieldsOperationUpdate,
-					"infrastructure.cluster.x-k8s.io/v1beta1",
+					managedFieldsTestAPIVersion,
 					`{
 						"f:metadata":{"f:labels":{"f:cluster.x-k8s.io/cluster-name":{}}},
 						"f:spec":{"f:diskSize":{}}
@@ -1047,12 +1060,11 @@ func findManagedFieldsEntry(
 	obj client.Object,
 	manager string,
 	operation metav1.ManagedFieldsOperationType,
-	subresource string,
 ) *metav1.ManagedFieldsEntry {
 	managedFields := obj.GetManagedFields()
 	for i := range managedFields {
 		entry := &managedFields[i]
-		if entry.Manager == manager && entry.Operation == operation && entry.Subresource == subresource {
+		if entry.Manager == manager && entry.Operation == operation && entry.Subresource == "" {
 			return entry
 		}
 	}
@@ -1063,11 +1075,10 @@ func countManagedFieldsEntries(
 	obj client.Object,
 	manager string,
 	operation metav1.ManagedFieldsOperationType,
-	subresource string,
 ) int {
 	count := 0
 	for _, entry := range obj.GetManagedFields() {
-		if entry.Manager == manager && entry.Operation == operation && entry.Subresource == subresource {
+		if entry.Manager == manager && entry.Operation == operation && entry.Subresource == "" {
 			count++
 		}
 	}
