@@ -52,7 +52,7 @@ func (in *KThreesControlPlane) ValidateCreate(_ context.Context, obj runtime.Obj
 		return nil, apierrors.NewBadRequest(fmt.Sprintf("expected a KThreesControlPlane but got a %T", obj))
 	}
 
-	allErrs := validateKThreesControlPlaneSpec(&kcp.Spec, field.NewPath("spec"))
+	allErrs := validateKThreesControlPlaneSpec(&kcp.Spec, field.NewPath("spec"), false)
 	if len(allErrs) > 0 {
 		return nil, apierrors.NewInvalid(GroupVersion.WithKind("KThreesControlPlane").GroupKind(), kcp.Name, allErrs)
 	}
@@ -60,13 +60,22 @@ func (in *KThreesControlPlane) ValidateCreate(_ context.Context, obj runtime.Obj
 }
 
 // ValidateUpdate will do any extra validation when updating a KThreesControlPlane.
-func (in *KThreesControlPlane) ValidateUpdate(_ context.Context, _, newObj runtime.Object) (admission.Warnings, error) {
+func (in *KThreesControlPlane) ValidateUpdate(_ context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
+	oldKCP, ok := oldObj.(*KThreesControlPlane)
+	if !ok {
+		return nil, apierrors.NewBadRequest(fmt.Sprintf("expected a KThreesControlPlane but got a %T", oldObj))
+	}
+
 	kcp, ok := newObj.(*KThreesControlPlane)
 	if !ok {
 		return nil, apierrors.NewBadRequest(fmt.Sprintf("expected a KThreesControlPlane but got a %T", newObj))
 	}
 
-	allErrs := validateKThreesControlPlaneSpec(&kcp.Spec, field.NewPath("spec"))
+	allErrs := validateKThreesControlPlaneSpec(
+		&kcp.Spec,
+		field.NewPath("spec"),
+		retainsUnsafeZeroSurgeConfiguration(&oldKCP.Spec, &kcp.Spec),
+	)
 	if len(allErrs) > 0 {
 		return nil, apierrors.NewInvalid(GroupVersion.WithKind("KThreesControlPlane").GroupKind(), kcp.Name, allErrs)
 	}
@@ -121,7 +130,11 @@ func defaultKThreesControlPlaneSpec(s *KThreesControlPlaneSpec, namespace string
 	}
 }
 
-func validateKThreesControlPlaneSpec(s *KThreesControlPlaneSpec, pathPrefix *field.Path) field.ErrorList {
+func validateKThreesControlPlaneSpec(
+	s *KThreesControlPlaneSpec,
+	pathPrefix *field.Path,
+	allowUnsafeZeroSurge bool,
+) field.ErrorList {
 	if s.RolloutStrategy == nil {
 		return nil
 	}
@@ -148,13 +161,38 @@ func validateKThreesControlPlaneSpec(s *KThreesControlPlaneSpec, pathPrefix *fie
 	}
 
 	replicas := ptr.Deref(s.Replicas, 1)
-	if maxSurge == 0 && replicas < 3 && !feature.Gates.Enabled(feature.InPlaceUpdates) {
+	if maxSurge == 0 && replicas < 3 && !feature.Gates.Enabled(feature.InPlaceUpdates) && !allowUnsafeZeroSurge {
 		allErrs = append(allErrs, field.Forbidden(
 			rolloutStrategyPath.Child("rollingUpdate"),
 			"when KThreesControlPlane is configured with maxSurge 0, replica count needs to be at least 3 unless InPlaceUpdates is enabled",
 		))
 	}
 	return allErrs
+}
+
+func retainsUnsafeZeroSurgeConfiguration(
+	oldSpec *KThreesControlPlaneSpec,
+	newSpec *KThreesControlPlaneSpec,
+) bool {
+	oldReplicas := ptr.Deref(oldSpec.Replicas, int32(1))
+	newReplicas := ptr.Deref(newSpec.Replicas, int32(1))
+
+	var oldMaxSurgeValue, newMaxSurgeValue *intstr.IntOrString
+	if oldSpec.RolloutStrategy != nil && oldSpec.RolloutStrategy.RollingUpdate != nil {
+		oldMaxSurgeValue = oldSpec.RolloutStrategy.RollingUpdate.MaxSurge
+	}
+	if newSpec.RolloutStrategy != nil && newSpec.RolloutStrategy.RollingUpdate != nil {
+		newMaxSurgeValue = newSpec.RolloutStrategy.RollingUpdate.MaxSurge
+	}
+
+	oldMaxSurge, oldErr := parseMaxSurge(oldMaxSurgeValue)
+	newMaxSurge, newErr := parseMaxSurge(newMaxSurgeValue)
+	return oldErr == nil &&
+		newErr == nil &&
+		oldMaxSurge == 0 &&
+		newMaxSurge == 0 &&
+		oldReplicas == newReplicas &&
+		newReplicas < 3
 }
 
 func parseMaxSurge(value *intstr.IntOrString) (int32, error) {
