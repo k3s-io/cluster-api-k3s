@@ -25,6 +25,7 @@ import (
 	runtimehooksv1 "sigs.k8s.io/cluster-api/api/runtime/hooks/v1alpha1"
 	"sigs.k8s.io/cluster-api/util/collections"
 
+	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
 	"github.com/k3s-io/cluster-api-k3s/pkg/capi/hooks"
 )
 
@@ -94,6 +95,28 @@ func TestMachinesNeedingRolloutCompatibilityAndDetailedResults(t *testing.T) {
 	g.Expect(controlPlane.UpToDateMachines().Names()).To(ConsistOf(upToDate.Name))
 }
 
+func TestInitializedEmptyRolloutCaches(t *testing.T) {
+	g := NewWithT(t)
+	machine := &clusterv1.Machine{
+		ObjectMeta: metav1.ObjectMeta{Name: "outdated-by-legacy-filter"},
+		Spec:       clusterv1.MachineSpec{Version: "v1.30.0+k3s1"},
+	}
+	controlPlane := &ControlPlane{
+		KCP: &controlplanev1.KThreesControlPlane{
+			Spec: controlplanev1.KThreesControlPlaneSpec{Version: "v1.31.0+k3s1"},
+		},
+		Machines:                collections.FromMachines(machine),
+		machinesNotUpToDate:     collections.Machines{},
+		machinesUpToDateResults: map[string]UpToDateResult{},
+	}
+
+	g.Expect(controlPlane.MachinesNeedingRollout()).To(BeEmpty())
+	notUpToDate, results := controlPlane.NotUpToDateMachines()
+	g.Expect(notUpToDate).To(BeEmpty())
+	g.Expect(results).To(BeEmpty())
+	g.Expect(controlPlane.UpToDateMachines().Names()).To(ConsistOf(machine.Name))
+}
+
 func TestMarkInPlaceUpdateUnsupportedMutatesOnlyNamedCachedResult(t *testing.T) {
 	g := NewWithT(t)
 	machine1 := &clusterv1.Machine{ObjectMeta: metav1.ObjectMeta{Name: "machine-1"}}
@@ -139,8 +162,9 @@ func TestReplaceMachineUpdatesCachedCollectionsWithoutChangingMembership(t *test
 	otherOutdated := &clusterv1.Machine{ObjectMeta: metav1.ObjectMeta{Name: "other-outdated", ResourceVersion: "1"}}
 	upToDate := &clusterv1.Machine{ObjectMeta: metav1.ObjectMeta{Name: "up-to-date", ResourceVersion: "1"}}
 	controlPlane := &ControlPlane{
-		Machines:            collections.FromMachines(outdated, otherOutdated, upToDate),
-		machinesNotUpToDate: collections.FromMachines(outdated, otherOutdated),
+		Machines:                collections.FromMachines(outdated, otherOutdated, upToDate),
+		machinesNotUpToDate:     collections.FromMachines(outdated, otherOutdated),
+		machinesUpToDateResults: map[string]UpToDateResult{},
 	}
 
 	updatedOutdated := outdated.DeepCopy()

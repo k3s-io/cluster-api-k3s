@@ -45,6 +45,7 @@ import (
 	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
 	"github.com/k3s-io/cluster-api-k3s/pkg/capi/hooks"
 	"github.com/k3s-io/cluster-api-k3s/pkg/capi/inplace"
+	"github.com/k3s-io/cluster-api-k3s/pkg/machinefilters"
 )
 
 var (
@@ -364,20 +365,35 @@ func (c *ControlPlane) MachinesNeedingRollout() collections.Machines {
 	return machines
 }
 
+func (c *ControlPlane) rolloutState() (collections.Machines, map[string]UpToDateResult) {
+	if c.machinesNotUpToDate != nil && c.machinesUpToDateResults != nil {
+		return c.machinesNotUpToDate, c.machinesUpToDateResults
+	}
+
+	kthreesConfigs := make(map[string]*bootstrapv1.KThreesConfig, len(c.KthreesConfigs))
+	for name, config := range c.KthreesConfigs {
+		kthreesConfigs[name] = config.DeepCopy()
+	}
+	matchesConfiguration := machinefilters.MatchesKCPConfiguration(c.InfraResources, kthreesConfigs, c.KCP)
+	return c.Machines.Filter(collections.Not(matchesConfiguration)), map[string]UpToDateResult{}
+}
+
 // MachinesNeedingRolloutWithResults returns Machines that need rollout and their cached desired-state results.
 func (c *ControlPlane) MachinesNeedingRolloutWithResults() (collections.Machines, map[string]UpToDateResult) {
-	return c.machinesNotUpToDate.Filter(collections.Not(collections.HasDeletionTimestamp)), c.machinesUpToDateResults
+	machinesNotUpToDate, results := c.rolloutState()
+	return machinesNotUpToDate.Filter(collections.Not(collections.HasDeletionTimestamp)), results
 }
 
 // NotUpToDateMachines returns Machines that do not match desired state and all cached comparison results.
 func (c *ControlPlane) NotUpToDateMachines() (collections.Machines, map[string]UpToDateResult) {
-	return c.machinesNotUpToDate, c.machinesUpToDateResults
+	return c.rolloutState()
 }
 
 // UpToDateMachines returns the machines that are up to date with the control
 // plane's configuration and therefore do not require rollout.
 func (c *ControlPlane) UpToDateMachines() collections.Machines {
-	return c.Machines.Difference(c.machinesNotUpToDate)
+	machinesNotUpToDate, _ := c.rolloutState()
+	return c.Machines.Difference(machinesNotUpToDate)
 }
 
 // MachinesToCompleteTriggerInPlaceUpdate returns Machines for which triggering an in-place update only partially completed.

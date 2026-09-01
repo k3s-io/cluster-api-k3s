@@ -36,6 +36,8 @@ import (
 var (
 	_ func(*k3s.ControlPlane) collections.Machines                                                               = (*k3s.ControlPlane).MachinesNeedingRollout
 	_ func(*k3s.ControlPlane) (collections.Machines, map[string]k3s.UpToDateResult)                              = (*k3s.ControlPlane).MachinesNeedingRolloutWithResults
+	_ func(*k3s.ControlPlane) (collections.Machines, map[string]k3s.UpToDateResult)                              = (*k3s.ControlPlane).NotUpToDateMachines
+	_ func(*k3s.ControlPlane) collections.Machines                                                               = (*k3s.ControlPlane).UpToDateMachines
 	_ func(*k3s.ControlPlane, *bootstrapv1.KThreesConfigSpec) *bootstrapv1.KThreesConfig                         = (*k3s.ControlPlane).GenerateKThreesConfig
 	_ func(*k3s.ControlPlane, *corev1.ObjectReference, *corev1.ObjectReference, *string) *clusterv1beta1.Machine = (*k3s.ControlPlane).NewMachine
 	_ func(string, controlplanev1.KThreesControlPlaneMachineTemplate) map[string]string                          = k3s.ControlPlaneLabelsForCluster
@@ -46,6 +48,100 @@ var (
 	_ func(map[string]*bootstrapv1.KThreesConfig, *controlplanev1.KThreesControlPlane) machinefilters.Func                                                  = machinefilters.MatchesKThreesBootstrapConfig
 	_ func() machinefilters.Func                                                                                                                            = machinefilters.AgentHealthy
 )
+
+func TestMachinesNeedingRolloutCompositeLiteral(t *testing.T) {
+	g := NewWithT(t)
+	const (
+		desiredVersion = "v1.31.2+k3s1"
+		storedVersion  = "v1.30.8+k3s1"
+	)
+	kcp := &controlplanev1.KThreesControlPlane{
+		Spec: controlplanev1.KThreesControlPlaneSpec{
+			Version: desiredVersion,
+			MachineTemplate: controlplanev1.KThreesControlPlaneMachineTemplate{
+				InfrastructureRef: corev1.ObjectReference{
+					APIVersion: "infrastructure.cluster.x-k8s.io/v1beta1",
+					Kind:       "TestMachineTemplate",
+					Name:       "desired-template",
+				},
+			},
+			KThreesConfigSpec: bootstrapv1.KThreesConfigSpec{
+				PreK3sCommands: []string{"desired"},
+			},
+		},
+	}
+	bootstrapRef := clusterv1.ContractVersionedObjectReference{
+		APIGroup: bootstrapv1.GroupVersion.Group,
+		Kind:     "KThreesConfig",
+		Name:     "config",
+	}
+	newMachine := func(name, version string) *clusterv1.Machine {
+		return &clusterv1.Machine{
+			ObjectMeta: metav1.ObjectMeta{Name: name},
+			Spec: clusterv1.MachineSpec{
+				Version:   version,
+				Bootstrap: clusterv1.Bootstrap{ConfigRef: bootstrapRef},
+			},
+		}
+	}
+	matching := newMachine("matching", desiredVersion)
+	versionMismatch := newMachine("version-mismatch", storedVersion)
+	bootstrapMismatch := newMachine("bootstrap-mismatch", desiredVersion)
+	infraMismatch := newMachine("infra-mismatch", desiredVersion)
+	deletingMismatch := newMachine("deleting-mismatch", storedVersion)
+	now := metav1.Now()
+	deletingMismatch.DeletionTimestamp = &now
+
+	machines := collections.FromMachines(matching, versionMismatch, bootstrapMismatch, infraMismatch, deletingMismatch)
+	configs := map[string]*bootstrapv1.KThreesConfig{}
+	infraResources := map[string]*unstructured.Unstructured{}
+	for name := range machines {
+		configs[name] = &bootstrapv1.KThreesConfig{
+			Spec: bootstrapv1.KThreesConfigSpec{
+				Version:        storedVersion,
+				PreK3sCommands: []string{"desired"},
+			},
+		}
+		infraResources[name] = &unstructured.Unstructured{Object: map[string]interface{}{
+			"metadata": map[string]interface{}{
+				"annotations": map[string]interface{}{
+					clusterv1beta1.TemplateClonedFromNameAnnotation:      "desired-template",
+					clusterv1beta1.TemplateClonedFromGroupKindAnnotation: "TestMachineTemplate.infrastructure.cluster.x-k8s.io",
+				},
+			},
+		}}
+	}
+	configs[bootstrapMismatch.Name].Spec.PreK3sCommands = []string{"old"}
+	infraResources[infraMismatch.Name].SetAnnotations(map[string]string{
+		clusterv1beta1.TemplateClonedFromNameAnnotation:      "old-template",
+		clusterv1beta1.TemplateClonedFromGroupKindAnnotation: "TestMachineTemplate.infrastructure.cluster.x-k8s.io",
+	})
+
+	controlPlane := &k3s.ControlPlane{
+		KCP:            kcp,
+		Cluster:        &clusterv1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "cluster-1"}},
+		Machines:       machines,
+		KthreesConfigs: configs,
+		InfraResources: infraResources,
+	}
+
+	g.Expect(controlPlane.MachinesNeedingRollout().Names()).To(ConsistOf(
+		versionMismatch.Name,
+		bootstrapMismatch.Name,
+		infraMismatch.Name,
+	))
+	g.Expect(controlPlane.UpToDateMachines().Names()).To(ConsistOf(matching.Name))
+	notUpToDate, results := controlPlane.NotUpToDateMachines()
+	g.Expect(notUpToDate.Names()).To(ConsistOf(
+		versionMismatch.Name,
+		bootstrapMismatch.Name,
+		infraMismatch.Name,
+		deletingMismatch.Name,
+	))
+	g.Expect(results).NotTo(BeNil())
+	g.Expect(results).To(BeEmpty())
+	g.Expect(configs[matching.Name].Spec.Version).To(Equal(storedVersion))
+}
 
 func TestLegacyControlPlaneConstructionAPIs(t *testing.T) {
 	g := NewWithT(t)
