@@ -130,7 +130,7 @@ func TestMachinesNeedingRolloutCompositeLiteral(t *testing.T) {
 		bootstrapMismatch.Name,
 		infraMismatch.Name,
 	))
-	g.Expect(controlPlane.UpToDateMachines().Names()).To(ConsistOf(matching.Name))
+	g.Expect(controlPlane.UpToDateMachines().Names()).To(ConsistOf(matching.Name, deletingMismatch.Name))
 	notUpToDate, results := controlPlane.NotUpToDateMachines()
 	g.Expect(notUpToDate.Names()).To(ConsistOf(
 		versionMismatch.Name,

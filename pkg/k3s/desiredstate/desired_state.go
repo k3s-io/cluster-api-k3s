@@ -53,7 +53,11 @@ func ControlPlaneMachineLabels(kcp *controlplanev1.KThreesControlPlane, clusterN
 // ControlPlaneMachineAnnotations returns the annotations managed by KThreesControlPlane.
 func ControlPlaneMachineAnnotations(kcp *controlplanev1.KThreesControlPlane) map[string]string {
 	annotations := map[string]string{}
-	maps.Copy(annotations, kcp.Spec.MachineTemplate.ObjectMeta.Annotations)
+	for key, value := range kcp.Spec.MachineTemplate.ObjectMeta.Annotations {
+		if !controlplanev1.IsReservedMachineTemplateAnnotation(key) {
+			annotations[key] = value
+		}
+	}
 	return annotations
 }
 

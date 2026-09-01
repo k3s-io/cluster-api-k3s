@@ -65,10 +65,7 @@ import (
 
 type errCallingExtensionHandler error
 
-const (
-	defaultDiscoveryTimeout         = 10 * time.Second
-	maxErrorResponseBodyBytes int64 = 64 * 1024
-)
+const defaultDiscoveryTimeout = 10 * time.Second
 
 // Options are creation options for a Client.
 type Options struct {
@@ -634,7 +631,16 @@ func httpCall(ctx context.Context, request, response runtime.Object, opts *httpC
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return errCallingExtensionHandler(errorFromHTTPResponse(resp))
+		respBody, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return errCallingExtensionHandler(
+				errors.Errorf("http call failed: got response with status code %d != 200: failed to read response body", resp.StatusCode),
+			)
+		}
+
+		return errCallingExtensionHandler(
+			errors.Errorf("http call failed: got response with status code %d != 200: response: %q", resp.StatusCode, string(respBody)),
+		)
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(responseLocal); err != nil {
@@ -652,23 +658,6 @@ func httpCall(ctx context.Context, request, response runtime.Object, opts *httpC
 	}
 
 	return nil
-}
-
-func errorFromHTTPResponse(resp *http.Response) error {
-	_, readErr := io.Copy(
-		io.Discard,
-		io.LimitReader(resp.Body, maxErrorResponseBodyBytes),
-	)
-	statusText := http.StatusText(resp.StatusCode)
-
-	message := fmt.Sprintf("http call failed: got response with status code %d", resp.StatusCode)
-	if statusText != "" {
-		message += fmt.Sprintf(" (%s)", statusText)
-	}
-	if readErr != nil {
-		message += "; failed to discard bounded response body"
-	}
-	return errors.New(message)
 }
 
 func urlForExtension(config runtimev1.ClientConfig, gvh runtimecatalog.GroupVersionHook, name string) (*url.URL, error) {

@@ -392,6 +392,9 @@ func (c *ControlPlane) NotUpToDateMachines() (collections.Machines, map[string]U
 // UpToDateMachines returns the machines that are up to date with the control
 // plane's configuration and therefore do not require rollout.
 func (c *ControlPlane) UpToDateMachines() collections.Machines {
+	if c.machinesNotUpToDate == nil || c.machinesUpToDateResults == nil {
+		return c.Machines.Difference(c.MachinesNeedingRollout())
+	}
 	machinesNotUpToDate, _ := c.rolloutState()
 	return c.Machines.Difference(machinesNotUpToDate)
 }

@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/utils/ptr"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/feature"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -135,11 +136,11 @@ func validateKThreesControlPlaneSpec(
 	pathPrefix *field.Path,
 	allowUnsafeZeroSurge bool,
 ) field.ErrorList {
+	allErrs := validateMachineTemplateAnnotations(s, pathPrefix)
 	if s.RolloutStrategy == nil {
-		return nil
+		return allErrs
 	}
 
-	allErrs := field.ErrorList{}
 	rolloutStrategyPath := pathPrefix.Child("rolloutStrategy")
 	if s.RolloutStrategy.Type != RollingUpdateStrategyType {
 		allErrs = append(allErrs, field.Invalid(
@@ -168,6 +169,32 @@ func validateKThreesControlPlaneSpec(
 		))
 	}
 	return allErrs
+}
+
+func validateMachineTemplateAnnotations(s *KThreesControlPlaneSpec, pathPrefix *field.Path) field.ErrorList {
+	allErrs := field.ErrorList{}
+	annotationsPath := pathPrefix.Child("machineTemplate", "metadata", "annotations")
+	for annotation := range s.MachineTemplate.ObjectMeta.Annotations {
+		if IsReservedMachineTemplateAnnotation(annotation) {
+			allErrs = append(allErrs, field.Forbidden(
+				annotationsPath.Key(annotation),
+				"annotation is reserved for controller use",
+			))
+		}
+	}
+	return allErrs
+}
+
+// IsReservedMachineTemplateAnnotation reports whether an annotation is owned by the controller.
+func IsReservedMachineTemplateAnnotation(annotation string) bool {
+	switch annotation {
+	case clusterv1.TemplateClonedFromNameAnnotation,
+		clusterv1.TemplateClonedFromGroupKindAnnotation,
+		clusterv1.UpdateInProgressAnnotation:
+		return true
+	default:
+		return false
+	}
 }
 
 func retainsUnsafeZeroSurgeConfiguration(

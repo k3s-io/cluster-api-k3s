@@ -216,6 +216,69 @@ func TestComputeDesiredInfraMachine(t *testing.T) {
 	g.Expect(desired.GetAnnotations()).To(HaveKeyWithValue(clusterv1.TemplateClonedFromNameAnnotation, "template-2"))
 }
 
+func TestDesiredStateFiltersReservedMachineTemplateAnnotations(t *testing.T) {
+	g := NewWithT(t)
+	cluster, kcp := desiredStateFixtures()
+	for _, annotation := range []string{
+		clusterv1.TemplateClonedFromNameAnnotation,
+		clusterv1.TemplateClonedFromGroupKindAnnotation,
+		clusterv1.UpdateInProgressAnnotation,
+	} {
+		kcp.Spec.MachineTemplate.ObjectMeta.Annotations[annotation] = "spoofed"
+	}
+
+	infraRef := clusterv1.ContractVersionedObjectReference{
+		APIGroup: "infrastructure.cluster.x-k8s.io",
+		Kind:     "TestMachine",
+		Name:     "infra-1",
+	}
+	bootstrapRef := clusterv1.ContractVersionedObjectReference{
+		APIGroup: bootstrapv1.GroupVersion.Group,
+		Kind:     "KThreesConfig",
+		Name:     "bootstrap-1",
+	}
+	machine, err := ComputeDesiredMachine(kcp, cluster, infraRef, bootstrapRef, "fd-1", nil)
+	g.Expect(err).NotTo(HaveOccurred())
+	config, err := ComputeDesiredKThreesConfig(kcp, cluster, "bootstrap-1", nil)
+	g.Expect(err).NotTo(HaveOccurred())
+
+	scheme := runtime.NewScheme()
+	g.Expect(apiextensionsv1.AddToScheme(scheme)).To(Succeed())
+	crd := &apiextensionsv1.CustomResourceDefinition{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "testmachinetemplates.infrastructure.cluster.x-k8s.io",
+			Labels: map[string]string{clusterv1.GroupVersion.String(): "v1beta1"},
+		},
+	}
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(
+		crd,
+		infraTemplate(kcp.Namespace, "template-1", "desired"),
+	).Build()
+	infraMachine, err := ComputeDesiredInfraMachine(context.Background(), c, kcp, cluster, "infra-1", nil)
+	g.Expect(err).NotTo(HaveOccurred())
+
+	for name, annotations := range map[string]map[string]string{
+		"Machine":        machine.GetAnnotations(),
+		"KThreesConfig":  config.GetAnnotations(),
+		"Infrastructure": infraMachine.GetAnnotations(),
+	} {
+		g.Expect(annotations).To(HaveKeyWithValue("template-annotation", "desired"), name)
+		g.Expect(annotations).NotTo(HaveKey(clusterv1.UpdateInProgressAnnotation), name)
+	}
+	g.Expect(machine.GetAnnotations()).NotTo(HaveKey(clusterv1.TemplateClonedFromNameAnnotation))
+	g.Expect(machine.GetAnnotations()).NotTo(HaveKey(clusterv1.TemplateClonedFromGroupKindAnnotation))
+	g.Expect(config.GetAnnotations()).NotTo(HaveKey(clusterv1.TemplateClonedFromNameAnnotation))
+	g.Expect(config.GetAnnotations()).NotTo(HaveKey(clusterv1.TemplateClonedFromGroupKindAnnotation))
+	g.Expect(infraMachine.GetAnnotations()).To(HaveKeyWithValue(
+		clusterv1.TemplateClonedFromNameAnnotation,
+		"template-1",
+	))
+	g.Expect(infraMachine.GetAnnotations()).To(HaveKeyWithValue(
+		clusterv1.TemplateClonedFromGroupKindAnnotation,
+		"TestMachineTemplate.infrastructure.cluster.x-k8s.io",
+	))
+}
+
 func desiredStateFixtures() (*clusterv1.Cluster, *controlplanev1.KThreesControlPlane) {
 	cluster := &clusterv1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{

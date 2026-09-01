@@ -16,6 +16,7 @@ package v1beta2
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	. "github.com/onsi/gomega"
@@ -25,6 +26,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	utilfeature "k8s.io/component-base/featuregate/testing"
 	"k8s.io/utils/ptr"
+	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/feature"
 )
 
@@ -286,4 +289,61 @@ func TestKThreesControlPlaneValidateUpdateGateTransition(t *testing.T) {
 			NewWithT(t).Expect(err).NotTo(HaveOccurred())
 		})
 	}
+}
+
+func TestKThreesControlPlaneRejectsReservedMachineTemplateAnnotations(t *testing.T) {
+	reservedAnnotations := []string{
+		clusterv1.TemplateClonedFromNameAnnotation,
+		clusterv1.TemplateClonedFromGroupKindAnnotation,
+		clusterv1.UpdateInProgressAnnotation,
+	}
+
+	for _, annotation := range reservedAnnotations {
+		t.Run("create/"+annotation, func(t *testing.T) {
+			kcp := &KThreesControlPlane{
+				ObjectMeta: metav1.ObjectMeta{Name: "kcp-1"},
+				Spec: KThreesControlPlaneSpec{
+					MachineTemplate: KThreesControlPlaneMachineTemplate{
+						ObjectMeta: clusterv1beta1.ObjectMeta{
+							Annotations: map[string]string{annotation: "spoofed"},
+						},
+					},
+				},
+			}
+
+			_, err := (&KThreesControlPlane{}).ValidateCreate(context.Background(), kcp)
+			assertReservedAnnotationError(t, err, annotation)
+		})
+
+		t.Run("update/"+annotation, func(t *testing.T) {
+			oldKCP := &KThreesControlPlane{
+				ObjectMeta: metav1.ObjectMeta{Name: "kcp-1"},
+			}
+			newKCP := oldKCP.DeepCopy()
+			newKCP.Spec.MachineTemplate.ObjectMeta.Annotations = map[string]string{annotation: "spoofed"}
+
+			_, err := (&KThreesControlPlane{}).ValidateUpdate(context.Background(), oldKCP, newKCP)
+			assertReservedAnnotationError(t, err, annotation)
+		})
+	}
+}
+
+func assertReservedAnnotationError(t *testing.T, err error, annotation string) {
+	t.Helper()
+	g := NewWithT(t)
+	g.Expect(err).To(HaveOccurred())
+	g.Expect(apierrors.IsInvalid(err)).To(BeTrue())
+
+	statusErr, ok := err.(apierrors.APIStatus)
+	g.Expect(ok).To(BeTrue())
+	g.Expect(statusErr.Status().Details).NotTo(BeNil())
+
+	fields := make([]string, 0, len(statusErr.Status().Details.Causes))
+	for _, cause := range statusErr.Status().Details.Causes {
+		fields = append(fields, cause.Field)
+	}
+	g.Expect(fields).To(ContainElement(fmt.Sprintf(
+		"spec.machineTemplate.metadata.annotations[%s]",
+		annotation,
+	)))
 }
