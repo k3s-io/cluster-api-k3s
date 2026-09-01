@@ -45,7 +45,7 @@ import (
 	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
 	"github.com/k3s-io/cluster-api-k3s/pkg/capi/hooks"
 	"github.com/k3s-io/cluster-api-k3s/pkg/capi/inplace"
-	"github.com/k3s-io/cluster-api-k3s/pkg/machinefilters"
+	"github.com/k3s-io/cluster-api-k3s/pkg/machinefilters" //nolint:staticcheck // Intentionally used only for the legacy composite-literal compatibility fallback.
 )
 
 var (
