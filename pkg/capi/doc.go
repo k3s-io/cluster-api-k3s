@@ -36,11 +36,14 @@ limitations under the License.
 // can be compared with upstream and removed if public equivalents become
 // available.
 //
-// The patch helper deliberately diverges from Cluster API v1.12.9 and CAPRKE2
-// by using fixed diagnostics for patch parsing, application, conversion, and
-// panic recovery. All exported patchutil helpers, including direct CopySpec
-// calls, return errors that exclude patch and object bodies, spec values, and
-// underlying error text because Runtime Extension patches can contain secrets.
-// Successful verbose logs include only the recognized patch type and, for
-// decoded JSON patches, the operation count.
+// The patch and Runtime client helpers deliberately diverge from Cluster API
+// v1.12.9 and CAPRKE2. The patch helper uses fixed diagnostics for patch
+// parsing, application, conversion, and panic recovery. All exported patchutil
+// helpers, including direct CopySpec calls, return errors that exclude patch
+// and object bodies, spec values, and underlying error text because Runtime
+// Extension patches can contain secrets. Successful verbose logs include only
+// the recognized patch type and, for decoded JSON patches, the operation count.
+// The Runtime client bounds discarded non-200 response bodies and never returns
+// or logs their contents because extensions can echo request secrets or send
+// unbounded data.
 package capi
