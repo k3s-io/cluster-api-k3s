@@ -31,11 +31,12 @@ func TestErrorFromHTTPResponseBoundsAndRedactsResponse(t *testing.T) {
 		statusSentinel = "remote-sentinel-secret"
 		headerSentinel = "header-sentinel-secret"
 	)
+	oversizedBody := append(
+		[]byte(bodySentinel),
+		bytes.Repeat([]byte("x"), int(maxErrorResponseBodyBytes)+1024)...,
+	)
 	countingBody := &countingReadCloser{
-		Reader: bytes.NewReader(append(
-			bytes.Repeat([]byte("x"), int(maxErrorResponseBodyBytes)+1024),
-			[]byte(bodySentinel)...,
-		)),
+		Reader: bytes.NewReader(oversizedBody),
 	}
 	resp := &http.Response{
 		StatusCode: http.StatusInternalServerError,
@@ -51,10 +52,9 @@ func TestErrorFromHTTPResponseBoundsAndRedactsResponse(t *testing.T) {
 	if countingBody.bytesRead > maxErrorResponseBodyBytes {
 		t.Fatalf("errorFromHTTPResponse() read %d bytes, want at most %d", countingBody.bytesRead, maxErrorResponseBodyBytes)
 	}
-	for _, want := range []string{"500", "Internal Server Error"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("errorFromHTTPResponse() error %q does not contain %q", err, want)
-		}
+	const want = "http call failed: got response with status code 500 (Internal Server Error)"
+	if err.Error() != want {
+		t.Fatalf("errorFromHTTPResponse() error = %q, want %q", err, want)
 	}
 	for _, sentinel := range []string{bodySentinel, statusSentinel, headerSentinel} {
 		if strings.Contains(err.Error(), sentinel) {
