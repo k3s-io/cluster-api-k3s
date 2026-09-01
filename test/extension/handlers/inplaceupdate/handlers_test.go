@@ -117,7 +117,7 @@ func TestDoCanUpdateMachineResolvesUIDFromStoredMachine(t *testing.T) {
 	g.Expect(callCount(t, c, "machine-1.canUpdateMachine")).To(Equal(1))
 }
 
-func TestDoUpdateMachineProgressIsDeterministicAndPersisted(t *testing.T) {
+func TestDoUpdateMachineSupportsTwoRoundsForSameUID(t *testing.T) {
 	g := NewWithT(t)
 	h, c := newHandlers(t)
 	req := updateRequest("machine-1")
@@ -127,12 +127,28 @@ func TestDoUpdateMachineProgressIsDeterministicAndPersisted(t *testing.T) {
 	g.Expect(first.Status).To(Equal(runtimehooksv1.ResponseStatusSuccess))
 	g.Expect(first.RetryAfterSeconds).To(Equal(int32(5)))
 	g.Expect(callCount(t, c, "machine-1.updateMachine")).To(Equal(1))
+	g.Expect(callRecordValue(t, c, "machine-1.updateMachineRound")).To(Equal("1"))
 
 	second := &runtimehooksv1.UpdateMachineResponse{}
 	h.DoUpdateMachine(context.Background(), req, second)
 	g.Expect(second.Status).To(Equal(runtimehooksv1.ResponseStatusSuccess))
 	g.Expect(second.RetryAfterSeconds).To(BeZero())
 	g.Expect(callCount(t, c, "machine-1.updateMachine")).To(Equal(2))
+	g.Expect(callRecords(t, c)).NotTo(HaveKey("machine-1.updateMachineRound"))
+
+	third := &runtimehooksv1.UpdateMachineResponse{}
+	h.DoUpdateMachine(context.Background(), req, third)
+	g.Expect(third.Status).To(Equal(runtimehooksv1.ResponseStatusSuccess))
+	g.Expect(third.RetryAfterSeconds).To(Equal(int32(5)))
+	g.Expect(callCount(t, c, "machine-1.updateMachine")).To(Equal(3))
+	g.Expect(callRecordValue(t, c, "machine-1.updateMachineRound")).To(Equal("1"))
+
+	fourth := &runtimehooksv1.UpdateMachineResponse{}
+	h.DoUpdateMachine(context.Background(), req, fourth)
+	g.Expect(fourth.Status).To(Equal(runtimehooksv1.ResponseStatusSuccess))
+	g.Expect(fourth.RetryAfterSeconds).To(BeZero())
+	g.Expect(callCount(t, c, "machine-1.updateMachine")).To(Equal(4))
+	g.Expect(callRecords(t, c)).NotTo(HaveKey("machine-1.updateMachineRound"))
 }
 
 func TestDoUpdateMachineResolvesUIDFromStoredMachine(t *testing.T) {
@@ -161,6 +177,49 @@ func TestDoUpdateMachineTracksMachineUIDsIndependently(t *testing.T) {
 	g.Expect(second.RetryAfterSeconds).To(Equal(int32(5)))
 	g.Expect(callCount(t, c, "machine-1.updateMachine")).To(Equal(1))
 	g.Expect(callCount(t, c, "machine-2.updateMachine")).To(Equal(1))
+	g.Expect(callRecordValue(t, c, "machine-1.updateMachineRound")).To(Equal("1"))
+	g.Expect(callRecordValue(t, c, "machine-2.updateMachineRound")).To(Equal("1"))
+}
+
+func TestDoUpdateMachineRejectsMalformedCallRecordsAtomically(t *testing.T) {
+	tests := []struct {
+		name string
+		data map[string]string
+		key  string
+	}{
+		{
+			name: "cumulative count",
+			data: map[string]string{
+				"machine-1.updateMachine":      "invalid",
+				"machine-1.updateMachineRound": "1",
+			},
+			key: "machine-1.updateMachine",
+		},
+		{
+			name: "round count",
+			data: map[string]string{
+				"machine-1.updateMachine":      "7",
+				"machine-1.updateMachineRound": "invalid",
+			},
+			key: "machine-1.updateMachineRound",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := NewWithT(t)
+			h, c := newHandlers(t)
+			setCallRecords(t, c, tt.data)
+
+			resp := &runtimehooksv1.UpdateMachineResponse{}
+			h.DoUpdateMachine(context.Background(), updateRequest("machine-1"), resp)
+
+			g.Expect(resp.Status).To(Equal(runtimehooksv1.ResponseStatusFailure))
+			g.Expect(resp.Message).To(ContainSubstring("invalid call count"))
+			g.Expect(resp.Message).To(ContainSubstring(tt.key))
+			g.Expect(callRecords(t, c)).To(Equal(tt.data))
+		})
+	}
 }
 
 func TestDoUpdateMachineFailsWhenCallCannotBeRecorded(t *testing.T) {
@@ -291,6 +350,21 @@ func decodeJSONPatch(t *testing.T, patch runtimehooksv1.Patch) []jsonPatchOperat
 
 func callCount(t *testing.T, c client.Client, key string) int {
 	t.Helper()
+	value := callRecordValue(t, c, key)
+	count, err := strconv.Atoi(value)
+	if err != nil {
+		t.Fatalf("failed to parse call count %q: %v", value, err)
+	}
+	return count
+}
+
+func callRecordValue(t *testing.T, c client.Client, key string) string {
+	t.Helper()
+	return callRecords(t, c)[key]
+}
+
+func callRecords(t *testing.T, c client.Client) map[string]string {
+	t.Helper()
 	configMap := &corev1.ConfigMap{}
 	if err := c.Get(context.Background(), client.ObjectKey{
 		Namespace: callRecordNamespace,
@@ -298,9 +372,20 @@ func callCount(t *testing.T, c client.Client, key string) int {
 	}, configMap); err != nil {
 		t.Fatalf("failed to get call record ConfigMap: %v", err)
 	}
-	count, err := strconv.Atoi(configMap.Data[key])
-	if err != nil {
-		t.Fatalf("failed to parse call count %q: %v", configMap.Data[key], err)
+	return configMap.Data
+}
+
+func setCallRecords(t *testing.T, c client.Client, data map[string]string) {
+	t.Helper()
+	configMap := &corev1.ConfigMap{}
+	if err := c.Get(context.Background(), client.ObjectKey{
+		Namespace: callRecordNamespace,
+		Name:      callRecordName,
+	}, configMap); err != nil {
+		t.Fatalf("failed to get call record ConfigMap: %v", err)
 	}
-	return count
+	configMap.Data = data
+	if err := c.Update(context.Background(), configMap); err != nil {
+		t.Fatalf("failed to update call record ConfigMap: %v", err)
+	}
 }

@@ -112,7 +112,7 @@ func (h *ExtensionHandlers) DoUpdateMachine(
 		resp.Message = fmt.Sprintf("failed to record UpdateMachine call: %v", err)
 		return
 	}
-	count, err := h.recordCall(ctx, req.Settings, machineUID, "updateMachine")
+	roundCall, err := h.recordUpdateMachineCall(ctx, req.Settings, machineUID)
 	if err != nil {
 		resp.Status = runtimehooksv1.ResponseStatusFailure
 		resp.Message = fmt.Sprintf("failed to record UpdateMachine call: %v", err)
@@ -120,7 +120,7 @@ func (h *ExtensionHandlers) DoUpdateMachine(
 	}
 
 	resp.Status = runtimehooksv1.ResponseStatusSuccess
-	if count == 1 {
+	if roundCall == 1 {
 		resp.Message = "Test extension is updating Machine"
 		resp.RetryAfterSeconds = 5
 		return
@@ -135,6 +135,40 @@ func (h *ExtensionHandlers) recordCall(
 	machineUID types.UID,
 	hook string,
 ) (int, error) {
+	key := fmt.Sprintf("%s.%s", machineUID, hook)
+	return h.mutateCallRecords(ctx, settings, machineUID, func(data map[string]string) (int, error) {
+		return incrementCallCount(data, key)
+	})
+}
+
+func (h *ExtensionHandlers) recordUpdateMachineCall(
+	ctx context.Context,
+	settings map[string]string,
+	machineUID types.UID,
+) (int, error) {
+	cumulativeKey := fmt.Sprintf("%s.updateMachine", machineUID)
+	roundKey := fmt.Sprintf("%s.updateMachineRound", machineUID)
+	return h.mutateCallRecords(ctx, settings, machineUID, func(data map[string]string) (int, error) {
+		if _, err := incrementCallCount(data, cumulativeKey); err != nil {
+			return 0, err
+		}
+		roundCall, err := incrementCallCount(data, roundKey)
+		if err != nil {
+			return 0, err
+		}
+		if roundCall == 2 {
+			delete(data, roundKey)
+		}
+		return roundCall, nil
+	})
+}
+
+func (h *ExtensionHandlers) mutateCallRecords(
+	ctx context.Context,
+	settings map[string]string,
+	machineUID types.UID,
+	mutate func(map[string]string) (int, error),
+) (int, error) {
 	namespace := settings[callRecordNamespaceSetting]
 	name := settings[callRecordConfigMapSetting]
 	if namespace == "" || name == "" {
@@ -144,8 +178,7 @@ func (h *ExtensionHandlers) recordCall(
 		return 0, fmt.Errorf("machine UID must be set")
 	}
 
-	key := fmt.Sprintf("%s.%s", machineUID, hook)
-	count := 0
+	result := 0
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		configMap := &corev1.ConfigMap{}
 		if err := h.client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, configMap); err != nil {
@@ -155,21 +188,33 @@ func (h *ExtensionHandlers) recordCall(
 		if configMap.Data == nil {
 			configMap.Data = map[string]string{}
 		}
-		current := 0
-		if value := configMap.Data[key]; value != "" {
-			parsed, err := strconv.Atoi(value)
-			if err != nil {
-				return fmt.Errorf("invalid call count %q for %s: %w", value, key, err)
-			}
-			current = parsed
+		mutationResult, err := mutate(configMap.Data)
+		if err != nil {
+			return err
 		}
-		count = current + 1
-		configMap.Data[key] = strconv.Itoa(count)
-		return h.client.Update(ctx, configMap)
+		if err := h.client.Update(ctx, configMap); err != nil {
+			return err
+		}
+		result = mutationResult
+		return nil
 	})
 	if err != nil {
 		return 0, err
 	}
+	return result, nil
+}
+
+func incrementCallCount(data map[string]string, key string) (int, error) {
+	current := 0
+	if value := data[key]; value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil {
+			return 0, fmt.Errorf("invalid call count %q for %s: %w", value, key, err)
+		}
+		current = parsed
+	}
+	count := current + 1
+	data[key] = strconv.Itoa(count)
 	return count, nil
 }
 
