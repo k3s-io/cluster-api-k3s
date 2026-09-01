@@ -93,6 +93,9 @@ func (r *KThreesControlPlaneReconciler) canExtensionsUpdateMachine(
 		if errors.As(err, &nonCoverable) {
 			return false, []string{nonCoverable.Error()}, nil
 		}
+		if errors.Is(err, errCurrentInfraMachineDryRun) || errors.Is(err, errDesiredInfraMachineDryRun) {
+			return false, nil, err
+		}
 		return false, nil, errors.Wrap(err, "failed to generate CanUpdateMachine request")
 	}
 
@@ -120,7 +123,6 @@ func (r *KThreesControlPlaneReconciler) canExtensionsUpdateMachine(
 }
 
 type nonCoverableDiffError struct {
-	err    error
 	reason string
 }
 
@@ -128,8 +130,48 @@ func (e *nonCoverableDiffError) Error() string {
 	return e.reason
 }
 
-func (e *nonCoverableDiffError) Unwrap() error {
-	return e.err
+type safeStatusCause struct {
+	Type  metav1.CauseType
+	Field string
+}
+
+var (
+	errCurrentInfraMachineDryRun = errors.New("server side apply dry-run failed for current InfraMachine")
+	errDesiredInfraMachineDryRun = errors.New("server side apply dry-run failed for desired InfraMachine")
+)
+
+func logInfraMachineDryRunFailure(
+	ctx context.Context,
+	err error,
+	obj *unstructured.Unstructured,
+) {
+	var apiStatus apierrors.APIStatus
+	if !errors.As(err, &apiStatus) {
+		return
+	}
+
+	status := apiStatus.Status()
+	causes := []safeStatusCause{}
+	if status.Details != nil {
+		for _, cause := range status.Details.Causes {
+			causes = append(causes, safeStatusCause{
+				Type:  cause.Type,
+				Field: cause.Field,
+			})
+		}
+	}
+
+	gvk := obj.GroupVersionKind()
+	ctrl.LoggerFrom(ctx).Info(
+		"InfraMachine server side apply dry-run rejected",
+		"statusCode", status.Code,
+		"statusReason", status.Reason,
+		"objectGroup", gvk.Group,
+		"objectKind", gvk.Kind,
+		"objectNamespace", obj.GetNamespace(),
+		"objectName", obj.GetName(),
+		"causes", causes,
+	)
 }
 
 func createCanUpdateRequest(
@@ -157,21 +199,21 @@ func createCanUpdateRequest(
 	}
 	if err := ssa.Patch(ctx, c, kcpManagerName, currentInfraForDiff, ssa.WithDryRun{}); err != nil {
 		if apierrors.IsInvalid(err) || apierrors.IsForbidden(err) {
+			logInfraMachineDryRunFailure(ctx, err, currentInfraForDiff)
 			return nil, &nonCoverableDiffError{
-				err:    errors.Wrap(err, "current InfraMachine does not support server side apply dry-run"),
 				reason: uncoveredSpecReason(currentInfraForDiff.GetKind(), "InfrastructureMachine"),
 			}
 		}
-		return nil, errors.Wrap(err, "server side apply dry-run failed for current InfraMachine")
+		return nil, errCurrentInfraMachineDryRun
 	}
 	if err := ssa.Patch(ctx, c, kcpManagerName, desiredInfraForDiff, ssa.WithDryRun{}); err != nil {
 		if apierrors.IsInvalid(err) || apierrors.IsForbidden(err) {
+			logInfraMachineDryRunFailure(ctx, err, desiredInfraForDiff)
 			return nil, &nonCoverableDiffError{
-				err:    errors.Wrap(err, "desired InfraMachine does not support server side apply dry-run"),
 				reason: uncoveredSpecReason(desiredInfraForDiff.GetKind(), "InfrastructureMachine"),
 			}
 		}
-		return nil, errors.Wrap(err, "server side apply dry-run failed for desired InfraMachine")
+		return nil, errDesiredInfraMachineDryRun
 	}
 
 	request := &runtimehooksv1.CanUpdateMachineRequest{

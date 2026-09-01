@@ -283,89 +283,166 @@ func TestCanUpdateMachineNormalizesCurrentRelatedObjectMetadataWithoutChangingSp
 	g.Expect(result.CurrentInfraMachine.GetLabels()).To(Equal(map[string]string{"stale": "label"}))
 }
 
-func TestCanUpdateMachineDesiredInfraExpectedDryRunIsNonCoverable(t *testing.T) {
-	tests := map[string]error{
-		"invalid": apierrors.NewInvalid(
-			schema.GroupKind{Group: "infrastructure.cluster.x-k8s.io", Kind: testMachineKind},
-			"infra-1",
-			field.ErrorList{field.Invalid(field.NewPath("spec", "size"), "large", "immutable")},
-		),
-		"forbidden": apierrors.NewForbidden(
-			schema.GroupResource{Group: "infrastructure.cluster.x-k8s.io", Resource: "testmachines"},
-			"infra-1",
-			errors.New(`admission webhook denied the request: immutable field`),
-		),
+func TestCanUpdateMachineInfraExpectedDryRunLogsSafeStatus(t *testing.T) {
+	const (
+		rejectedValueSentinel = "sentinel-rejected-dry-run-secret"
+		causeMessageSentinel  = "sentinel-cause-message-dry-run-secret"
+	)
+	tests := []struct {
+		name       string
+		failAt     int
+		dryRunErr  error
+		wantFields []string
+	}{
+		{
+			name:   "current invalid",
+			failAt: 1,
+			dryRunErr: apierrors.NewInvalid(
+				schema.GroupKind{Group: "infrastructure.cluster.x-k8s.io", Kind: testMachineKind},
+				"infra-1",
+				field.ErrorList{field.Invalid(
+					field.NewPath("spec", "credentials", "password"),
+					rejectedValueSentinel,
+					causeMessageSentinel,
+				)},
+			),
+			wantFields: []string{"422", "Invalid", "FieldValueInvalid", "spec.credentials.password"},
+		},
+		{
+			name:   "desired invalid",
+			failAt: 2,
+			dryRunErr: apierrors.NewInvalid(
+				schema.GroupKind{Group: "infrastructure.cluster.x-k8s.io", Kind: testMachineKind},
+				"infra-1",
+				field.ErrorList{field.Invalid(
+					field.NewPath("spec", "credentials", "password"),
+					rejectedValueSentinel,
+					causeMessageSentinel,
+				)},
+			),
+			wantFields: []string{"422", "Invalid", "FieldValueInvalid", "spec.credentials.password"},
+		},
+		{
+			name:   "current forbidden",
+			failAt: 1,
+			dryRunErr: apierrors.NewForbidden(
+				schema.GroupResource{Group: "infrastructure.cluster.x-k8s.io", Resource: "testmachines"},
+				"infra-1",
+				errors.New(causeMessageSentinel),
+			),
+			wantFields: []string{"403", "Forbidden"},
+		},
+		{
+			name:   "desired forbidden",
+			failAt: 2,
+			dryRunErr: apierrors.NewForbidden(
+				schema.GroupResource{Group: "infrastructure.cluster.x-k8s.io", Resource: "testmachines"},
+				"infra-1",
+				errors.New(causeMessageSentinel),
+			),
+			wantFields: []string{"403", "Forbidden"},
+		},
 	}
 
-	for name, dryRunErr := range tests {
-		t.Run(name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := NewWithT(t)
+			machine, result, c := canUpdateFixtures(t)
+			result.DesiredInfraMachine.Object["spec"] = map[string]interface{}{"size": "large"}
+			runtimeClient := &fakeRuntimeClient{handlers: []string{"handler"}}
+			var logLines []string
+			logger := funcr.New(func(prefix, args string) {
+				logLines = append(logLines, prefix+args)
+			}, funcr.Options{Verbosity: 5})
+			ctx := ctrl.LoggerInto(context.Background(), logger)
+			r := &KThreesControlPlaneReconciler{
+				Client: &nthInfraPatchErrorClient{
+					Client: c,
+					failAt: tt.failAt,
+					err:    tt.dryRunErr,
+				},
+				RuntimeClient: runtimeClient,
+			}
+
+			canUpdate, reasons, err := r.canExtensionsUpdateMachine(ctx, machine, result, []string{"handler"})
+
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(canUpdate).To(BeFalse())
+			g.Expect(reasons).To(Equal([]string{"TestMachine spec is not fully covered for in-place update"}))
+			g.Expect(runtimeClient.callCount).To(BeZero())
+
+			logOutput := strings.Join(logLines, "\n")
+			for _, safeField := range append([]string{
+				"statusCode",
+				"statusReason",
+				"objectGroup",
+				"infrastructure.cluster.x-k8s.io",
+				"objectKind",
+				testMachineKind,
+				"objectNamespace",
+				"default",
+				"objectName",
+				"infra-1",
+			}, tt.wantFields...) {
+				g.Expect(logOutput).To(ContainSubstring(safeField))
+			}
+
+			output := logOutput + "\n" + strings.Join(reasons, "\n")
+			g.Expect(output).NotTo(ContainSubstring(rejectedValueSentinel))
+			g.Expect(output).NotTo(ContainSubstring(causeMessageSentinel))
+			g.Expect(output).NotTo(ContainSubstring(tt.dryRunErr.Error()))
+		})
+	}
+}
+
+func TestCanUpdateMachineInfraUnexpectedDryRunReturnsContentFreeError(t *testing.T) {
+	const sentinel = "unexpected sentinel-dry-run-secret"
+	tests := []struct {
+		name    string
+		failAt  int
+		wantErr string
+	}{
+		{
+			name:    "current",
+			failAt:  1,
+			wantErr: "server side apply dry-run failed for current InfraMachine",
+		},
+		{
+			name:    "desired",
+			failAt:  2,
+			wantErr: "server side apply dry-run failed for desired InfraMachine",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			g := NewWithT(t)
 			utilfeature.SetFeatureGateDuringTest(t, feature.Gates, feature.InPlaceUpdates, true)
 			machine, result, c := canUpdateFixtures(t)
 			result.DesiredInfraMachine.Object["spec"] = map[string]interface{}{"size": "large"}
 			runtimeClient := &fakeRuntimeClient{handlers: []string{"handler"}}
+			var logLines []string
+			logger := funcr.New(func(prefix, args string) {
+				logLines = append(logLines, prefix+args)
+			}, funcr.Options{Verbosity: 5})
+			ctx := ctrl.LoggerInto(context.Background(), logger)
 			r := &KThreesControlPlaneReconciler{
 				Client: &nthInfraPatchErrorClient{
 					Client: c,
-					failAt: 2,
-					err:    dryRunErr,
+					failAt: tt.failAt,
+					err:    errors.New(sentinel),
 				},
 				RuntimeClient: runtimeClient,
 			}
 
-			canUpdate, err := r.canUpdateMachine(context.Background(), machine, result)
+			canUpdate, err := r.canUpdateMachine(ctx, machine, result)
 
-			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(err).To(MatchError(tt.wantErr))
 			g.Expect(canUpdate).To(BeFalse())
 			g.Expect(runtimeClient.callCount).To(BeZero())
+			g.Expect(strings.Join(logLines, "\n") + "\n" + err.Error()).NotTo(ContainSubstring(sentinel))
 		})
 	}
-}
-
-func TestCanUpdateMachineDesiredInfraUnexpectedDryRunReturnsError(t *testing.T) {
-	g := NewWithT(t)
-	utilfeature.SetFeatureGateDuringTest(t, feature.Gates, feature.InPlaceUpdates, true)
-	machine, result, c := canUpdateFixtures(t)
-	result.DesiredInfraMachine.Object["spec"] = map[string]interface{}{"size": "large"}
-	runtimeClient := &fakeRuntimeClient{handlers: []string{"handler"}}
-	r := &KThreesControlPlaneReconciler{
-		Client: &nthInfraPatchErrorClient{
-			Client: c,
-			failAt: 2,
-			err:    errors.New("unexpected dry-run failure"),
-		},
-		RuntimeClient: runtimeClient,
-	}
-
-	canUpdate, err := r.canUpdateMachine(context.Background(), machine, result)
-
-	g.Expect(err).To(MatchError(ContainSubstring("server side apply dry-run failed for desired InfraMachine")))
-	g.Expect(canUpdate).To(BeFalse())
-	g.Expect(runtimeClient.callCount).To(BeZero())
-}
-
-func TestCanUpdateMachineNonCoverableInfraReasonIsSanitized(t *testing.T) {
-	const sentinel = "sentinel-dry-run-secret"
-	g := NewWithT(t)
-	machine, result, c := canUpdateFixtures(t)
-	r := &KThreesControlPlaneReconciler{
-		Client: &infraPatchErrorClient{
-			Client: c,
-			err: apierrors.NewInvalid(
-				schema.GroupKind{Group: "infrastructure.cluster.x-k8s.io", Kind: testMachineKind},
-				"infra-1",
-				field.ErrorList{field.Invalid(field.NewPath("spec", "credentials", "password"), sentinel, "invalid")},
-			),
-		},
-		RuntimeClient: &fakeRuntimeClient{},
-	}
-
-	canUpdate, reasons, err := r.canExtensionsUpdateMachine(context.Background(), machine, result, []string{"handler"})
-
-	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(canUpdate).To(BeFalse())
-	g.Expect(reasons).To(Equal([]string{"TestMachine spec is not fully covered for in-place update"}))
-	g.Expect(strings.Join(reasons, ",")).NotTo(ContainSubstring(sentinel))
 }
 
 func TestCanUpdateMachineDoesNotExposeSensitivePostPatchConversionError(t *testing.T) {
