@@ -111,7 +111,7 @@ func UpToDate(
 			return false, nil, errors.Wrapf(err, "failed to compute desired KThreesConfig for Machine %s", machine.Name)
 		}
 		result.DesiredKThreesConfig = desiredConfig
-		currentConfigForDiff, desiredConfigForDiff := prepareKThreesConfigsForDiff(currentConfig, desiredConfig)
+		currentConfigForDiff, desiredConfigForDiff := PrepareKThreesConfigsForDiff(currentConfig, desiredConfig)
 		configMatches, _, err := compare.Diff(&currentConfigForDiff.Spec, &desiredConfigForDiff.Spec)
 		if err != nil {
 			return false, nil, errors.Wrapf(err, "failed to compare KThreesConfig for Machine %s", machine.Name)
@@ -169,10 +169,4 @@ func PrepareKThreesConfigsForDiff(
 	current.Spec.Version = ""
 	desired.Spec.Version = ""
 	return current, desired
-}
-
-func prepareKThreesConfigsForDiff(
-	current, desired *bootstrapv1.KThreesConfig,
-) (*bootstrapv1.KThreesConfig, *bootstrapv1.KThreesConfig) {
-	return PrepareKThreesConfigsForDiff(current, desired)
 }
