@@ -23,8 +23,10 @@ rolloutStrategy:
 - Allowing `maxSurge: 0` below three replicas while `InPlaceUpdates` is enabled is an intentional K3s divergence from official CAPI v1.12.9 validation.
 - If the provider restarts with `InPlaceUpdates` disabled, an object previously
   admitted with `maxSurge: 0` and fewer than three replicas remains writable as
-  long as its effective replica count and `maxSurge` are unchanged. New
-  transitions into that configuration remain rejected.
+  long as it retains zero surge, does not increase its effective replica count,
+  and keeps at least one replica. This permits safe scale-down because the
+  controller deletes only Machines above the new desired count. Transitions
+  from positive surge to low-replica zero surge remain rejected.
 - Unsupported or ineligible changes normally fall back to Machine replacement.
 - With `maxSurge: 0` and fewer than three desired replicas, fallback is blocked
   when the current Machine count is at or below the desired count. Existing

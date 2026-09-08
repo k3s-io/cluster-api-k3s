@@ -221,9 +221,19 @@ func TestKThreesControlPlaneValidateUpdateGateTransition(t *testing.T) {
 			wantErrContains: "replica count needs to be at least 3",
 		},
 		{
-			name:            "rejects replica decrease into unsafe configuration",
-			oldObj:          newControlPlane(2, zero),
-			newKCP:          newControlPlane(1, zero),
+			name:   "allows scale down from safe replica count while retaining zero surge",
+			oldObj: newControlPlane(3, zero),
+			newKCP: newControlPlane(2, zero),
+		},
+		{
+			name:   "allows scale down within low replica counts while retaining zero surge",
+			oldObj: newControlPlane(2, zero),
+			newKCP: newControlPlane(1, zero),
+		},
+		{
+			name:            "rejects scale down to zero replicas",
+			oldObj:          newControlPlane(1, zero),
+			newKCP:          newControlPlane(0, zero),
 			wantErr:         true,
 			wantErrContains: "replica count needs to be at least 3",
 		},

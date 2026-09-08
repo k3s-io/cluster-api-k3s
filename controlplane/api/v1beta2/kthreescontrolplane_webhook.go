@@ -75,7 +75,7 @@ func (in *KThreesControlPlane) ValidateUpdate(_ context.Context, oldObj, newObj 
 	allErrs := validateKThreesControlPlaneSpec(
 		&kcp.Spec,
 		field.NewPath("spec"),
-		retainsUnsafeZeroSurgeConfiguration(&oldKCP.Spec, &kcp.Spec),
+		retainsOrScalesDownZeroSurgeConfiguration(&oldKCP.Spec, &kcp.Spec),
 	)
 	if len(allErrs) > 0 {
 		return nil, apierrors.NewInvalid(GroupVersion.WithKind("KThreesControlPlane").GroupKind(), kcp.Name, allErrs)
@@ -197,7 +197,10 @@ func IsReservedMachineTemplateAnnotation(annotation string) bool {
 	}
 }
 
-func retainsUnsafeZeroSurgeConfiguration(
+// retainsOrScalesDownZeroSurgeConfiguration allows an existing zero-surge
+// configuration to remain writable or reduce replicas after the feature gate
+// is disabled. Increasing replicas below three remains rejected.
+func retainsOrScalesDownZeroSurgeConfiguration(
 	oldSpec *KThreesControlPlaneSpec,
 	newSpec *KThreesControlPlaneSpec,
 ) bool {
@@ -218,7 +221,8 @@ func retainsUnsafeZeroSurgeConfiguration(
 		newErr == nil &&
 		oldMaxSurge == 0 &&
 		newMaxSurge == 0 &&
-		oldReplicas == newReplicas &&
+		newReplicas > 0 &&
+		newReplicas <= oldReplicas &&
 		newReplicas < 3
 }
 
