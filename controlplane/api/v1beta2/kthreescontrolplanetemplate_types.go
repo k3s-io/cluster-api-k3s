@@ -47,6 +47,12 @@ type KThreesControlPlaneTemplateResourceSpec struct {
 	// +optional
 	RolloutAfter *metav1.Time `json:"rolloutAfter,omitempty"`
 
+	// RolloutStrategy is the rollout strategy to use to replace control plane machines with new ones.
+	// Only RollingUpdate is supported. The default is RollingUpdate with a maxSurge of 1.
+	// +kubebuilder:default={type:RollingUpdate,rollingUpdate:{maxSurge:1}}
+	// +optional
+	RolloutStrategy *RolloutStrategy `json:"rolloutStrategy,omitempty"`
+
 	// MachineTemplate contains information about how machines should be shaped
 	// when creating or updating a control plane.
 	MachineTemplate KThreesControlPlaneMachineTemplate `json:"machineTemplate,omitempty"`

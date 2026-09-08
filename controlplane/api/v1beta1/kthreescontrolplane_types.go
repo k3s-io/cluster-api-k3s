@@ -21,6 +21,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 
 	bootstrapv1beta1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta1"
@@ -84,6 +85,12 @@ type KThreesControlPlaneSpec struct {
 	// +optional
 	UpgradeAfter *metav1.Time `json:"upgradeAfter,omitempty"`
 
+	// RolloutStrategy is the rollout strategy to use to replace control plane machines with new ones.
+	// Only RollingUpdate is supported. The default is RollingUpdate with a maxSurge of 1.
+	// +kubebuilder:default={type:RollingUpdate,rollingUpdate:{maxSurge:1}}
+	// +optional
+	RolloutStrategy *RolloutStrategy `json:"rolloutStrategy,omitempty"`
+
 	// NodeDrainTimeout is the total amount of time that the controller will spend on draining a controlplane node
 	// The default value is 0, meaning that the node can be drained without any time limitations.
 	// NOTE: NodeDrainTimeout is different from `kubectl drain --timeout`
@@ -97,6 +104,36 @@ type KThreesControlPlaneSpec struct {
 	// The RemediationStrategy that controls how control plane machine remediation happens.
 	// +optional
 	RemediationStrategy *RemediationStrategy `json:"remediationStrategy,omitempty"`
+}
+
+// RolloutStrategyType defines the rollout strategy used by KThreesControlPlane.
+// +kubebuilder:validation:Enum=RollingUpdate
+type RolloutStrategyType string
+
+const (
+	// RollingUpdateStrategyType replaces control plane machines using a rolling update.
+	RollingUpdateStrategyType RolloutStrategyType = "RollingUpdate"
+)
+
+// RolloutStrategy describes how to replace control plane machines with new ones.
+type RolloutStrategy struct {
+	// Type is the rollout strategy type. Currently only RollingUpdate is supported.
+	// +optional
+	Type RolloutStrategyType `json:"type,omitempty"`
+
+	// RollingUpdate configures the RollingUpdate strategy.
+	// +optional
+	RollingUpdate *RollingUpdate `json:"rollingUpdate,omitempty"`
+}
+
+// RollingUpdate configures a rolling update.
+type RollingUpdate struct {
+	// MaxSurge is the maximum number of control plane machines that can be scheduled above the desired replicas.
+	// Only absolute values 0 and 1 are supported. The default is 1.
+	// With 0, update fallback is blocked below three desired replicas unless a surplus Machine can be deleted.
+	// +kubebuilder:validation:XValidation:rule="self == 0 || self == 1 || self == '0' || self == '1'",message="maxSurge must be 0 or 1"
+	// +optional
+	MaxSurge *intstr.IntOrString `json:"maxSurge,omitempty"`
 }
 
 // MachineTemplate contains information about how machines should be shaped

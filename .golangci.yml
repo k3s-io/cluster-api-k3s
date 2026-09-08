@@ -58,13 +58,18 @@ linters-settings:
           - $gostd
           - github.com/go-logr/logr
           - github.com/coredns/corefile-migration/migration
-          - github.com/pkg/errors
           - github.com/davecgh/go-spew/spew
+          - github.com/evanphx/json-patch/v5
+          - github.com/google/go-cmp
+          - github.com/pkg/errors
+          - github.com/prometheus/client_golang
+          - github.com/spf13/pflag
 
           - k8s.io/api
           - k8s.io/apimachinery/pkg
           - k8s.io/apiserver
           - k8s.io/client-go
+          - k8s.io/component-base
           - k8s.io/klog/v2
           - k8s.io/utils/ptr
 
@@ -76,9 +81,7 @@ linters-settings:
           - sigs.k8s.io/cluster-api
 
           - github.com/k3s-io/cluster-api-k3s
-
           - github.com/google/uuid
-          - github.com/pkg/errors
   gci:
     sections:
       - standard

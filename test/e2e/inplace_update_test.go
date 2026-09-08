@@ -1,0 +1,738 @@
+//go:build e2e
+// +build e2e
+
+/*
+Copyright 2026 The Kubernetes Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package e2e
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/utils/ptr"
+	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
+	runtimev1 "sigs.k8s.io/cluster-api/api/runtime/v1beta2"
+	"sigs.k8s.io/cluster-api/test/framework/clusterctl"
+	"sigs.k8s.io/cluster-api/util"
+	v1beta1conditions "sigs.k8s.io/cluster-api/util/deprecated/v1beta1/conditions"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
+	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
+	dockerinfrav1 "sigs.k8s.io/cluster-api/test/infrastructure/docker/api/v1beta1"
+)
+
+const (
+	inPlaceCallRecordConfigMap      = "k3s-in-place-hook-calls"
+	inPlaceSpecName                 = "in-place-updates"
+	inPlaceExtensionConfigScenario1 = "k3s-test-extension-scenario-1"
+	inPlaceExtensionConfigScenario2 = "k3s-test-extension-scenario-2"
+	rotatedBootstrapTimeout         = 7 * time.Minute
+)
+
+type machineIdentity struct {
+	Name string    `json:"name"`
+	UID  types.UID `json:"uid"`
+}
+
+type machineUpdateSnapshot struct {
+	Timestamp        metav1.Time        `json:"timestamp"`
+	Identity         machineIdentity    `json:"identity"`
+	Version          string             `json:"version"`
+	UpdateInProgress bool               `json:"updateInProgress"`
+	PendingHooks     string             `json:"pendingHooks,omitempty"`
+	Conditions       []metav1.Condition `json:"conditions,omitempty"`
+}
+
+type infrastructureProvenance struct {
+	Machine                   machineIdentity `json:"machine"`
+	InfrastructureMachineName string          `json:"infrastructureMachineName"`
+	TemplateName              string          `json:"templateName"`
+	TemplateGroupKind         string          `json:"templateGroupKind"`
+	BootstrapTimeout          string          `json:"bootstrapTimeout"`
+}
+
+type inPlaceScenarioEvidence struct {
+	Scenario                          string                        `json:"scenario"`
+	Original                          []machineIdentity             `json:"originalMachines"`
+	Final                             []machineIdentity             `json:"finalMachines,omitempty"`
+	Snapshots                         []machineUpdateSnapshot       `json:"snapshots,omitempty"`
+	Counters                          map[string]string             `json:"counters,omitempty"`
+	FinalConditions                   map[string][]metav1.Condition `json:"finalConditions,omitempty"`
+	FinalControlPlaneConditions       clusterv1beta1.Conditions     `json:"finalControlPlaneConditions,omitempty"`
+	MaxControlPlaneMachineCardinality int                           `json:"maxControlPlaneMachineCardinality"`
+	InfrastructureProvenance          []infrastructureProvenance    `json:"infrastructureProvenance,omitempty"`
+}
+
+var _ = Describe("In-place update via Runtime Extension [InPlaceUpdates] [PR-Blocking]", Serial, func() {
+	var (
+		testContext         = context.TODO()
+		namespace           *corev1.Namespace
+		cancelWatches       context.CancelFunc
+		result              *ApplyClusterTemplateAndWaitResult
+		clusterName         string
+		clusterctlLogFolder string
+		evidence            *inPlaceScenarioEvidence
+		evidencePath        string
+		extensionConfigName string
+	)
+
+	BeforeEach(func() {
+		Expect(e2eConfig.Variables).To(HaveKey(KubernetesVersion))
+		Expect(e2eConfig.Variables).To(HaveKey(KubernetesVersionUpgradeTo))
+
+		clusterName = fmt.Sprintf("capik3s-in-place-%s", util.RandomString(6))
+		namespace, cancelWatches = setupSpecNamespace(testContext, inPlaceSpecName, bootstrapClusterProxy, artifactFolder)
+		result = new(ApplyClusterTemplateAndWaitResult)
+		clusterctlLogFolder = filepath.Join(artifactFolder, "clusters", bootstrapClusterProxy.GetName())
+		extensionConfigName = ""
+	})
+
+	AfterEach(func() {
+		runInPlaceAfterEach(
+			func() {
+				if evidence != nil {
+					collectInPlaceCallRecord(testContext, bootstrapClusterProxy.GetClient(), namespace.Name, evidencePath, evidence)
+					writeInPlaceEvidence(evidencePath, evidence)
+				}
+			},
+			func() {
+				if !skipCleanup && extensionConfigName != "" {
+					deleteInPlaceExtensionConfig(testContext, bootstrapClusterProxy.GetClient(), extensionConfigName)
+				}
+			},
+			func() {
+				dumpSpecResourcesAndCleanup(testContext, cleanupInput{
+					SpecName:             inPlaceSpecName,
+					Cluster:              result.Cluster,
+					ClusterProxy:         bootstrapClusterProxy,
+					ClusterctlConfigPath: clusterctlConfigPath,
+					Namespace:            namespace,
+					CancelWatches:        cancelWatches,
+					IntervalsGetter:      e2eConfig.GetIntervals,
+					SkipCleanup:          skipCleanup,
+					ArtifactFolder:       artifactFolder,
+				})
+			},
+		)
+	})
+
+	It("preserves Machine identity for a supported version update", func() {
+		evidence = &inPlaceScenarioEvidence{
+			Scenario:        "supported-version-update",
+			FinalConditions: map[string][]metav1.Condition{},
+		}
+		evidencePath = filepath.Join(artifactFolder, "in-place-updates", "scenario-1.json")
+		extensionConfigName = inPlaceExtensionConfigScenario1
+
+		createInPlaceCallRecorderAndExtension(testContext, bootstrapClusterProxy.GetClient(), extensionConfigName, namespace.Name)
+
+		applyInPlaceWorkloadCluster(testContext, namespace.Name, clusterName, clusterctlLogFolder, 1, result)
+
+		mgmtClient := bootstrapClusterProxy.GetClient()
+		kcpKey := types.NamespacedName{Namespace: result.ControlPlane.Namespace, Name: result.ControlPlane.Name}
+		patchKThreesControlPlane(testContext, mgmtClient, kcpKey, func(kcp *controlplanev1.KThreesControlPlane) {
+			setZeroSurge(kcp)
+		})
+		waitForZeroSurge(testContext, mgmtClient, kcpKey)
+
+		original := getSingleControlPlaneMachine(testContext, mgmtClient, result.Cluster)
+		Expect(observeMachineCardinality(evidence, 1, 1)).To(Succeed())
+		evidence.Original = []machineIdentity{identityForMachine(original)}
+
+		targetVersion := e2eConfig.MustGetVariable(KubernetesVersionUpgradeTo)
+		patchKThreesControlPlane(testContext, mgmtClient, kcpKey, func(kcp *controlplanev1.KThreesControlPlane) {
+			kcp.Spec.Version = targetVersion
+		})
+
+		finalMachine := waitForSupportedInPlaceUpdate(
+			testContext,
+			mgmtClient,
+			result.Cluster,
+			original,
+			targetVersion,
+			evidence,
+		)
+
+		finalMachines := getControlPlaneMachines(testContext, mgmtClient, result.Cluster)
+		Expect(finalMachines).To(HaveLen(1))
+		Expect(identityForMachine(&finalMachines[0])).To(Equal(identityForMachine(original)))
+		Expect(identityForMachine(finalMachine)).To(Equal(identityForMachine(original)))
+		assertNoInPlaceAnnotations(testContext, mgmtClient, finalMachine)
+		Expect(machineCondition(finalMachine, clusterv1.MachineUpToDateCondition).Status).To(Equal(metav1.ConditionTrue))
+
+		collectInPlaceCallRecord(testContext, mgmtClient, namespace.Name, evidencePath, evidence)
+		Expect(counterValue(evidence.Counters, string(original.UID)+".canUpdateMachine")).To(BeNumerically(">=", 1))
+		Expect(counterValue(evidence.Counters, string(original.UID)+".updateMachine")).To(BeNumerically(">=", 2))
+
+		evidence.Final = []machineIdentity{identityForMachine(finalMachine)}
+		evidence.FinalConditions[finalMachine.Name] = finalMachine.Status.Conditions
+		waitForCompletedControlPlaneConditions(testContext, mgmtClient, kcpKey, evidence)
+		writeInPlaceEvidence(evidencePath, evidence)
+	})
+
+	It("replaces every Machine when an infrastructure diff is unsupported", func() {
+		evidence = &inPlaceScenarioEvidence{
+			Scenario:        "unsupported-infrastructure-diff",
+			FinalConditions: map[string][]metav1.Condition{},
+		}
+		evidencePath = filepath.Join(artifactFolder, "in-place-updates", "scenario-2.json")
+		extensionConfigName = inPlaceExtensionConfigScenario2
+
+		createInPlaceCallRecorderAndExtension(testContext, bootstrapClusterProxy.GetClient(), extensionConfigName, namespace.Name)
+
+		applyInPlaceWorkloadCluster(testContext, namespace.Name, clusterName, clusterctlLogFolder, 3, result)
+
+		mgmtClient := bootstrapClusterProxy.GetClient()
+		kcpKey := types.NamespacedName{Namespace: result.ControlPlane.Namespace, Name: result.ControlPlane.Name}
+		patchKThreesControlPlane(testContext, mgmtClient, kcpKey, func(kcp *controlplanev1.KThreesControlPlane) {
+			setZeroSurge(kcp)
+		})
+		waitForZeroSurge(testContext, mgmtClient, kcpKey)
+
+		originalMachines := getControlPlaneMachines(testContext, mgmtClient, result.Cluster)
+		Expect(originalMachines).To(HaveLen(3))
+		Expect(observeMachineCardinality(evidence, len(originalMachines), 3)).To(Succeed())
+		evidence.Original = identitiesForMachines(originalMachines)
+
+		templateB := createRotatedDockerMachineTemplate(
+			testContext,
+			mgmtClient,
+			namespace.Name,
+			clusterName,
+			result.ControlPlane.Spec.MachineTemplate.InfrastructureRef.Name,
+		)
+		templateGroupKind := schema.GroupKind{
+			Group: dockerinfrav1.GroupVersion.Group,
+			Kind:  "DockerMachineTemplate",
+		}.String()
+		targetVersion := e2eConfig.MustGetVariable(KubernetesVersionUpgradeTo)
+		patchKThreesControlPlane(testContext, mgmtClient, kcpKey, func(kcp *controlplanev1.KThreesControlPlane) {
+			kcp.Spec.Version = targetVersion
+			kcp.Spec.MachineTemplate.InfrastructureRef = corev1.ObjectReference{
+				APIVersion: dockerinfrav1.GroupVersion.String(),
+				Kind:       "DockerMachineTemplate",
+				Namespace:  namespace.Name,
+				Name:       templateB.Name,
+			}
+			setZeroSurge(kcp)
+		})
+
+		finalMachines := waitForUnsupportedDiffReplacement(
+			testContext,
+			mgmtClient,
+			result.Cluster,
+			originalMachines,
+			templateB.Name,
+			templateGroupKind,
+			rotatedBootstrapTimeout,
+			targetVersion,
+			evidence,
+		)
+
+		collectInPlaceCallRecord(testContext, mgmtClient, namespace.Name, evidencePath, evidence)
+		for i := range originalMachines {
+			uid := string(originalMachines[i].UID)
+			Expect(counterValue(evidence.Counters, uid+".canUpdateMachine")).To(BeNumerically(">=", 1))
+			Expect(counterValueOrZero(evidence.Counters, uid+".updateMachine")).To(BeZero())
+		}
+
+		for i := range finalMachines {
+			assertNoInPlaceAnnotations(testContext, mgmtClient, &finalMachines[i])
+			evidence.FinalConditions[finalMachines[i].Name] = finalMachines[i].Status.Conditions
+		}
+		evidence.Final = identitiesForMachines(finalMachines)
+		waitForCompletedControlPlaneConditions(testContext, mgmtClient, kcpKey, evidence)
+		writeInPlaceEvidence(evidencePath, evidence)
+	})
+})
+
+func runInPlaceAfterEach(collectEvidence, deleteExtensionConfig, cleanupResources func()) {
+	defer cleanupResources()
+	defer deleteExtensionConfig()
+	collectEvidence()
+}
+
+func applyInPlaceWorkloadCluster(
+	ctx context.Context,
+	namespace string,
+	clusterName string,
+	clusterctlLogFolder string,
+	controlPlaneReplicas int64,
+	result *ApplyClusterTemplateAndWaitResult,
+) {
+	ApplyClusterTemplateAndWait(ctx, ApplyClusterTemplateAndWaitInput{
+		ClusterProxy: bootstrapClusterProxy,
+		ConfigCluster: clusterctl.ConfigClusterInput{
+			LogFolder:                clusterctlLogFolder,
+			ClusterctlConfigPath:     clusterctlConfigPath,
+			KubeconfigPath:           bootstrapClusterProxy.GetKubeconfigPath(),
+			InfrastructureProvider:   "docker",
+			Namespace:                namespace,
+			ClusterName:              clusterName,
+			KubernetesVersion:        e2eConfig.MustGetVariable(KubernetesVersion),
+			ControlPlaneMachineCount: ptr.To(controlPlaneReplicas),
+			WorkerMachineCount:       ptr.To[int64](0),
+		},
+		WaitForClusterIntervals:      e2eConfig.GetIntervals(inPlaceSpecName, "wait-cluster"),
+		WaitForControlPlaneIntervals: e2eConfig.GetIntervals(inPlaceSpecName, "wait-control-plane"),
+		WaitForMachineDeployments:    e2eConfig.GetIntervals(inPlaceSpecName, "wait-worker-nodes"),
+	}, result)
+}
+
+func inPlaceExtensionConfig(name, namespace string) *runtimev1.ExtensionConfig {
+	return &runtimev1.ExtensionConfig{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+			Annotations: map[string]string{
+				runtimev1.InjectCAFromSecretAnnotation: "k3s-test-extension-system/k3s-test-extension-webhook-service-cert",
+			},
+		},
+		Spec: runtimev1.ExtensionConfigSpec{
+			ClientConfig: runtimev1.ClientConfig{
+				Service: runtimev1.ServiceReference{
+					Namespace: "k3s-test-extension-system",
+					Name:      "k3s-test-extension-webhook-service",
+				},
+			},
+			NamespaceSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"kubernetes.io/metadata.name": namespace,
+				},
+			},
+			Settings: map[string]string{
+				"callRecordNamespace": namespace,
+				"callRecordConfigMap": inPlaceCallRecordConfigMap,
+			},
+		},
+	}
+}
+
+func createInPlaceCallRecorderAndExtension(ctx context.Context, c client.Client, name, namespace string) {
+	Expect(c.Create(ctx, &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: namespace,
+			Name:      inPlaceCallRecordConfigMap,
+		},
+	})).To(Succeed())
+	Expect(c.Create(ctx, inPlaceExtensionConfig(name, namespace))).To(Succeed())
+
+	Eventually(func() (bool, error) {
+		extensionConfig := &runtimev1.ExtensionConfig{}
+		if err := c.Get(ctx, client.ObjectKey{Name: name}, extensionConfig); err != nil {
+			return false, err
+		}
+		return extensionConfigDiscoveredForCurrentGeneration(extensionConfig), nil
+	}, 3*time.Minute, time.Second).Should(BeTrue(), "Runtime Extension was not discovered")
+}
+
+func extensionConfigDiscoveredForCurrentGeneration(config *runtimev1.ExtensionConfig) bool {
+	condition := meta.FindStatusCondition(config.Status.Conditions, runtimev1.ExtensionConfigDiscoveredCondition)
+	return condition != nil &&
+		condition.Status == metav1.ConditionTrue &&
+		condition.ObservedGeneration == config.Generation
+}
+
+func deleteInPlaceExtensionConfig(ctx context.Context, c client.Client, name string) {
+	extensionConfig := &runtimev1.ExtensionConfig{ObjectMeta: metav1.ObjectMeta{Name: name}}
+	if err := c.Delete(ctx, extensionConfig); err != nil && !apierrors.IsNotFound(err) {
+		Expect(err).NotTo(HaveOccurred())
+	}
+	Eventually(func() bool {
+		err := c.Get(ctx, client.ObjectKey{Name: name}, extensionConfig)
+		return apierrors.IsNotFound(err)
+	}, time.Minute, time.Second).Should(BeTrue(), "ExtensionConfig was not deleted")
+}
+
+func patchKThreesControlPlane(
+	ctx context.Context,
+	c client.Client,
+	key types.NamespacedName,
+	mutate func(*controlplanev1.KThreesControlPlane),
+) {
+	Eventually(func() error {
+		kcp := &controlplanev1.KThreesControlPlane{}
+		if err := c.Get(ctx, key, kcp); err != nil {
+			return err
+		}
+		original := kcp.DeepCopy()
+		mutate(kcp)
+		return c.Patch(ctx, kcp, client.MergeFrom(original))
+	}, time.Minute, time.Second).Should(Succeed())
+}
+
+func setZeroSurge(kcp *controlplanev1.KThreesControlPlane) {
+	kcp.Spec.RolloutStrategy = &controlplanev1.RolloutStrategy{
+		Type: controlplanev1.RollingUpdateStrategyType,
+		RollingUpdate: &controlplanev1.RollingUpdate{
+			MaxSurge: ptr.To(intstr.FromInt32(0)),
+		},
+	}
+}
+
+func waitForZeroSurge(ctx context.Context, c client.Client, key types.NamespacedName) {
+	Eventually(func() bool {
+		kcp := &controlplanev1.KThreesControlPlane{}
+		if err := c.Get(ctx, key, kcp); err != nil {
+			return false
+		}
+		return kcp.Spec.RolloutStrategy != nil &&
+			kcp.Spec.RolloutStrategy.RollingUpdate != nil &&
+			kcp.Spec.RolloutStrategy.RollingUpdate.MaxSurge != nil &&
+			kcp.Spec.RolloutStrategy.RollingUpdate.MaxSurge.IntValue() == 0 &&
+			kcp.Status.ObservedGeneration >= kcp.Generation
+	}, time.Minute, time.Second).Should(BeTrue(), "KThreesControlPlane did not retain maxSurge 0")
+}
+
+func getControlPlaneMachines(ctx context.Context, c client.Client, cluster *clusterv1.Cluster) []clusterv1.Machine {
+	machines := &clusterv1.MachineList{}
+	Expect(c.List(ctx, machines,
+		client.InNamespace(cluster.Namespace),
+		client.MatchingLabels{
+			clusterv1.ClusterNameLabel:         cluster.Name,
+			clusterv1.MachineControlPlaneLabel: "",
+		},
+	)).To(Succeed())
+	return machines.Items
+}
+
+func getSingleControlPlaneMachine(ctx context.Context, c client.Client, cluster *clusterv1.Cluster) *clusterv1.Machine {
+	machines := getControlPlaneMachines(ctx, c, cluster)
+	Expect(machines).To(HaveLen(1))
+	return machines[0].DeepCopy()
+}
+
+func waitForSupportedInPlaceUpdate(
+	ctx context.Context,
+	c client.Client,
+	cluster *clusterv1.Cluster,
+	original *clusterv1.Machine,
+	targetVersion string,
+	evidence *inPlaceScenarioEvidence,
+) *clusterv1.Machine {
+	var finalMachine *clusterv1.Machine
+	sawUpdateInProgress := false
+	sawPendingHook := false
+
+	Eventually(func() (bool, error) {
+		machines := getControlPlaneMachines(ctx, c, cluster)
+		Expect(observeMachineCardinality(evidence, len(machines), 1)).To(Succeed())
+
+		machine := &clusterv1.Machine{}
+		if err := c.Get(ctx, client.ObjectKey{Namespace: cluster.Namespace, Name: original.Name}, machine); err != nil {
+			return false, err
+		}
+
+		_, updateInProgress := machine.Annotations[clusterv1.UpdateInProgressAnnotation]
+		pendingHooks := machine.Annotations[runtimev1.PendingHooksAnnotation]
+		if updateInProgress || pendingHooks != "" {
+			evidence.Snapshots = append(evidence.Snapshots, machineUpdateSnapshot{
+				Timestamp:        metav1.Now(),
+				Identity:         identityForMachine(machine),
+				Version:          machine.Spec.Version,
+				UpdateInProgress: updateInProgress,
+				PendingHooks:     pendingHooks,
+				Conditions:       append([]metav1.Condition(nil), machine.Status.Conditions...),
+			})
+		}
+		sawUpdateInProgress = sawUpdateInProgress || updateInProgress
+		sawPendingHook = sawPendingHook || strings.Contains(pendingHooks, "UpdateMachine")
+
+		condition := meta.FindStatusCondition(machine.Status.Conditions, clusterv1.MachineUpToDateCondition)
+		if condition == nil ||
+			condition.Status != metav1.ConditionTrue ||
+			machine.Spec.Version != targetVersion ||
+			updateInProgress ||
+			pendingHooks != "" {
+			return false, nil
+		}
+		finalMachine = machine.DeepCopy()
+		return true, nil
+	}, 10*time.Minute, 500*time.Millisecond).Should(BeTrue())
+
+	Expect(sawUpdateInProgress).To(BeTrue(), "did not observe the update-in-progress annotation")
+	Expect(sawPendingHook).To(BeTrue(), "did not observe the UpdateMachine pending hook")
+	return finalMachine
+}
+
+func identityForMachine(machine *clusterv1.Machine) machineIdentity {
+	return machineIdentity{Name: machine.Name, UID: machine.UID}
+}
+
+func identitiesForMachines(machines []clusterv1.Machine) []machineIdentity {
+	identities := make([]machineIdentity, 0, len(machines))
+	for i := range machines {
+		identities = append(identities, identityForMachine(&machines[i]))
+	}
+	return identities
+}
+
+func createRotatedDockerMachineTemplate(
+	ctx context.Context,
+	c client.Client,
+	namespace string,
+	clusterName string,
+	sourceTemplateName string,
+) *dockerinfrav1.DockerMachineTemplate {
+	sourceTemplate := &dockerinfrav1.DockerMachineTemplate{}
+	Expect(c.Get(ctx, client.ObjectKey{Namespace: namespace, Name: sourceTemplateName}, sourceTemplate)).To(Succeed())
+	templateSpec := sourceTemplate.Spec.DeepCopy()
+	templateSpec.Template.Spec.BootstrapTimeout = &metav1.Duration{Duration: rotatedBootstrapTimeout}
+
+	template := &dockerinfrav1.DockerMachineTemplate{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: dockerinfrav1.GroupVersion.String(),
+			Kind:       "DockerMachineTemplate",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: namespace,
+			Name:      clusterName + "-control-plane-rotated",
+		},
+		Spec: *templateSpec,
+	}
+	Expect(c.Create(ctx, template)).To(Succeed())
+	return template
+}
+
+func waitForUnsupportedDiffReplacement(
+	ctx context.Context,
+	c client.Client,
+	cluster *clusterv1.Cluster,
+	originalMachines []clusterv1.Machine,
+	templateName string,
+	templateGroupKind string,
+	bootstrapTimeout time.Duration,
+	targetVersion string,
+	evidence *inPlaceScenarioEvidence,
+) []clusterv1.Machine {
+	originalUIDs := map[types.UID]struct{}{}
+	originalNames := map[string]struct{}{}
+	for i := range originalMachines {
+		originalUIDs[originalMachines[i].UID] = struct{}{}
+		originalNames[originalMachines[i].Name] = struct{}{}
+	}
+
+	var finalMachines []clusterv1.Machine
+	Eventually(func() (bool, error) {
+		machines := &clusterv1.MachineList{}
+		if err := c.List(ctx, machines,
+			client.InNamespace(cluster.Namespace),
+			client.MatchingLabels{
+				clusterv1.ClusterNameLabel:         cluster.Name,
+				clusterv1.MachineControlPlaneLabel: "",
+			},
+		); err != nil {
+			return false, err
+		}
+		Expect(observeMachineCardinality(evidence, len(machines.Items), 3)).To(Succeed())
+		if len(machines.Items) != 3 {
+			return false, nil
+		}
+
+		provenance := make([]infrastructureProvenance, 0, len(machines.Items))
+		for i := range machines.Items {
+			machine := &machines.Items[i]
+			if _, found := originalUIDs[machine.UID]; found {
+				return false, nil
+			}
+			if _, found := originalNames[machine.Name]; found {
+				return false, nil
+			}
+			if machine.Spec.Version != targetVersion {
+				return false, nil
+			}
+			condition := meta.FindStatusCondition(machine.Status.Conditions, clusterv1.MachineUpToDateCondition)
+			if condition == nil || condition.Status != metav1.ConditionTrue {
+				return false, nil
+			}
+			readyCondition := meta.FindStatusCondition(machine.Status.Conditions, clusterv1.MachineReadyCondition)
+			if readyCondition == nil || readyCondition.Status != metav1.ConditionTrue {
+				return false, nil
+			}
+			if _, found := machine.Annotations[clusterv1.UpdateInProgressAnnotation]; found {
+				return false, nil
+			}
+			if machine.Annotations[runtimev1.PendingHooksAnnotation] != "" {
+				return false, nil
+			}
+
+			infraMachine := &dockerinfrav1.DockerMachine{}
+			if err := c.Get(ctx, client.ObjectKey{
+				Namespace: machine.Namespace,
+				Name:      machine.Spec.InfrastructureRef.Name,
+			}, infraMachine); err != nil {
+				if apierrors.IsNotFound(err) {
+					return false, nil
+				}
+				return false, err
+			}
+			if infraMachine.Annotations[clusterv1.TemplateClonedFromNameAnnotation] != templateName {
+				return false, nil
+			}
+			if infraMachine.Annotations[clusterv1.TemplateClonedFromGroupKindAnnotation] != templateGroupKind {
+				return false, nil
+			}
+			if infraMachine.Spec.BootstrapTimeout == nil ||
+				infraMachine.Spec.BootstrapTimeout.Duration != bootstrapTimeout {
+				return false, nil
+			}
+			provenance = append(provenance, infrastructureProvenance{
+				Machine:                   identityForMachine(machine),
+				InfrastructureMachineName: infraMachine.Name,
+				TemplateName:              templateName,
+				TemplateGroupKind:         templateGroupKind,
+				BootstrapTimeout:          infraMachine.Spec.BootstrapTimeout.Duration.String(),
+			})
+		}
+
+		finalMachines = append([]clusterv1.Machine(nil), machines.Items...)
+		evidence.InfrastructureProvenance = provenance
+		return true, nil
+	}, 15*time.Minute, time.Second).Should(BeTrue())
+
+	return finalMachines
+}
+
+func observeMachineCardinality(evidence *inPlaceScenarioEvidence, observed, limit int) error {
+	if observed > evidence.MaxControlPlaneMachineCardinality {
+		evidence.MaxControlPlaneMachineCardinality = observed
+	}
+	if observed > limit {
+		return fmt.Errorf("observed %d control-plane Machines, maximum allowed is %d", observed, limit)
+	}
+	return nil
+}
+
+func machineCondition(machine *clusterv1.Machine, conditionType string) *metav1.Condition {
+	condition := meta.FindStatusCondition(machine.Status.Conditions, conditionType)
+	Expect(condition).NotTo(BeNil(), "Machine %s is missing condition %s", machine.Name, conditionType)
+	return condition
+}
+
+func assertNoInPlaceAnnotations(ctx context.Context, c client.Client, machine *clusterv1.Machine) {
+	assertAnnotationsCleared := func(name string, annotations map[string]string) {
+		Expect(annotations).NotTo(HaveKey(clusterv1.UpdateInProgressAnnotation), "%s retained the update-in-progress annotation", name)
+		Expect(annotations).NotTo(HaveKey(runtimev1.PendingHooksAnnotation), "%s retained pending hooks", name)
+	}
+
+	assertAnnotationsCleared("Machine "+machine.Name, machine.Annotations)
+
+	infraMachine := &dockerinfrav1.DockerMachine{}
+	Expect(c.Get(ctx, client.ObjectKey{Namespace: machine.Namespace, Name: machine.Spec.InfrastructureRef.Name}, infraMachine)).To(Succeed())
+	assertAnnotationsCleared("DockerMachine "+infraMachine.Name, infraMachine.Annotations)
+
+	if machine.Spec.Bootstrap.ConfigRef.IsDefined() {
+		bootstrapConfig := &bootstrapv1.KThreesConfig{}
+		Expect(c.Get(ctx, client.ObjectKey{Namespace: machine.Namespace, Name: machine.Spec.Bootstrap.ConfigRef.Name}, bootstrapConfig)).To(Succeed())
+		assertAnnotationsCleared("KThreesConfig "+bootstrapConfig.Name, bootstrapConfig.Annotations)
+	}
+}
+
+func collectInPlaceCallRecord(
+	ctx context.Context,
+	c client.Client,
+	namespace string,
+	evidencePath string,
+	evidence *inPlaceScenarioEvidence,
+) {
+	configMap := &corev1.ConfigMap{}
+	Expect(c.Get(ctx, client.ObjectKey{Namespace: namespace, Name: inPlaceCallRecordConfigMap}, configMap)).To(Succeed())
+
+	evidence.Counters = map[string]string{}
+	for key, value := range configMap.Data {
+		evidence.Counters[key] = value
+	}
+
+	configMapPath := filepath.Join(
+		filepath.Dir(evidencePath),
+		strings.TrimSuffix(filepath.Base(evidencePath), filepath.Ext(evidencePath))+"-call-record-configmap.json",
+	)
+	writeJSONArtifact(configMapPath, configMap)
+}
+
+func writeInPlaceEvidence(path string, evidence *inPlaceScenarioEvidence) {
+	writeJSONArtifact(path, evidence)
+}
+
+func waitForCompletedControlPlaneConditions(
+	ctx context.Context,
+	c client.Client,
+	key types.NamespacedName,
+	evidence *inPlaceScenarioEvidence,
+) {
+	Eventually(func() error {
+		kcp := &controlplanev1.KThreesControlPlane{}
+		if err := c.Get(ctx, key, kcp); err != nil {
+			return err
+		}
+		return recordCompletedControlPlaneConditions(evidence, kcp)
+	}, time.Minute, time.Second).Should(Succeed())
+}
+
+func recordCompletedControlPlaneConditions(
+	evidence *inPlaceScenarioEvidence,
+	kcp *controlplanev1.KThreesControlPlane,
+) error {
+	if !v1beta1conditions.IsTrue(kcp, controlplanev1.MachinesSpecUpToDateCondition) {
+		return fmt.Errorf(
+			"KThreesControlPlane %s/%s condition %s is not True",
+			kcp.Namespace,
+			kcp.Name,
+			controlplanev1.MachinesSpecUpToDateCondition,
+		)
+	}
+	evidence.FinalControlPlaneConditions = append(clusterv1beta1.Conditions(nil), kcp.Status.Conditions...)
+	return nil
+}
+
+func writeJSONArtifact(path string, value any) {
+	Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+	data, err := json.MarshalIndent(value, "", "  ")
+	Expect(err).NotTo(HaveOccurred())
+	Expect(os.WriteFile(path, append(data, '\n'), 0o600)).To(Succeed())
+}
+
+func counterValue(counters map[string]string, key string) int {
+	value, ok := counters[key]
+	Expect(ok).To(BeTrue(), "counter %s was not recorded", key)
+	count, err := strconv.Atoi(value)
+	Expect(err).NotTo(HaveOccurred())
+	return count
+}
+
+func counterValueOrZero(counters map[string]string, key string) int {
+	if _, ok := counters[key]; !ok {
+		return 0
+	}
+	return counterValue(counters, key)
+}

@@ -420,6 +420,40 @@ spec:
                           KThreesControlPlane
                         format: date-time
                         type: string
+                      rolloutStrategy:
+                        default:
+                          rollingUpdate:
+                            maxSurge: 1
+                          type: RollingUpdate
+                        description: |-
+                          RolloutStrategy is the rollout strategy to use to replace control plane machines with new ones.
+                          Only RollingUpdate is supported. The default is RollingUpdate with a maxSurge of 1.
+                        properties:
+                          rollingUpdate:
+                            description: RollingUpdate configures the RollingUpdate
+                              strategy.
+                            properties:
+                              maxSurge:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                description: |-
+                                  MaxSurge is the maximum number of control plane machines that can be scheduled above the desired replicas.
+                                  Only absolute values 0 and 1 are supported. The default is 1.
+                                  With 0, update fallback is blocked below three desired replicas unless a surplus Machine can be deleted.
+                                x-kubernetes-int-or-string: true
+                                x-kubernetes-validations:
+                                - message: maxSurge must be 0 or 1
+                                  rule: self == 0 || self == 1 || self == '0' || self
+                                    == '1'
+                            type: object
+                          type:
+                            description: Type is the rollout strategy type. Currently
+                              only RollingUpdate is supported.
+                            enum:
+                            - RollingUpdate
+                            type: string
+                        type: object
                     type: object
                 required:
                 - spec

@@ -14,6 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// Package machinefilters provides the legacy control-plane rollout filters.
+//
+// Deprecated: use pkg/k3s.UpToDate for complete desired-state rollout evaluation.
 package machinefilters
 
 import (

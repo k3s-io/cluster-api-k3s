@@ -19,6 +19,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -28,7 +29,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
@@ -36,10 +36,13 @@ import (
 	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/controllers/external"
+	runtimeclient "sigs.k8s.io/cluster-api/exp/runtime/client"
+	"sigs.k8s.io/cluster-api/feature"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/annotations"
 	"sigs.k8s.io/cluster-api/util/certs"
 	"sigs.k8s.io/cluster-api/util/collections"
+	"sigs.k8s.io/cluster-api/util/conditions"
 	v1beta1conditions "sigs.k8s.io/cluster-api/util/deprecated/v1beta1/conditions"
 	v1beta1patch "sigs.k8s.io/cluster-api/util/deprecated/v1beta1/patch"
 	"sigs.k8s.io/cluster-api/util/patch"
@@ -53,22 +56,23 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
-	pkgcontract "github.com/k3s-io/cluster-api-k3s/pkg/contract"
+	"github.com/k3s-io/cluster-api-k3s/pkg/capi/inplace"
 	k3s "github.com/k3s-io/cluster-api-k3s/pkg/k3s"
 	"github.com/k3s-io/cluster-api-k3s/pkg/kubeconfig"
 	"github.com/k3s-io/cluster-api-k3s/pkg/secret"
 	"github.com/k3s-io/cluster-api-k3s/pkg/token"
-	"github.com/k3s-io/cluster-api-k3s/pkg/util/contract"
 	"github.com/k3s-io/cluster-api-k3s/pkg/util/ssa"
 )
 
 // KThreesControlPlaneReconciler reconciles a KThreesControlPlane object.
 type KThreesControlPlaneReconciler struct {
 	client.Client
-	Log        logr.Logger
-	Scheme     *runtime.Scheme
-	controller controller.Controller
-	recorder   record.EventRecorder
+	apiReader     client.Reader
+	Log           logr.Logger
+	Scheme        *runtime.Scheme
+	RuntimeClient runtimeclient.Client
+	controller    controller.Controller
+	recorder      record.EventRecorder
 
 	EtcdDialTimeout time.Duration
 	EtcdCallTimeout time.Duration
@@ -76,6 +80,17 @@ type KThreesControlPlaneReconciler struct {
 	managementCluster         k3s.ManagementCluster
 	managementClusterUncached k3s.ManagementCluster
 	ssaCache                  ssa.Cache
+
+	// Only used for testing.
+	overrides *reconcilerOverrides
+}
+
+type reconcilerOverrides struct {
+	scaleUpControlPlane   func(context.Context, *clusterv1.Cluster, *controlplanev1.KThreesControlPlane, *k3s.ControlPlane) (ctrl.Result, error)
+	scaleDownControlPlane func(context.Context, *clusterv1.Cluster, *controlplanev1.KThreesControlPlane, *k3s.ControlPlane, collections.Machines) (ctrl.Result, error)
+	tryInPlaceUpdate      func(context.Context, *k3s.ControlPlane, *clusterv1.Machine, k3s.UpToDateResult) (bool, ctrl.Result, error)
+	canUpdateMachine      func(context.Context, *clusterv1.Machine, k3s.UpToDateResult) (bool, error)
+	triggerInPlaceUpdate  func(context.Context, *clusterv1.Machine, k3s.UpToDateResult) error
 }
 
 // +kubebuilder:rbac:groups=core,resources=events,verbs=get;list;watch;create;patch
@@ -84,6 +99,8 @@ type KThreesControlPlaneReconciler struct {
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters;clusters/status,verbs=get;list;watch
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=machines;machines/status,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions,verbs=get;list;watch
+// +kubebuilder:rbac:groups=core,resources=namespaces,verbs=get;list;watch
+// +kubebuilder:rbac:groups=runtime.cluster.x-k8s.io,resources=extensionconfigs,verbs=get;list;watch
 
 func (r *KThreesControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := r.Log.WithValues("namespace", req.Namespace, "kthreesControlPlane", req.Name)
@@ -297,6 +314,10 @@ func patchKThreesControlPlane(ctx context.Context, patchHelper *v1beta1patch.Hel
 }
 
 func (r *KThreesControlPlaneReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, log *logr.Logger, concurrency int) error {
+	if feature.Gates.Enabled(feature.InPlaceUpdates) && r.RuntimeClient == nil {
+		return errors.New("RuntimeClient must not be nil when InPlaceUpdates feature gate is enabled")
+	}
+
 	c, err := ctrl.NewControllerManagedBy(mgr).
 		For(&controlplanev1.KThreesControlPlane{}).
 		Owns(&clusterv1.Machine{}).
@@ -316,6 +337,7 @@ func (r *KThreesControlPlaneReconciler) SetupWithManager(ctx context.Context, mg
 	}
 
 	r.Scheme = mgr.GetScheme()
+	r.apiReader = mgr.GetAPIReader()
 	r.controller = c
 	r.recorder = mgr.GetEventRecorderFor("k3s-control-plane-controller")
 	r.ssaCache = ssa.NewCache()
@@ -536,8 +558,12 @@ func (r *KThreesControlPlaneReconciler) reconcile(ctx context.Context, cluster *
 		return reconcile.Result{}, err
 	}
 
-	if err := r.syncMachines(ctx, controlPlane); err != nil {
+	migrationCompleted, err := r.syncMachines(ctx, controlPlane)
+	if err != nil {
 		return ctrl.Result{}, errors.Wrap(err, "failed to sync Machines")
+	}
+	if migrationCompleted {
+		return ctrl.Result{Requeue: true}, nil
 	}
 
 	// Aggregate the operational state of all the machines; while aggregating we are adding the
@@ -566,19 +592,41 @@ func (r *KThreesControlPlaneReconciler) reconcile(ctx context.Context, cluster *
 		return reconcile.Result{}, err
 	}
 
+	// Resume a partially triggered update without repeating CanUpdateMachine. Matching KCP and CAPRKE2,
+	// desired objects are recomputed on every reconcile, so a resumed handoff uses the latest desired state.
+	if handled, err := r.reconcilePendingInPlaceUpdateTrigger(ctx, controlPlane); err != nil || handled {
+		return ctrl.Result{}, err
+	}
+
 	// Reconcile unhealthy machines by triggering deletion and requeue if it is considered safe to remediate,
 	// otherwise continue with the other KCP operations.
 	if result, err := r.reconcileUnhealthyMachines(ctx, controlPlane); err != nil || !result.IsZero() {
 		return result, err
 	}
 
+	return r.reconcileControlPlaneOperations(ctx, cluster, kcp, controlPlane)
+}
+
+func (r *KThreesControlPlaneReconciler) reconcileControlPlaneOperations(
+	ctx context.Context,
+	cluster *clusterv1.Cluster,
+	kcp *controlplanev1.KThreesControlPlane,
+	controlPlane *k3s.ControlPlane,
+) (ctrl.Result, error) {
+	logger := r.Log.WithValues("namespace", kcp.Namespace, "KThreesControlPlane", kcp.Name, "cluster", cluster.Name)
+
+	if r.reconcileInPlaceUpdateState(controlPlane) {
+		return ctrl.Result{}, nil
+	}
+
 	// Control plane machines rollout due to configuration changes (e.g. upgrades) takes precedence over other operations.
-	needRollout := controlPlane.MachinesNeedingRollout()
+	needRollout, upToDateResults := controlPlane.MachinesNeedingRolloutWithResults()
 	switch {
 	case len(needRollout) > 0:
-		logger.Info("Rolling out Control Plane machines", "needRollout", needRollout.Names())
+		machineNames, reasons := rolloutLogDetails(needRollout, upToDateResults)
+		logger.Info(fmt.Sprintf("Machines need rollout: %s", strings.Join(machineNames, ",")), "reason", reasons)
 		v1beta1conditions.MarkFalse(controlPlane.KCP, controlplanev1.MachinesSpecUpToDateCondition, controlplanev1.RollingUpdateInProgressReason, clusterv1beta1.ConditionSeverityWarning, "Rolling %d replicas with outdated spec (%d replicas up to date)", len(needRollout), len(controlPlane.Machines)-len(needRollout))
-		return r.upgradeControlPlane(ctx, cluster, kcp, controlPlane, needRollout)
+		return r.updateControlPlane(ctx, cluster, kcp, controlPlane, needRollout, upToDateResults)
 	default:
 		// make sure last upgrade operation is marked as completed.
 		// NOTE: we are checking the condition already exists in order to avoid to set this condition at the first
@@ -588,8 +636,8 @@ func (r *KThreesControlPlaneReconciler) reconcile(ctx context.Context, cluster *
 		}
 	}
 
-	// If we've made it this far, we can assume that all ownedMachines are up to date
-	numMachines := len(ownedMachines)
+	// If we've made it this far, we can assume that all control-plane Machines are up to date.
+	numMachines := controlPlane.Machines.Len()
 	desiredReplicas := int(*kcp.Spec.Replicas)
 
 	switch {
@@ -710,11 +758,16 @@ func (r *KThreesControlPlaneReconciler) reconcileKubeconfig(ctx context.Context,
 // syncMachines updates Machines, InfrastructureMachines and KThreesConfigs to propagate in-place mutable fields from KCP.
 // Note: It also cleans up managed fields of all Machines so that Machines that were
 // created/patched before (<= v0.2.0) the controller adopted Server-Side-Apply (SSA) can also work with SSA.
-// Note: For InfrastructureMachines and KThreesConfigs it also drops ownership of "metadata.labels" and
-// "metadata.annotations" from "manager" so that "capi-kthreescontrolplane" can own these fields and can work with SSA.
-// Otherwise, fields would be co-owned by our "old" "manager" and "capi-kthreescontrolplane" and then we would not be
-// able to e.g. drop labels and annotations.
-func (r *KThreesControlPlaneReconciler) syncMachines(ctx context.Context, controlPlane *k3s.ControlPlane) error {
+// Related-object managed fields migration runs first and causes an immediate requeue before ordinary synchronization.
+func (r *KThreesControlPlaneReconciler) syncMachines(
+	ctx context.Context,
+	controlPlane *k3s.ControlPlane,
+) (migrationCompleted bool, err error) {
+	migrationCompleted, err = r.reconcileRelatedObjectManagedFields(ctx, controlPlane)
+	if err != nil || migrationCompleted {
+		return migrationCompleted, err
+	}
+
 	patchHelpers := map[string]*patch.Helper{}
 	for machineName := range controlPlane.Machines {
 		m := controlPlane.Machines[machineName]
@@ -728,14 +781,14 @@ func (r *KThreesControlPlaneReconciler) syncMachines(ctx context.Context, contro
 		// (<= v0.2.0) can also work with SSA. Otherwise, fields would be co-owned by our "old" "manager" and
 		// "capi-kthreescontrolplane" and then we would not be able to e.g. drop labels and annotations.
 		if err := ssa.CleanUpManagedFieldsForSSAAdoption(ctx, r.Client, m, kcpManagerName); err != nil {
-			return errors.Wrapf(err, "failed to update Machine: failed to adjust the managedFields of the Machine %s", klog.KObj(m))
+			return false, errors.Wrapf(err, "failed to update Machine: failed to adjust the managedFields of the Machine %s", klog.KObj(m))
 		}
 		// Update Machine to propagate in-place mutable fields from KCP.
 		updatedMachine, err := r.updateMachine(ctx, m, controlPlane.KCP, controlPlane.Cluster)
 		if err != nil {
-			return errors.Wrapf(err, "failed to update Machine: %s", klog.KObj(m))
+			return false, errors.Wrapf(err, "failed to update Machine: %s", klog.KObj(m))
 		}
-		controlPlane.Machines[machineName] = updatedMachine
+		controlPlane.ReplaceMachine(updatedMachine)
 		// Since the machine is updated, re-create the patch helper so that any subsequent
 		// Patch calls use the correct base machine object to calculate the diffs.
 		// Example: reconcileControlPlaneConditions patches the machine objects in a subsequent call
@@ -746,28 +799,17 @@ func (r *KThreesControlPlaneReconciler) syncMachines(ctx context.Context, contro
 		// TODO: This should be cleaned-up to have a more streamline way of constructing and using patchHelpers.
 		patchHelper, err := patch.NewHelper(updatedMachine, r.Client)
 		if err != nil {
-			return err
+			return false, err
 		}
 		patchHelpers[machineName] = patchHelper
 
-		labelsAndAnnotationsManagedFieldPaths := []contract.Path{
-			{"f:metadata", "f:annotations"},
-			{"f:metadata", "f:labels"},
-		}
 		infraMachine, infraMachineFound := controlPlane.InfraResources[machineName]
 		// Only update the InfraMachine if it is already found, otherwise just skip it.
 		// This could happen e.g. if the cache is not up-to-date yet.
 		if infraMachineFound {
-			// Cleanup managed fields of all InfrastructureMachines to drop ownership of labels and annotations
-			// from "manager". We do this so that InfrastructureMachines that are created using the Create method
-			// can also work with SSA. Otherwise, labels and annotations would be co-owned by our "old" "manager"
-			// and "capi-kthreescontrolplane" and then we would not be able to e.g. drop labels and annotations.
-			if err := ssa.DropManagedFields(ctx, r.Client, infraMachine, kcpManagerName, labelsAndAnnotationsManagedFieldPaths); err != nil {
-				return errors.Wrapf(err, "failed to clean up managedFields of InfrastructureMachine %s", klog.KObj(infraMachine))
-			}
 			// Update in-place mutating fields on InfrastructureMachine.
 			if err := r.updateExternalObject(ctx, infraMachine, infraMachine.GroupVersionKind(), controlPlane.KCP, controlPlane.Cluster); err != nil {
-				return errors.Wrapf(err, "failed to update InfrastructureMachine %s", klog.KObj(infraMachine))
+				return false, errors.Wrapf(err, "failed to update InfrastructureMachine %s", klog.KObj(infraMachine))
 			}
 		}
 
@@ -775,42 +817,28 @@ func (r *KThreesControlPlaneReconciler) syncMachines(ctx context.Context, contro
 		// Only update the kthreesConfigs if it is already found, otherwise just skip it.
 		// This could happen e.g. if the cache is not up-to-date yet.
 		if kthreesConfigsFound {
-			version, err := pkgcontract.GetAPIVersion(ctx, r.Client, schema.GroupKind{Group: m.Spec.Bootstrap.ConfigRef.APIGroup, Kind: m.Spec.Bootstrap.ConfigRef.Kind})
-			if err != nil {
-				return fmt.Errorf("failed to get api version for bootstrap config: %w", err)
-			}
-
-			// version string returned by the discovery API is a full group/version string (e.g. "bootstrap.cluster.x-k8s.io/v1beta2"),
-			// but we need to split it into group and version to construct the GVK of the KThreesConfig object.
-			groupVersion, err := schema.ParseGroupVersion(version)
-			if err != nil {
-				return fmt.Errorf("failed to parse api version for bootstrap config: %w", err)
-			}
-			gvk := groupVersion.WithKind(m.Spec.Bootstrap.ConfigRef.Kind)
-			kthreesConfigs.SetGroupVersionKind(gvk)
-			// Cleanup managed fields of all KThreesConfigs to drop ownership of labels and annotations
-			// from "manager". We do this so that KThreesConfigs that are created using the Create method
-			// can also work with SSA. Otherwise, labels and annotations would be co-owned by our "old" "manager"
-			// and "capi-kthreescontrolplane" and then we would not be able to e.g. drop labels and annotations.
-			if err := ssa.DropManagedFields(ctx, r.Client, kthreesConfigs, kcpManagerName, labelsAndAnnotationsManagedFieldPaths); err != nil {
-				return errors.Wrapf(err, "failed to clean up managedFields of kthreesConfigs %s", klog.KObj(kthreesConfigs))
-			}
 			// Update in-place mutating fields on BootstrapConfig.
 			if err := r.updateExternalObject(ctx, kthreesConfigs, kthreesConfigs.GroupVersionKind(), controlPlane.KCP, controlPlane.Cluster); err != nil {
-				return errors.Wrapf(err, "failed to update KThreesConfigs %s", klog.KObj(kthreesConfigs))
+				return false, errors.Wrapf(err, "failed to update KThreesConfigs %s", klog.KObj(kthreesConfigs))
 			}
 		}
 	}
 	// Update the patch helpers.
 	controlPlane.SetPatchHelpers(patchHelpers)
-	return nil
+	return false, nil
 }
 
 // reconcileControlPlaneConditions is responsible of reconciling conditions reporting the status of static pods and
 // the status of the etcd cluster.
-func (r *KThreesControlPlaneReconciler) reconcileControlPlaneConditions(ctx context.Context, controlPlane *k3s.ControlPlane) error {
+func (r *KThreesControlPlaneReconciler) reconcileControlPlaneConditions(ctx context.Context, controlPlane *k3s.ControlPlane) (reterr error) {
+	defer func() {
+		reterr = kerrors.NewAggregate([]error{reterr, controlPlane.PatchMachines(ctx)})
+	}()
+
+	reconcileMachineUpToDateCondition(ctx, controlPlane)
+
 	// If the cluster is not yet initialized, there is no way to connect to the workload cluster and fetch information
-	// for updating conditions. Return early.
+	// for updating health conditions.
 	if !controlPlane.KCP.Status.Initialized {
 		return nil
 	}
@@ -824,13 +852,75 @@ func (r *KThreesControlPlaneReconciler) reconcileControlPlaneConditions(ctx cont
 	workloadCluster.UpdateAgentConditions(ctx, controlPlane)
 	workloadCluster.UpdateEtcdConditions(ctx, controlPlane)
 
-	// Patch machines with the updated conditions.
-	if err := controlPlane.PatchMachines(ctx); err != nil {
-		return err
-	}
-
 	// KCP will be patched at the end of Reconcile to reflect updated conditions, so we can return now.
 	return nil
+}
+
+func reconcileMachineUpToDateCondition(_ context.Context, controlPlane *k3s.ControlPlane) {
+	machinesNotUpToDate, machinesUpToDateResults := controlPlane.NotUpToDateMachines()
+	notUpToDateNames := map[string]struct{}{}
+	for _, name := range machinesNotUpToDate.Names() {
+		notUpToDateNames[name] = struct{}{}
+	}
+
+	for _, machine := range controlPlane.Machines {
+		if inplace.IsUpdateInProgress(machine) {
+			message := "* In-place update in progress"
+			if condition := conditions.Get(machine, clusterv1.MachineUpdatingCondition); condition != nil &&
+				condition.Status == metav1.ConditionTrue && condition.Message != "" {
+				message = fmt.Sprintf("* %s", condition.Message)
+			}
+			conditions.Set(machine, metav1.Condition{
+				Type:    clusterv1.MachineUpToDateCondition,
+				Status:  metav1.ConditionFalse,
+				Reason:  clusterv1.MachineUpToDateUpdatingReason,
+				Message: message,
+			})
+			continue
+		}
+
+		if _, ok := notUpToDateNames[machine.Name]; ok {
+			message := ""
+			if result, ok := machinesUpToDateResults[machine.Name]; ok && len(result.ConditionMessages) > 0 {
+				reasons := make([]string, 0, len(result.ConditionMessages))
+				for _, conditionMessage := range result.ConditionMessages {
+					reasons = append(reasons, fmt.Sprintf("* %s", conditionMessage))
+				}
+				message = strings.Join(reasons, "\n")
+			}
+			conditions.Set(machine, metav1.Condition{
+				Type:    clusterv1.MachineUpToDateCondition,
+				Status:  metav1.ConditionFalse,
+				Reason:  clusterv1.MachineNotUpToDateReason,
+				Message: message,
+			})
+			continue
+		}
+
+		conditions.Set(machine, metav1.Condition{
+			Type:   clusterv1.MachineUpToDateCondition,
+			Status: metav1.ConditionTrue,
+			Reason: clusterv1.MachineUpToDateReason,
+		})
+	}
+}
+
+func rolloutLogDetails(
+	machinesNeedingRollout collections.Machines,
+	results map[string]k3s.UpToDateResult,
+) ([]string, string) {
+	machineNames := machinesNeedingRollout.Names()
+	slices.Sort(machineNames)
+
+	messages := make([]string, 0, len(machineNames))
+	for _, name := range machineNames {
+		messages = append(messages, fmt.Sprintf(
+			"Machine %s needs rollout: %s",
+			name,
+			strings.Join(results[name].LogMessages, ", "),
+		))
+	}
+	return machineNames, strings.Join(messages, ", ")
 }
 
 // reconcileEtcdMembers ensures the number of etcd members is in sync with the number of machines/nodes.
@@ -882,54 +972,4 @@ func (r *KThreesControlPlaneReconciler) reconcileEtcdMembers(ctx context.Context
 	}
 
 	return nil
-}
-
-func (r *KThreesControlPlaneReconciler) upgradeControlPlane(
-	ctx context.Context,
-	cluster *clusterv1.Cluster,
-	kcp *controlplanev1.KThreesControlPlane,
-	controlPlane *k3s.ControlPlane,
-	machinesRequireUpgrade collections.Machines,
-) (ctrl.Result, error) {
-	// TODO: handle reconciliation of etcd members and kubeadm config in case they get out of sync with cluster
-
-	/**
-	logger := controlPlane.Logger()
-	workloadCluster, err := r.managementCluster.GetWorkloadCluster(ctx, util.ObjectKey(cluster))
-
-	if err != nil {
-		logger.Error(err, "failed to get remote client for workload cluster", "cluster key", util.ObjectKey(cluster))
-		return reconcile.Result{}, err
-	}
-
-	parsedVersion, err := semver.ParseTolerant(kcp.Spec.Version)
-	if err != nil {
-		return reconcile.Result{}, fmt.Errorf(err, "failed to parse kubernetes version %q", kcp.Spec.Version)
-	}
-
-
-	if kcp.Spec.KThreesConfigSpec.ClusterConfiguration != nil {
-		imageRepository := kcp.Spec.KThreesConfigSpec.ClusterConfiguration.ImageRepository
-		if err := workloadCluster.UpdateImageRepositoryInKubeadmConfigMap(ctx, imageRepository); err != nil {
-			return reconcile.Result{}, fmt.Errorf("failed to update the image repository in the kubeadm config map")
-		}
-	}
-
-	if kcp.Spec.KThreesConfigSpec.ClusterConfiguration != nil && kcp.Spec.KThreesConfigSpec.ClusterConfiguration.Etcd.Local != nil {
-		meta := kcp.Spec.KThreesConfigSpec.ClusterConfiguration.Etcd.Local.ImageMeta
-		if err := workloadCluster.UpdateEtcdVersionInKubeadmConfigMap(ctx, meta.ImageRepository, meta.ImageTag); err != nil {
-			return reconcile.Result{}, fmt.Errorf("failed to update the etcd version in the kubeadm config map")
-		}
-	}
-
-	if err := workloadCluster.UpdateKubeletConfigMap(ctx, parsedVersion); err != nil {
-		return reconcile.Result{}, fmt.Errorf("failed to upgrade kubelet config map")
-	}
-	**/
-
-	if controlPlane.Machines.Len() <= int(*kcp.Spec.Replicas) {
-		// scaleUp ensures that we don't continue scaling up while waiting for Machines to have NodeRefs
-		return r.scaleUpControlPlane(ctx, cluster, kcp, controlPlane)
-	}
-	return r.scaleDownControlPlane(ctx, cluster, kcp, controlPlane, machinesRequireUpgrade)
 }

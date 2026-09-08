@@ -154,6 +154,9 @@ BOOTSTRAP_IMG ?= $(REGISTRY)/bootstrap-controller
 CONTROLPLANE_IMG_TAG ?= $(RELEASE_TAG)
 CONTROLPLANE_IMG ?= $(REGISTRY)/controlplane-controller
 
+TEST_EXTENSION_IMG ?= $(REGISTRY)/test-extension
+TEST_EXTENSION_IMG_TAG ?= dev
+
 test-common:
 	go test $(shell pwd)/pkg/... -coverprofile cover.out 
 
@@ -226,6 +229,17 @@ docker-build-e2e: ## Run docker-build-* targets for all the images with settings
     # and it also match the image tags in bootstrap/config/default and controlplane/config/default
 	$(MAKE) BOOTSTRAP_IMG_TAG=dev docker-build-bootstrap
 	$(MAKE) CONTROLPLANE_IMG_TAG=dev docker-build-controlplane
+	$(MAKE) TEST_EXTENSION_IMG_TAG=dev docker-build-test-extension
+
+.PHONY: docker-build-test-extension
+docker-build-test-extension:
+	DOCKER_BUILDKIT=1 docker build \
+		--build-arg builder_image=$(GO_CONTAINER_IMAGE) \
+		--build-arg goproxy=$(GOPROXY) \
+		--build-arg TARGETARCH=$(ARCH) \
+		--build-arg package=./test/extension/main.go \
+		--build-arg ldflags="$(LDFLAGS)" \
+		. -t $(TEST_EXTENSION_IMG):$(TEST_EXTENSION_IMG_TAG)
 
 .PHONY: generate-e2e-templates
 generate-e2e-templates: $(KUSTOMIZE)
@@ -262,9 +276,9 @@ uninstall-controlplane: manifests-controlplane
 	$(KUSTOMIZE) build controlplane/config/crd | kubectl delete -f -
 
 # Deploy controller in the configured Kubernetes cluster in ~/.kube/config
-deploy-controlplane: manifests-controlplane
+deploy-controlplane: manifests-controlplane $(ENVSUBST)
 	cd controlplane/config/manager && $(KUSTOMIZE) edit set image controller=${CONTROLPLANE_IMG}:$(CONTROLPLANE_IMG_TAG)
-	$(KUSTOMIZE) build controlplane/config/default | kubectl apply -f -
+	$(KUSTOMIZE) build controlplane/config/default | $(ENVSUBST) | kubectl apply -f -
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests-controlplane: $(KUSTOMIZE) $(CONTROLLER_GEN)

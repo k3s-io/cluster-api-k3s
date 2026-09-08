@@ -37,5 +37,6 @@ const (
 
 	k3sHookName = "k3s"
 
-	kcpManagerName = "capi-kthreescontrolplane"
+	kcpManagerName         = "capi-kthreescontrolplane"
+	kcpMetadataManagerName = "capi-kthreescontrolplane-metadata"
 )

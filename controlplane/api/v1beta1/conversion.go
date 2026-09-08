@@ -33,6 +33,7 @@ func Convert_v1beta1_KThreesControlPlaneSpec_To_v1beta2_KThreesControlPlaneSpec(
 		return fmt.Errorf("converting KThreesConfigSpec field from v1beta1 to v1beta2: %w", err)
 	}
 	out.RolloutAfter = in.UpgradeAfter
+	out.RolloutStrategy = (*controlplanev1beta2.RolloutStrategy)(unsafe.Pointer(in.RolloutStrategy))
 	if err := Convert_v1beta1_KThreesControlPlaneMachineTemplate_To_v1beta2_KThreesControlPlaneMachineTemplate(&in.MachineTemplate, &out.MachineTemplate, s); err != nil {
 		return fmt.Errorf("converting KThreesControlPlaneMachineTemplate field from v1beta1 to v1beta2: %w", err)
 	}
@@ -50,6 +51,7 @@ func Convert_v1beta2_KThreesControlPlaneSpec_To_v1beta1_KThreesControlPlaneSpec(
 		return fmt.Errorf("converting KThreesConfigSpec field from v1beta2 to v1beta1: %w", err)
 	}
 	out.UpgradeAfter = in.RolloutAfter
+	out.RolloutStrategy = (*RolloutStrategy)(unsafe.Pointer(in.RolloutStrategy))
 	out.NodeDrainTimeout = in.MachineTemplate.NodeDrainTimeout
 	if err := Convert_v1beta2_KThreesControlPlaneMachineTemplate_To_v1beta1_KThreesControlPlaneMachineTemplate(&in.MachineTemplate, &out.MachineTemplate, s); err != nil {
 		return fmt.Errorf("converting KThreesControlPlaneMachineTemplate field from v1beta2 to v1beta1: %w", err)

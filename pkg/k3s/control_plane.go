@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -31,16 +32,20 @@ import (
 	"k8s.io/utils/ptr"
 	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
+	runtimehooksv1 "sigs.k8s.io/cluster-api/api/runtime/hooks/v1alpha1"
 	"sigs.k8s.io/cluster-api/controllers/external"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/collections"
+	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/failuredomains"
 	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
 	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
-	"github.com/k3s-io/cluster-api-k3s/pkg/machinefilters"
+	"github.com/k3s-io/cluster-api-k3s/pkg/capi/hooks"
+	"github.com/k3s-io/cluster-api-k3s/pkg/capi/inplace"
+	"github.com/k3s-io/cluster-api-k3s/pkg/machinefilters" //nolint:staticcheck // Intentionally used only for the legacy composite-literal compatibility fallback.
 )
 
 var (
@@ -56,6 +61,9 @@ type ControlPlane struct {
 	Cluster              *clusterv1.Cluster
 	Machines             collections.Machines
 	machinesPatchHelpers map[string]*patch.Helper
+
+	machinesNotUpToDate     collections.Machines
+	machinesUpToDateResults map[string]UpToDateResult
 
 	// check if mgmt cluster has target cluster's etcd ca.
 	// for old cluster created before connect-etcd feature, mgmt cluster don't
@@ -103,15 +111,33 @@ func NewControlPlane(ctx context.Context, client client.Client, cluster *cluster
 		return nil, err
 	}
 
+	reconciliationTime := metav1.Now()
+	machinesNotUpToDate := collections.Machines{}
+	machinesUpToDateResults := map[string]UpToDateResult{}
+	for _, machine := range ownedMachines {
+		upToDate, result, err := UpToDate(
+			ctx, client, cluster, machine, kcp, &reconciliationTime, infraObjects, kthreesConfigs,
+		)
+		if err != nil {
+			return nil, err
+		}
+		machinesUpToDateResults[machine.Name] = *result
+		if !upToDate {
+			machinesNotUpToDate[machine.Name] = machine
+		}
+	}
+
 	return &ControlPlane{
-		KCP:                  kcp,
-		Cluster:              cluster,
-		Machines:             ownedMachines,
-		machinesPatchHelpers: patchHelpers,
-		hasEtcdCA:            hasEtcdCA,
-		KthreesConfigs:       kthreesConfigs,
-		InfraResources:       infraObjects,
-		reconciliationTime:   metav1.Now(),
+		KCP:                     kcp,
+		Cluster:                 cluster,
+		Machines:                ownedMachines,
+		machinesPatchHelpers:    patchHelpers,
+		machinesNotUpToDate:     machinesNotUpToDate,
+		machinesUpToDateResults: machinesUpToDateResults,
+		hasEtcdCA:               hasEtcdCA,
+		KthreesConfigs:          kthreesConfigs,
+		InfraResources:          infraObjects,
+		reconciliationTime:      reconciliationTime,
 	}, nil
 }
 
@@ -210,7 +236,7 @@ func (c *ControlPlane) NextFailureDomainForScaleUp(ctx context.Context) string {
 	if len(c.ControlPlaneFailureDomains()) == 0 {
 		return ""
 	}
-	return failuredomains.PickFewest(ctx, c.ControlPlaneFailureDomains(), c.Machines, c.UpToDateMachines())
+	return failuredomains.PickFewest(ctx, c.ControlPlaneFailureDomains(), c.Machines, c.UpToDateMachines().Filter(collections.Not(collections.HasDeletionTimestamp)))
 }
 
 // InitialControlPlaneConfig returns a new KThreesConfigSpec that is to be used for an initializing control plane.
@@ -226,6 +252,8 @@ func (c *ControlPlane) JoinControlPlaneConfig() *bootstrapv1.KThreesConfigSpec {
 }
 
 // GenerateKThreesConfig generates a new KThreesConfig config for creating new control plane nodes.
+//
+// Deprecated: use desiredstate.ComputeDesiredKThreesConfig for controller-managed desired state.
 func (c *ControlPlane) GenerateKThreesConfig(spec *bootstrapv1.KThreesConfigSpec) *bootstrapv1.KThreesConfig {
 	// Create an owner reference without a controller reference because the owning controller is the machine controller
 	owner := metav1.OwnerReference{
@@ -248,6 +276,8 @@ func (c *ControlPlane) GenerateKThreesConfig(spec *bootstrapv1.KThreesConfigSpec
 }
 
 // ControlPlaneLabelsForCluster returns a set of labels to add to a control plane machine for this specific cluster.
+//
+// Deprecated: use desiredstate.ControlPlaneMachineLabels when a KThreesControlPlane is available.
 func ControlPlaneLabelsForCluster(clusterName string, machineTemplate controlplanev1.KThreesControlPlaneMachineTemplate) map[string]string {
 	labels := make(map[string]string)
 	for key, value := range machineTemplate.ObjectMeta.Labels {
@@ -260,6 +290,8 @@ func ControlPlaneLabelsForCluster(clusterName string, machineTemplate controlpla
 }
 
 // NewMachine returns a machine configured to be a part of the control plane.
+//
+// Deprecated: use desiredstate.ComputeDesiredMachine for controller-managed desired state.
 func (c *ControlPlane) NewMachine(infraRef, bootstrapRef *corev1.ObjectReference, failureDomain *string) *clusterv1beta1.Machine {
 	return &clusterv1beta1.Machine{
 		ObjectMeta: metav1.ObjectMeta{
@@ -302,29 +334,82 @@ func (c *ControlPlane) HasDeletingMachine() bool {
 	return len(c.Machines.Filter(collections.HasDeletionTimestamp)) > 0
 }
 
-// MachinesNeedingRollout return a list of machines that need to be rolled out.
-func (c *ControlPlane) MachinesNeedingRollout() collections.Machines {
-	// Ignore machines to be deleted.
-	machines := c.Machines.Filter(collections.Not(collections.HasDeletionTimestamp))
+// ReplaceMachine replaces a Machine in the cached collections without changing rollout eligibility.
+func (c *ControlPlane) ReplaceMachine(machine *clusterv1.Machine) {
+	c.Machines[machine.Name] = machine
+	if _, ok := c.machinesNotUpToDate[machine.Name]; ok {
+		c.machinesNotUpToDate[machine.Name] = machine
+	}
+}
 
-	rolloutAfter := c.KCP.Spec.RolloutAfter
-	if rolloutAfter == nil {
-		rolloutAfter = &metav1.Time{}
+// MarkInPlaceUpdateUnsupported disables in-place update for one cached Machine result.
+func (c *ControlPlane) MarkInPlaceUpdateUnsupported(machineName, logMessage, conditionMessage string) {
+	result, ok := c.machinesUpToDateResults[machineName]
+	if !ok {
+		return
 	}
 
-	// Return machines if they are scheduled for rollout or if with an outdated configuration.
-	return machines.AnyFilter(
-		// Machines that are scheduled for rollout (KCP.Spec.RolloutAfter set, the RolloutAfter deadline is expired, and the machine was created before the deadline).
-		collections.ShouldRolloutAfter(&c.reconciliationTime, *rolloutAfter),
-		// Machines that do not match with KCP config.
-		collections.Not(machinefilters.MatchesKCPConfiguration(c.InfraResources, c.KthreesConfigs, c.KCP)),
-	)
+	result.EligibleForInPlaceUpdate = false
+	if !slices.Contains(result.LogMessages, logMessage) {
+		result.LogMessages = append(result.LogMessages, logMessage)
+	}
+	if !slices.Contains(result.ConditionMessages, conditionMessage) {
+		result.ConditionMessages = append(result.ConditionMessages, conditionMessage)
+	}
+	c.machinesUpToDateResults[machineName] = result
+}
+
+// MachinesNeedingRollout returns Machines that need rollout.
+func (c *ControlPlane) MachinesNeedingRollout() collections.Machines {
+	machines, _ := c.MachinesNeedingRolloutWithResults()
+	return machines
+}
+
+func (c *ControlPlane) rolloutState() (collections.Machines, map[string]UpToDateResult) {
+	if c.machinesNotUpToDate != nil && c.machinesUpToDateResults != nil {
+		return c.machinesNotUpToDate, c.machinesUpToDateResults
+	}
+
+	kthreesConfigs := make(map[string]*bootstrapv1.KThreesConfig, len(c.KthreesConfigs))
+	for name, config := range c.KthreesConfigs {
+		kthreesConfigs[name] = config.DeepCopy()
+	}
+	matchesConfiguration := machinefilters.MatchesKCPConfiguration(c.InfraResources, kthreesConfigs, c.KCP)
+	return c.Machines.Filter(collections.Not(matchesConfiguration)), map[string]UpToDateResult{}
+}
+
+// MachinesNeedingRolloutWithResults returns Machines that need rollout and their cached desired-state results.
+func (c *ControlPlane) MachinesNeedingRolloutWithResults() (collections.Machines, map[string]UpToDateResult) {
+	machinesNotUpToDate, results := c.rolloutState()
+	return machinesNotUpToDate.Filter(collections.Not(collections.HasDeletionTimestamp)), results
+}
+
+// NotUpToDateMachines returns Machines that do not match desired state and all cached comparison results.
+func (c *ControlPlane) NotUpToDateMachines() (collections.Machines, map[string]UpToDateResult) {
+	return c.rolloutState()
 }
 
 // UpToDateMachines returns the machines that are up to date with the control
 // plane's configuration and therefore do not require rollout.
 func (c *ControlPlane) UpToDateMachines() collections.Machines {
-	return c.Machines.Difference(c.MachinesNeedingRollout())
+	if c.machinesNotUpToDate == nil || c.machinesUpToDateResults == nil {
+		return c.Machines.Difference(c.MachinesNeedingRollout())
+	}
+	machinesNotUpToDate, _ := c.rolloutState()
+	return c.Machines.Difference(machinesNotUpToDate)
+}
+
+// MachinesToCompleteTriggerInPlaceUpdate returns Machines for which triggering an in-place update only partially completed.
+func (c *ControlPlane) MachinesToCompleteTriggerInPlaceUpdate() collections.Machines {
+	return c.Machines.Filter(func(machine *clusterv1.Machine) bool {
+		_, marked := machine.Annotations[clusterv1.UpdateInProgressAnnotation]
+		return marked && !hooks.IsPending(runtimehooksv1.UpdateMachine, machine)
+	})
+}
+
+// MachinesToCompleteInPlaceUpdate returns Machines with an active or completing in-place update.
+func (c *ControlPlane) MachinesToCompleteInPlaceUpdate() collections.Machines {
+	return c.Machines.Filter(inplace.IsUpdateInProgress)
 }
 
 // getInfraResources fetches the external infrastructure resource for each machine in the collection and returns a map of machine.Name -> infraResource.
@@ -380,6 +465,16 @@ func (c *ControlPlane) HealthyMachines() collections.Machines {
 	})
 }
 
+// UnhealthyMachinesWithUnhealthyControlPlaneComponents filters Machines with unhealthy K3s or etcd components.
+func (c *ControlPlane) UnhealthyMachinesWithUnhealthyControlPlaneComponents(machines collections.Machines) collections.Machines {
+	return machines.Filter(func(machine *clusterv1.Machine) bool {
+		if conditions.IsFalse(machine, controlplanev1.MachineAgentHealthyV1Beta2Condition) {
+			return true
+		}
+		return c.IsEtcdManaged() && conditions.IsFalse(machine, controlplanev1.MachineEtcdMemberHealthyV1Beta2Condition)
+	})
+}
+
 // HasUnhealthyMachine returns true if any machine in the control plane is marked as unhealthy by MHC.
 func (c *ControlPlane) HasUnhealthyMachine() bool {
 	return len(c.UnhealthyMachines()) > 0
@@ -391,6 +486,7 @@ func (c *ControlPlane) PatchMachines(ctx context.Context) error {
 		machine := c.Machines[i]
 		if helper, ok := c.machinesPatchHelpers[machine.Name]; ok {
 			if err := helper.Patch(ctx, machine, patch.WithOwnedConditions{Conditions: []string{
+				clusterv1.MachineUpToDateCondition,
 				controlplanev1.MachineAgentHealthyV1Beta2Condition,
 				controlplanev1.MachineEtcdMemberHealthyV1Beta2Condition,
 			}}); err != nil {

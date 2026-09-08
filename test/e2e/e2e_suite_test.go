@@ -36,6 +36,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
+	runtimev1 "sigs.k8s.io/cluster-api/api/runtime/v1beta2"
 	"sigs.k8s.io/cluster-api/test/framework"
 	"sigs.k8s.io/cluster-api/test/framework/bootstrap"
 	"sigs.k8s.io/cluster-api/test/framework/clusterctl"
@@ -197,6 +198,7 @@ func initScheme() *runtime.Scheme {
 	Expect(controlplanev1.AddToScheme(sc)).To(Succeed())
 	Expect(bootstrapv1.AddToScheme(sc)).To(Succeed())
 	Expect(dockerinfrav1.AddToScheme(sc)).To(Succeed())
+	Expect(runtimev1.AddToScheme(sc)).To(Succeed())
 	return sc
 }
 

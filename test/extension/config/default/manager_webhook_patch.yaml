@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller-manager
+  namespace: system
+spec:
+  template:
+    spec:
+      containers:
+        - name: manager
+          ports:
+            - name: webhook-server
+              containerPort: 9443
+              protocol: TCP
+          volumeMounts:
+            - name: cert
+              mountPath: /certs
+              readOnly: true
+      volumes:
+        - name: cert
+          secret:
+            secretName: k3s-test-extension-webhook-service-cert
