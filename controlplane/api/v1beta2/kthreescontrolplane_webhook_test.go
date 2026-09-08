@@ -223,7 +223,7 @@ func TestKThreesControlPlaneValidateUpdateGateTransition(t *testing.T) {
 		{
 			name:   "allows scale down from safe replica count while retaining zero surge",
 			oldObj: newControlPlane(3, zero),
-			newKCP: newControlPlane(2, zero),
+			newKCP: newControlPlane(1, zero),
 		},
 		{
 			name:   "allows scale down within low replica counts while retaining zero surge",
