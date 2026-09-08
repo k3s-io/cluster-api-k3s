@@ -81,6 +81,7 @@ type KThreesControlPlaneReconciler struct {
 	managementClusterUncached k3s.ManagementCluster
 	ssaCache                  ssa.Cache
 
+	// Only used for testing.
 	overrides *reconcilerOverrides
 }
 
