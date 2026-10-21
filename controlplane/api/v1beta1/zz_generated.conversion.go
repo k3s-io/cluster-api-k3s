@@ -209,6 +209,7 @@ func Convert_v1beta1_KThreesControlPlaneMachineTemplate_To_v1beta2_KThreesContro
 
 func autoConvert_v1beta2_KThreesControlPlaneMachineTemplate_To_v1beta1_KThreesControlPlaneMachineTemplate(in *v1beta2.KThreesControlPlaneMachineTemplate, out *KThreesControlPlaneMachineTemplate, s conversion.Scope) error {
 	out.ObjectMeta = in.ObjectMeta
+	// WARNING: in.Spec requires manual conversion: does not exist in peer-type
 	// WARNING: in.InfrastructureRef requires manual conversion: does not exist in peer-type
 	// WARNING: in.NodeDrainTimeout requires manual conversion: does not exist in peer-type
 	// WARNING: in.NodeVolumeDetachTimeout requires manual conversion: does not exist in peer-type
