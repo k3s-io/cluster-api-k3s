@@ -1,8 +1,8 @@
+version: "2"
 run:
   go: "1.26"
 linters:
-  fast: true
-  disable-all: true
+  default: none
   enable:
     - asciicheck
     - bodyclose
@@ -10,16 +10,12 @@ linters:
     - depguard
     - dogsled
     - errcheck
-    - gci
     - goconst
     - gocritic
     - gocyclo
     - godot
-    - gofmt
-    - goimports
     - goprintffuncname
     - gosec
-    - gosimple
     - govet
     - importas
     - ineffassign
@@ -33,140 +29,157 @@ linters:
     - revive
     - rowserrcheck
     - staticcheck
-    - stylecheck
     - thelper
-    - typecheck
     - unconvert
     - unparam
     - unused
     - whitespace
-
-linters-settings:
-  depguard:
-    rules:
-      main:
-        allow:
-          - $gostd
-          - github.com/go-logr/logr
-          - github.com/coredns/corefile-migration/migration
-          - github.com/pkg/errors
-          - github.com/davecgh/go-spew/spew
-          - github.com/blang/semver/v4
-
-          - k8s.io/api
-          - k8s.io/apimachinery/pkg
-          - k8s.io/apiserver
-          - k8s.io/client-go
-          - k8s.io/klog/v2
-          - k8s.io/utils/ptr
-
-          - github.com/onsi/ginkgo
-          - github.com/onsi/gomega
-
-          - sigs.k8s.io/yaml
-          - sigs.k8s.io/controller-runtime
-          - sigs.k8s.io/cluster-api
-
-          - github.com/k3s-io/cluster-api-k3s
-
-          - github.com/google/uuid
-          - github.com/pkg/errors
-  gci:
-    sections:
-      - standard
-      - default
-      - prefix(github.com/k3s-io/cluster-api-k3s)
-  gomoddirectives:
-    # List of allowed `replace` directives.
-    # Default: []
-    replace-allow-list:
-      - sigs.k8s.io/cluster-api
-  goimports:
-    # put imports beginning with prefix after 3rd-party packages;
-    # it's a comma-separated list of prefixes
-    local-prefixes: github.com/k3s-io/cluster-api-k3s
-  godot:
-    #   declarations - for top level declaration comments (default);
-    #   toplevel     - for top level comments;
-    #   all          - for all comments.
-    scope: toplevel
-    exclude:
-      - '^ \+.*'
-      - "^ ANCHOR.*"
-  gosec:
-    excludes:
-      - G307 # Deferring unsafe method "Close" on type "\*os.File"
-      - G108 # Profiling endpoint is automatically exposed on /debug/pprof
-      - G115 # integer overflow conversion int -> int32
-  importas:
-    # Do not allow unaliased imports of aliased packages.
-    # Default: false
-    no-unaliased: true
-    alias:
-      # Kubernetes
-      - pkg: k8s.io/api/core/v1
-        alias: corev1
-      - pkg: k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1
-        alias: apiextensionsv1
-      - pkg: k8s.io/apimachinery/pkg/apis/meta/v1
-        alias: metav1
-      - pkg: k8s.io/apimachinery/pkg/api/errors
-        alias: apierrors
-      - pkg: k8s.io/apimachinery/pkg/util/errors
-        alias: kerrors
-      # Controller Runtime
-      - pkg: sigs.k8s.io/controller-runtime
-        alias: ctrl
-  nolintlint:
-    # Enable to require nolint directives to mention the specific linter being suppressed.
-    # Default: false
-    require-specific: true
-  revive:
-    rules:
-      - name: exported
-        arguments:
-          - disableStutteringCheck
-      - name: unused-parameter
-        disabled: true
-  tagliatelle:
-    case:
+  settings:
+    depguard:
       rules:
-        # Any struct tag type can be used.
-        # Support string case: `camel`, `pascal`, `kebab`, `snake`, `goCamel`, `goPascal`, `goKebab`, `goSnake`, `upper`, `lower`, `header`
-        json: goCamel
-  unused:
-    go: "1.25"
-
+        main:
+          allow:
+            - $gostd
+            - github.com/go-logr/logr
+            - github.com/coredns/corefile-migration/migration
+            - github.com/pkg/errors
+            - github.com/davecgh/go-spew/spew
+            - github.com/blang/semver/v4
+            - k8s.io/api
+            - k8s.io/apimachinery/pkg
+            - k8s.io/apiserver
+            - k8s.io/client-go
+            - k8s.io/klog/v2
+            - k8s.io/utils/ptr
+            - github.com/onsi/ginkgo
+            - github.com/onsi/gomega
+            - sigs.k8s.io/yaml
+            - sigs.k8s.io/controller-runtime
+            - sigs.k8s.io/cluster-api
+            - github.com/k3s-io/cluster-api-k3s
+            - github.com/google/uuid
+            - github.com/pkg/errors
+            - go.etcd.io/etcd
+            - google.golang.org/grpc
+            - google.golang.org/protobuf
+    godot:
+      scope: toplevel
+      exclude:
+        - ^ \+.*
+        - ^ ANCHOR.*
+    gomoddirectives:
+      replace-allow-list:
+        - sigs.k8s.io/cluster-api
+    gosec:
+      excludes:
+        - G307
+        - G108
+        - G115
+    importas:
+      alias:
+        - pkg: k8s.io/api/core/v1
+          alias: corev1
+        - pkg: k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1
+          alias: apiextensionsv1
+        - pkg: k8s.io/apimachinery/pkg/apis/meta/v1
+          alias: metav1
+        - pkg: k8s.io/apimachinery/pkg/api/errors
+          alias: apierrors
+        - pkg: k8s.io/apimachinery/pkg/util/errors
+          alias: kerrors
+        - pkg: sigs.k8s.io/controller-runtime
+          alias: ctrl
+      no-unaliased: true
+    nolintlint:
+      require-specific: true
+    revive:
+      rules:
+        - name: exported
+          arguments:
+            - disableStutteringCheck
+        - name: unused-parameter
+          disabled: true
+    staticcheck:
+      checks:
+        - all
+        - -ST1000
+        - -ST1003
+        - -ST1016
+        - -ST1020
+        - -ST1021
+        - -ST1022
+        - -QF1008
+    tagliatelle:
+      case:
+        rules:
+          json: goCamel
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - gosec
+        path: test/e2e/*
+        text: 'G106:'
+      - linters:
+          - revive
+        path: .*test.*
+        text: dot-imports
+      - linters:
+          - staticcheck
+        path: .*test.*
+        text: ST1001
+      - linters:
+          - govet
+        text: non-constant format string in call to sigs\.k8s\.io\/cluster-api\/util\/conditions\.
+      - linters:
+          - staticcheck
+        path: .*\.go$
+        text: 'SA1019: "sigs.k8s.io\/cluster-api/api/core/v1beta1" is deprecated: This package is deprecated and is going to be removed when support for v1beta1 will be dropped.'
+      - linters:
+          - staticcheck
+        path: .*\.go$
+        text: 'SA1019: "sigs.k8s.io/cluster-api/util/deprecated/.*" is deprecated: This package is deprecated and is going to be removed when support for v1beta1 will be dropped.'
+      - linters:
+          - staticcheck
+        path: .*\.go$
+        text: 'SA1019: clusterv1.ConditionType is deprecated: This type is deprecated and is going to be removed when support for v1beta1 will be dropped.'
+      - linters:
+          - staticcheck
+        path: .*\.go$
+        text: 'SA1019: (client\.Apply|mgr\.GetEventRecorderFor) is deprecated'
+    paths:
+      - .*zz_generated.*\.go
+      - contrib/.*
+      - third_party$
+      - builtin$
+      - examples$
 issues:
-  exclude-rules:
-    - path: "test/e2e/*"
-      linters:
-        - gosec
-      text: "G106:"
-    - linters:
-        - revive
-      text: "dot-imports"
-      path: ".*test.*"
-    - linters:
-        - stylecheck
-      text: "ST1001"
-      path: ".*test.*"
-    - linters:
-        - govet
-      text: "non-constant format string in call to sigs\\.k8s\\.io\\/cluster-api\\/util\\/conditions\\."
-    - linters:
-        - staticcheck
-      path: .*\.go$
-      text: 'SA1019: "sigs.k8s.io\/cluster-api/api/core/v1beta1" is deprecated: This package is deprecated and is going to be removed when support for v1beta1 will be dropped.'
-    - linters:
-        - staticcheck
-      path: .*\.go$
-      text: 'SA1019: "sigs.k8s.io/cluster-api/util/deprecated/.*" is deprecated: This package is deprecated and is going to be removed when support for v1beta1 will be dropped.'
-    - linters:
-        - staticcheck
-      path: .*\.go$
-      text: 'SA1019: clusterv1.ConditionType is deprecated: This type is deprecated and is going to be removed when support for v1beta1 will be dropped.'
-    - linters:
-        - staticcheck
-      path: .*\.go$
-      text: 'SA1019: (client\.Apply|mgr\.GetEventRecorderFor) is deprecated'
+  max-issues-per-linter: 0
+  max-same-issues: 0
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - goimports
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/k3s-io/cluster-api-k3s)
+    goimports:
+      local-prefixes:
+        - github.com/k3s-io/cluster-api-k3s
+  exclusions:
+    generated: lax
+    paths:
+      - .*zz_generated.*\.go
+      - contrib/.*
+      - third_party$
+      - builtin$
+      - examples$
