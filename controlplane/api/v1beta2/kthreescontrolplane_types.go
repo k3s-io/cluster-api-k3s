@@ -22,6 +22,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 
 	bootstrapv1beta2 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
 	"github.com/k3s-io/cluster-api-k3s/pkg/errors"
@@ -93,9 +94,10 @@ type KThreesControlPlaneMachineTemplate struct {
 	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
 	// +optional
 	ObjectMeta clusterv1beta1.ObjectMeta `json:"metadata,omitempty"`
-	// InfrastructureRef is a required reference to a custom resource
-	// offered by an infrastructure provider.
-	InfrastructureRef corev1.ObjectReference `json:"infrastructureRef"`
+	// Spec contains configuration for control plane Machines.
+	// +optional
+	Spec              KThreesControlPlaneMachineTemplateSpec `json:"spec,omitempty"`
+	InfrastructureRef corev1.ObjectReference                 `json:"infrastructureRef"`
 	// NodeDrainTimeout is the total amount of time that the controller will spend on draining a controlplane node
 	// The default value is 0, meaning that the node can be drained without any time limitations.
 	// NOTE: NodeDrainTimeout is different from `kubectl drain --timeout`
@@ -110,6 +112,19 @@ type KThreesControlPlaneMachineTemplate struct {
 	// If no value is provided, the default value for this property of the Machine resource will be used.
 	// +optional
 	NodeDeletionTimeout *metav1.Duration `json:"nodeDeletionTimeout,omitempty"`
+}
+
+// KThreesControlPlaneMachineTemplateSpec contains configuration for control plane Machines.
+type KThreesControlPlaneMachineTemplateSpec struct {
+	// Taints are the node taints that Cluster API will manage. Other Kubernetes components may add or remove taints.
+	// There can be at most 64 taints. Only those defined here are managed by Cluster API controllers.
+	// +optional
+	// +listType=map
+	// +listMapKey=key
+	// +listMapKey=effect
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=64
+	Taints []clusterv1.MachineTaint `json:"taints,omitempty"`
 }
 
 // RemediationStrategy allows to define how control plane machine remediation happens.

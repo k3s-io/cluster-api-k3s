@@ -55,7 +55,7 @@ func (c *KThreesConfig) ConvertFrom(srcRaw ctrlconversion.Hub) error {
 		return fmt.Errorf("converting KThreesConfig v1beta1 from v1beta2: %w", err)
 	}
 
-	if err := utilconversion.MarshalData(src, c); err != nil {
+	if err := utilconversion.MarshalDataUnsafeNoCopy(src, c); err != nil {
 		return fmt.Errorf("storing conversion data: %w", err)
 	}
 	return nil
@@ -110,7 +110,7 @@ func (r *KThreesConfigTemplate) ConvertFrom(srcRaw ctrlconversion.Hub) error {
 		return fmt.Errorf("converting KThreesConfigTemplate v1beta1 from v1beta2: %w", err)
 	}
 
-	if err := utilconversion.MarshalData(src, r); err != nil {
+	if err := utilconversion.MarshalDataUnsafeNoCopy(src, r); err != nil {
 		return fmt.Errorf("storing conversion data: %w", err)
 	}
 	return nil

@@ -56,6 +56,8 @@ func main() {
 	var enableLeaderElection bool
 	var syncPeriod time.Duration
 	var concurrencyNumber int
+	var restConfigQPS float64
+	var restConfigBurst int
 
 	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,
@@ -65,6 +67,11 @@ func main() {
 	flag.DurationVar(&syncPeriod, "sync-period", 10*time.Minute,
 		"The minimum interval at which watched resources are reconciled (e.g. 15m)")
 
+	flag.Float64Var(&restConfigQPS, "kube-api-qps", 100,
+		"Maximum queries per second from the controller client to the Kubernetes API server.")
+	flag.IntVar(&restConfigBurst, "kube-api-burst", 200,
+		"Maximum number of queries allowed in one burst from the controller client to the Kubernetes API server.")
+
 	flag.IntVar(&concurrencyNumber, "concurrency", 1,
 		"Number of core resources to process simultaneously")
 
@@ -72,7 +79,11 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	restConfig := ctrl.GetConfigOrDie()
+	restConfig.QPS = float32(restConfigQPS)
+	restConfig.Burst = restConfigBurst
+
+	mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
 		Scheme: scheme,
 		Metrics: server.Options{
 			BindAddress: metricsAddr,
