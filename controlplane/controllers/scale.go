@@ -482,6 +482,7 @@ func (r *KThreesControlPlaneReconciler) computeDesiredMachine(kcp *controlplanev
 			ClusterName:   cluster.Name,
 			Version:       ptr.Deref(version, ""),
 			FailureDomain: failureDomain,
+			Taints:        kcp.Spec.MachineTemplate.Spec.Taints,
 			Deletion:      clusterv1.MachineDeletionSpec{},
 		},
 	}

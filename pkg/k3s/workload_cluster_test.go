@@ -79,3 +79,42 @@ func TestClusterStatus(t *testing.T) {
 		})
 	}
 }
+
+func TestExtractImageVersion(t *testing.T) {
+	tests := []struct {
+		name        string
+		tag         string
+		want        string
+		expectError bool
+	}{
+		{
+			name: "semantic version with v prefix",
+			tag:  "v1.2.3",
+			want: "1.2.3",
+		},
+		{
+			name: "semantic version with prerelease and build metadata",
+			tag:  "v1.2.3-alpha.1+build.1",
+			want: "1.2.3",
+		},
+		{
+			name:        "missing v prefix",
+			tag:         "1.2.3",
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := NewWithT(t)
+			actual, err := extractImageVersion(tt.tag)
+			if tt.expectError {
+				g.Expect(err).To(HaveOccurred())
+				return
+			}
+
+			g.Expect(err).ToNot(HaveOccurred())
+			g.Expect(actual).To(Equal(tt.want))
+		})
+	}
+}
