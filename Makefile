@@ -20,7 +20,7 @@ SHELL:=/usr/bin/env bash
 
 .DEFAULT_GOAL:=help
 
-GO_VERSION ?= 1.25.14
+GO_VERSION ?= 1.26.10
 GO_CONTAINER_IMAGE ?= docker.io/library/golang:$(GO_VERSION)
 
 ARCH ?= $(shell go env GOARCH)
