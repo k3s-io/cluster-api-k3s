@@ -60,6 +60,7 @@ linters-settings:
           - github.com/coredns/corefile-migration/migration
           - github.com/pkg/errors
           - github.com/davecgh/go-spew/spew
+          - github.com/blang/semver/v4
 
           - k8s.io/api
           - k8s.io/apimachinery/pkg
@@ -173,4 +174,8 @@ issues:
     - linters:
         - staticcheck
       path: .*\.go$
-      text: 'SA1019: version.ParseMajorMinorPatch is deprecated: This function is deprecated and will be removed in an upcoming release of Cluster API. Please use semver.Parse instead.'
+      text: 'SA1019: clusterv1.ConditionType is deprecated: This type is deprecated and is going to be removed when support for v1beta1 will be dropped.'
+    - linters:
+        - staticcheck
+      path: .*\.go$
+      text: 'SA1019: (client\.Apply|mgr\.GetEventRecorderFor) is deprecated'

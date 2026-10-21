@@ -54,12 +54,12 @@ GOBIN=$(shell go env GOBIN)
 endif
 
 # Sync to controller-tools version in https://github.com/kubernetes-sigs/cluster-api/blob/v{VERSION}/hack/tools/go.mod
-CONTROLLER_GEN_VER := v0.19.0
+CONTROLLER_GEN_VER := v0.20.0
 CONTROLLER_GEN_BIN := controller-gen
 CONTROLLER_GEN := $(TOOLS_BIN_DIR)/$(CONTROLLER_GEN_BIN)-$(CONTROLLER_GEN_VER)
 
 # Sync
-CONVERSION_GEN_VER := v0.34.0
+CONVERSION_GEN_VER := v0.35.0
 CONVERSION_GEN_BIN := conversion-gen
 CONVERSION_GEN := $(TOOLS_BIN_DIR)/$(CONVERSION_GEN_BIN)-$(CONVERSION_GEN_VER)
 
@@ -68,25 +68,18 @@ ENVSUBST_VER := v2.0.0-20210730161058-179042472c46
 ENVSUBST_BIN := envsubst
 ENVSUBST := $(TOOLS_BIN_DIR)/$(ENVSUBST_BIN)
 
-ENVTEST_VER := release-0.22
+ENVTEST_VER := release-0.23
 ENVTEST_BIN := setup-envtest
 ENVTEST := $(TOOLS_BIN_DIR)/$(ENVTEST_BIN)
-ENVTEST_K8S_VERSION = "1.34.0"
-
-# Sync to github.com/drone/envsubst/v2 in https://github.com/kubernetes-sigs/cluster-api/blob/v{VERSION}/go.mod
-ENVSUBST_VER := v2.0.0-20210730161058-179042472c46
-ENVSUBST_BIN := envsubst
-ENVSUBST := $(TOOLS_BIN_DIR)/$(ENVSUBST_BIN)
+ENVTEST_K8S_VERSION = "1.35.0"
 
 # Bump as necessary/desired to latest that supports our version of go at https://github.com/golangci/golangci-lint/releases
 GOLANGCI_LINT_VER := v1.63.4
 GOLANGCI_LINT_BIN := golangci-lint
 GOLANGCI_LINT := $(TOOLS_BIN_DIR)/$(GOLANGCI_LINT_BIN)-$(GOLANGCI_LINT_VER)
 
-# Keep at 4.0.4 until we figure out how to get later verisons to not mangle the calico yamls
-# HACK bump latest version once https://github.com/kubernetes-sigs/kustomize/issues/947 is fixed
-KUSTOMIZE_VER := v5.6.0
-KUSTOMIZE_COMMIT := 95db4aa0edd1afb988cd10465ce15f7546ebbbdc
+KUSTOMIZE_VER := v5.7.0
+KUSTOMIZE_COMMIT := 7f30f0e23a350bd4ad66bbe7bc38208f311d5461
 KUSTOMIZE_BIN := kustomize
 KUSTOMIZE := $(TOOLS_BIN_DIR)/$(KUSTOMIZE_BIN)-$(KUSTOMIZE_VER)
 
@@ -328,10 +321,8 @@ fmt:
 ## --------------------------------------
 .PHONY: envtest
 envtest: $(ENVTEST) ## Download envtest-setup locally if necessary.
-# 0f7927c52ef41f261195054ec7f01902357e2c33 = v0.20.4 (latest version supporting Go 1.23)
-# https://github.com/rancher/rancher-security/issues/1539
 $(ENVTEST): $(TOOLS_BIN_DIR)
-	test -s $(TOOLS_BIN_DIR)/setup-envtest || GOBIN=$(TOOLS_BIN_DIR) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@0f7927c52ef41f261195054ec7f01902357e2c33
+	test -s $(ENVTEST) || GOBIN=$(TOOLS_BIN_DIR) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@$(ENVTEST_VER)
 
 $(ENVSUBST): ## Build envsubst from tools folder.
 	GOBIN=$(TOOLS_BIN_DIR) $(GO_INSTALL) github.com/drone/envsubst/v2/cmd/envsubst $(ENVSUBST_BIN) $(ENVSUBST_VER)

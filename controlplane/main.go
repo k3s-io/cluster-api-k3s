@@ -64,6 +64,8 @@ func main() {
 	var etcdDialTimeout time.Duration
 	var etcdCallTimeout time.Duration
 	var concurrencyNumber int
+	var restConfigQPS float64
+	var restConfigBurst int
 
 	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,
@@ -79,6 +81,11 @@ func main() {
 	flag.DurationVar(&etcdCallTimeout, "etcd-call-timeout-duration", etcd.DefaultCallTimeout,
 		"Duration that the etcd client waits at most for read and write operations to etcd.")
 
+	flag.Float64Var(&restConfigQPS, "kube-api-qps", 100,
+		"Maximum queries per second from the controller client to the Kubernetes API server.")
+	flag.IntVar(&restConfigBurst, "kube-api-burst", 200,
+		"Maximum number of queries allowed in one burst from the controller client to the Kubernetes API server.")
+
 	flag.IntVar(&concurrencyNumber, "concurrency", 1,
 		"Number of core resources to process simultaneously")
 
@@ -88,7 +95,11 @@ func main() {
 
 	ctx := ctrl.SetupSignalHandler()
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	restConfig := ctrl.GetConfigOrDie()
+	restConfig.QPS = float32(restConfigQPS)
+	restConfig.Burst = restConfigBurst
+
+	mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
 		Scheme: scheme,
 		Metrics: server.Options{
 			BindAddress: metricsAddr,

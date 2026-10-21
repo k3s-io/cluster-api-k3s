@@ -18,10 +18,7 @@ package v1beta2
 
 import (
 	"context"
-	"fmt"
 
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -29,8 +26,7 @@ import (
 
 // SetupWebhookWithManager will setup the webhooks for the KThreesConfig.
 func (c *KThreesConfig) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(c).
+	return ctrl.NewWebhookManagedBy(mgr, c).
 		WithDefaulter(&KThreesConfig{}).
 		WithValidator(&KThreesConfig{}).
 		Complete()
@@ -39,31 +35,26 @@ func (c *KThreesConfig) SetupWebhookWithManager(mgr ctrl.Manager) error {
 // +kubebuilder:webhook:verbs=create;update,path=/validate-bootstrap-cluster-x-k8s-io-v1beta2-kthreesconfig,mutating=false,failurePolicy=fail,matchPolicy=Equivalent,groups=bootstrap.cluster.x-k8s.io,resources=kthreesconfigs,versions=v1beta2,name=validation.kthreesconfig.bootstrap.cluster.x-k8s.io,sideEffects=None,admissionReviewVersions=v1;v1beta1
 // +kubebuilder:webhook:verbs=create;update,path=/mutate-bootstrap-cluster-x-k8s-io-v1beta2-kthreesconfig,mutating=true,failurePolicy=fail,matchPolicy=Equivalent,groups=bootstrap.cluster.x-k8s.io,resources=kthreesconfigs,versions=v1beta2,name=default.kthreesconfig.bootstrap.cluster.x-k8s.io,sideEffects=None,admissionReviewVersions=v1;v1beta1
 
-var _ admission.CustomDefaulter = &KThreesConfig{}
-var _ admission.CustomValidator = &KThreesConfig{}
+var _ admission.Defaulter[*KThreesConfig] = &KThreesConfig{}
+var _ admission.Validator[*KThreesConfig] = &KThreesConfig{}
 
 // ValidateCreate will do any extra validation when creating a KThreesConfig.
-func (c *KThreesConfig) ValidateCreate(_ context.Context, _ runtime.Object) (admission.Warnings, error) {
+func (c *KThreesConfig) ValidateCreate(_ context.Context, _ *KThreesConfig) (admission.Warnings, error) {
 	return []string{}, nil
 }
 
 // ValidateUpdate will do any extra validation when updating a KThreesConfig.
-func (c *KThreesConfig) ValidateUpdate(_ context.Context, _, _ runtime.Object) (admission.Warnings, error) {
+func (c *KThreesConfig) ValidateUpdate(_ context.Context, _, _ *KThreesConfig) (admission.Warnings, error) {
 	return []string{}, nil
 }
 
 // ValidateDelete allows you to add any extra validation when deleting.
-func (c *KThreesConfig) ValidateDelete(_ context.Context, _ runtime.Object) (admission.Warnings, error) {
+func (c *KThreesConfig) ValidateDelete(_ context.Context, _ *KThreesConfig) (admission.Warnings, error) {
 	return []string{}, nil
 }
 
 // Default will set default values for the KThreesConfig.
-func (c *KThreesConfig) Default(_ context.Context, obj runtime.Object) error {
-	c, ok := obj.(*KThreesConfig)
-	if !ok {
-		return apierrors.NewBadRequest(fmt.Sprintf("expected a KThreesConfig but got a %T", obj))
-	}
-
+func (*KThreesConfig) Default(_ context.Context, c *KThreesConfig) error {
 	if c.Spec.ServerConfig.DisableCloudController == nil {
 		c.Spec.ServerConfig.DisableCloudController = ptr.To(true)
 	}
