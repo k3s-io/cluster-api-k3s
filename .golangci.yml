@@ -1,14 +1,5 @@
 run:
-  go: "1.24"
-  timeout: 10m
-
-issue:
-  max-same-issues: 0
-  max-per-linter: 0
-  exclude-files:
-    - ".*zz_generated.*\\.go"
-    - "contrib/.*"
-
+  go: "1.26"
 linters:
   fast: true
   disable-all: true
@@ -144,7 +135,7 @@ linters-settings:
         # Support string case: `camel`, `pascal`, `kebab`, `snake`, `goCamel`, `goPascal`, `goKebab`, `goSnake`, `upper`, `lower`, `header`
         json: goCamel
   unused:
-    go: "1.24"
+    go: "1.25"
 
 issues:
   exclude-rules:
