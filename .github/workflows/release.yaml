@@ -64,6 +64,7 @@ jobs:
           echo 'DOCKER_BUILD_LDFLAGS<<EOF' >> $GITHUB_ENV
           echo $DOCKER_BUILD_LDFLAGS >> $GITHUB_ENV
           echo 'EOF' >> $GITHUB_ENV
+          echo "GO_CONTAINER_IMAGE=docker.io/library/golang:$(make go-version)" >> $GITHUB_ENV
 
       - name: Build and push ${{ matrix.target }} image
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
@@ -71,6 +72,7 @@ jobs:
           context: .
           push: true
           build-args: |
+            builder_image=${{ env.GO_CONTAINER_IMAGE }}
             LDFLAGS=${{ env.DOCKER_BUILD_LDFLAGS }}
             package=./${{ matrix.target }}/main.go
           tags: ${{ steps.meta.outputs.tags }}
