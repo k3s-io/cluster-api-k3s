@@ -140,6 +140,10 @@ RELEASE_NOTES_DIR := _releasenotes
 $(RELEASE_DIR):
 	mkdir -p $(RELEASE_DIR)/
 
+.PHONY: go-version
+go-version: ## Print the go version used to compile binaries and images
+	@echo $(GO_VERSION)
+
 .PHONY: $(RELEASE_NOTES_DIR)
 $(RELEASE_NOTES_DIR):
 	mkdir -p $(RELEASE_NOTES_DIR)/

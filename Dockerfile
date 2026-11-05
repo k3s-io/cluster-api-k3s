@@ -13,7 +13,10 @@
 # limitations under the License.
 
 # Build the manager binary
-FROM --platform=${BUILDPLATFORM} docker.io/library/golang:1.26.2 as build
+# Run this with docker build --build-arg builder_image=<golang:x.y.z>
+ARG builder_image
+
+FROM --platform=${BUILDPLATFORM} ${builder_image} AS builder
 ARG TARGETOS TARGETARCH
 ARG package
 
@@ -50,7 +53,7 @@ RUN --mount=type=cache,target=/root/.cache \
 FROM --platform=${BUILDPLATFORM} gcr.io/distroless/static:nonroot
 LABEL org.opencontainers.image.source=https://github.com/k3s-io/cluster-api-k3s
 WORKDIR /
-COPY --from=build /workspace/manager .
+COPY --from=builder /workspace/manager .
 # Use uid of nonroot user (65532) because kubernetes expects numeric user when applying pod security policies
 USER 65532
 ENTRYPOINT ["/manager"]
