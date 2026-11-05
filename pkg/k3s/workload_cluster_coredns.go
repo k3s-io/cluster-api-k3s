@@ -20,13 +20,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
+	"github.com/blang/semver/v4"
 	"github.com/coredns/corefile-migration/migration"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/cluster-api/util/patch"
-	"sigs.k8s.io/cluster-api/util/version"
 
 	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
 )
@@ -300,7 +301,11 @@ func patchCoreDNSDeploymentImage(deployment *appsv1.Deployment, image string) {
 
 //lint:ignore U1000 Ignore
 func extractImageVersion(tag string) (string, error) {
-	ver, err := version.ParseMajorMinorPatch(tag)
+	if !strings.HasPrefix(tag, "v") {
+		return "", fmt.Errorf("failed to parse major.minor.patch from %q: expected a v prefix", tag)
+	}
+
+	ver, err := semver.Parse(strings.TrimPrefix(tag, "v"))
 	if err != nil {
 		return "", err
 	}

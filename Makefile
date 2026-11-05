@@ -20,7 +20,7 @@ SHELL:=/usr/bin/env bash
 
 .DEFAULT_GOAL:=help
 
-GO_VERSION ?= 1.24.8
+GO_VERSION ?= 1.25.14
 GO_CONTAINER_IMAGE ?= docker.io/library/golang:$(GO_VERSION)
 
 ARCH ?= $(shell go env GOARCH)
@@ -54,12 +54,12 @@ GOBIN=$(shell go env GOBIN)
 endif
 
 # Sync to controller-tools version in https://github.com/kubernetes-sigs/cluster-api/blob/v{VERSION}/hack/tools/go.mod
-CONTROLLER_GEN_VER := v0.19.0
+CONTROLLER_GEN_VER := v0.20.0
 CONTROLLER_GEN_BIN := controller-gen
 CONTROLLER_GEN := $(TOOLS_BIN_DIR)/$(CONTROLLER_GEN_BIN)-$(CONTROLLER_GEN_VER)
 
 # Sync
-CONVERSION_GEN_VER := v0.34.0
+CONVERSION_GEN_VER := v0.35.0
 CONVERSION_GEN_BIN := conversion-gen
 CONVERSION_GEN := $(TOOLS_BIN_DIR)/$(CONVERSION_GEN_BIN)-$(CONVERSION_GEN_VER)
 

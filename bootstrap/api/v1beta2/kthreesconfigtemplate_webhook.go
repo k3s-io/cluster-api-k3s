@@ -19,15 +19,13 @@ package v1beta2
 import (
 	"context"
 
-	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 // SetupWebhookWithManager will setup the webhooks for the KThreesConfigTemplate.
 func (c *KThreesConfigTemplate) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(c).
+	return ctrl.NewWebhookManagedBy(mgr, c).
 		WithDefaulter(&KThreesConfigTemplate{}).
 		WithValidator(&KThreesConfigTemplate{}).
 		Complete()
@@ -36,25 +34,25 @@ func (c *KThreesConfigTemplate) SetupWebhookWithManager(mgr ctrl.Manager) error 
 // +kubebuilder:webhook:verbs=create;update,path=/validate-bootstrap-cluster-x-k8s-io-v1beta2-kthreesconfigtemplate,mutating=false,failurePolicy=fail,matchPolicy=Equivalent,groups=bootstrap.cluster.x-k8s.io,resources=kthreesconfigtemplates,versions=v1beta2,name=validation.kthreesconfigtemplate.bootstrap.cluster.x-k8s.io,sideEffects=None,admissionReviewVersions=v1;v1beta1
 // +kubebuilder:webhook:verbs=create;update,path=/mutate-bootstrap-cluster-x-k8s-io-v1beta2-kthreesconfigtemplate,mutating=true,failurePolicy=fail,matchPolicy=Equivalent,groups=bootstrap.cluster.x-k8s.io,resources=kthreesconfigtemplates,versions=v1beta2,name=default.kthreesconfigtemplate.bootstrap.cluster.x-k8s.io,sideEffects=None,admissionReviewVersions=v1;v1beta1
 
-var _ admission.CustomDefaulter = &KThreesConfigTemplate{}
-var _ admission.CustomValidator = &KThreesConfigTemplate{}
+var _ admission.Defaulter[*KThreesConfigTemplate] = &KThreesConfigTemplate{}
+var _ admission.Validator[*KThreesConfigTemplate] = &KThreesConfigTemplate{}
 
 // ValidateCreate will do any extra validation when creating a KThreesConfigTemplate.
-func (c *KThreesConfigTemplate) ValidateCreate(_ context.Context, _ runtime.Object) (admission.Warnings, error) {
+func (c *KThreesConfigTemplate) ValidateCreate(_ context.Context, _ *KThreesConfigTemplate) (admission.Warnings, error) {
 	return []string{}, nil
 }
 
 // ValidateUpdate will do any extra validation when updating a KThreesConfigTemplate.
-func (c *KThreesConfigTemplate) ValidateUpdate(_ context.Context, _, _ runtime.Object) (admission.Warnings, error) {
+func (c *KThreesConfigTemplate) ValidateUpdate(_ context.Context, _, _ *KThreesConfigTemplate) (admission.Warnings, error) {
 	return []string{}, nil
 }
 
 // ValidateDelete allows you to add any extra validation when deleting.
-func (c *KThreesConfigTemplate) ValidateDelete(_ context.Context, _ runtime.Object) (admission.Warnings, error) {
+func (c *KThreesConfigTemplate) ValidateDelete(_ context.Context, _ *KThreesConfigTemplate) (admission.Warnings, error) {
 	return []string{}, nil
 }
 
 // Default will set default values for the KThreesConfigTemplate.
-func (c *KThreesConfigTemplate) Default(_ context.Context, _ runtime.Object) error {
+func (c *KThreesConfigTemplate) Default(_ context.Context, _ *KThreesConfigTemplate) error {
 	return nil
 }
