@@ -18,10 +18,7 @@ package v1beta2
 
 import (
 	"context"
-	"fmt"
 
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -29,8 +26,7 @@ import (
 
 // SetupWebhookWithManager will setup the webhooks for the KThreesControlPlane.
 func (in *KThreesControlPlane) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(in).
+	return ctrl.NewWebhookManagedBy(mgr, in).
 		WithDefaulter(&KThreesControlPlane{}).
 		WithValidator(&KThreesControlPlane{}).
 		Complete()
@@ -39,31 +35,26 @@ func (in *KThreesControlPlane) SetupWebhookWithManager(mgr ctrl.Manager) error {
 // +kubebuilder:webhook:verbs=create;update,path=/validate-controlplane-cluster-x-k8s-io-v1beta2-kthreescontrolplane,mutating=false,failurePolicy=fail,matchPolicy=Equivalent,groups=controlplane.cluster.x-k8s.io,resources=kthreescontrolplanes,versions=v1beta2,name=validation.kthreescontrolplane.controlplane.cluster.x-k8s.io,sideEffects=None,admissionReviewVersions=v1;v1beta1
 // +kubebuilder:webhook:verbs=create;update,path=/mutate-controlplane-cluster-x-k8s-io-v1beta2-kthreescontrolplane,mutating=true,failurePolicy=fail,matchPolicy=Equivalent,groups=controlplane.cluster.x-k8s.io,resources=kthreescontrolplanes,versions=v1beta2,name=default.kthreescontrolplane.controlplane.cluster.x-k8s.io,sideEffects=None,admissionReviewVersions=v1;v1beta1
 
-var _ admission.CustomDefaulter = &KThreesControlPlane{}
-var _ admission.CustomValidator = &KThreesControlPlane{}
+var _ admission.Defaulter[*KThreesControlPlane] = &KThreesControlPlane{}
+var _ admission.Validator[*KThreesControlPlane] = &KThreesControlPlane{}
 
 // ValidateCreate will do any extra validation when creating a KThreesControlPlane.
-func (in *KThreesControlPlane) ValidateCreate(_ context.Context, _ runtime.Object) (admission.Warnings, error) {
+func (in *KThreesControlPlane) ValidateCreate(_ context.Context, _ *KThreesControlPlane) (admission.Warnings, error) {
 	return []string{}, nil
 }
 
 // ValidateUpdate will do any extra validation when updating a KThreesControlPlane.
-func (in *KThreesControlPlane) ValidateUpdate(_ context.Context, _, _ runtime.Object) (admission.Warnings, error) {
+func (in *KThreesControlPlane) ValidateUpdate(_ context.Context, _, _ *KThreesControlPlane) (admission.Warnings, error) {
 	return []string{}, nil
 }
 
 // ValidateDelete allows you to add any extra validation when deleting.
-func (in *KThreesControlPlane) ValidateDelete(_ context.Context, _ runtime.Object) (admission.Warnings, error) {
+func (in *KThreesControlPlane) ValidateDelete(_ context.Context, _ *KThreesControlPlane) (admission.Warnings, error) {
 	return []string{}, nil
 }
 
 // Default will set default values for the KThreesControlPlane.
-func (in *KThreesControlPlane) Default(_ context.Context, obj runtime.Object) error {
-	c, ok := obj.(*KThreesControlPlane)
-	if !ok {
-		return apierrors.NewBadRequest(fmt.Sprintf("expected a KThreesControlPlane but got a %T", obj))
-	}
-
+func (in *KThreesControlPlane) Default(_ context.Context, c *KThreesControlPlane) error {
 	defaultKThreesControlPlaneSpec(&c.Spec, c.Namespace)
 	return nil
 }
