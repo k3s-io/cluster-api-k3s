@@ -97,6 +97,7 @@ func (in *KThreesControlPlane) ConvertTo(dstRaw ctrlconversion.Hub) error {
 	dst.Spec.KThreesConfigSpec.ServerConfig.EtcdProxyImage = restored.Spec.KThreesConfigSpec.ServerConfig.EtcdProxyImage
 	dst.Spec.MachineTemplate.NodeVolumeDetachTimeout = restored.Spec.MachineTemplate.NodeVolumeDetachTimeout
 	dst.Spec.MachineTemplate.NodeDeletionTimeout = restored.Spec.MachineTemplate.NodeDeletionTimeout
+	dst.Spec.MachineTemplate.Spec.Taints = restored.Spec.MachineTemplate.Spec.Taints
 	dst.Status.Version = restored.Status.Version
 	dst.Spec.KThreesConfigSpec.AgentConfig.AirGappedInstallScriptPath = restored.Spec.KThreesConfigSpec.AgentConfig.AirGappedInstallScriptPath
 	return nil
@@ -109,7 +110,7 @@ func (in *KThreesControlPlane) ConvertFrom(srcRaw ctrlconversion.Hub) error {
 		return fmt.Errorf("converting KThreesControlPlane v1beta1 from v1beta2: %w", err)
 	}
 
-	if err := utilconversion.MarshalData(src, in); err != nil {
+	if err := utilconversion.MarshalDataUnsafeNoCopy(src, in); err != nil {
 		return fmt.Errorf("storing conversion data: %w", err)
 	}
 	return nil
