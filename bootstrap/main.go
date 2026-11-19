@@ -26,8 +26,10 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
+	"sigs.k8s.io/cluster-api/controllers/crdmigrator"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -35,6 +37,7 @@ import (
 	bootstrapv1beta1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta1"
 	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
 	"github.com/k3s-io/cluster-api-k3s/bootstrap/controllers"
+	"github.com/k3s-io/cluster-api-k3s/pkg/crdmigration"
 )
 
 var (
@@ -51,11 +54,17 @@ func init() {
 	// +kubebuilder:scaffold:scheme
 }
 
+// +kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions,verbs=get;list;watch
+// +kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions;customresourcedefinitions/status,verbs=update;patch,resourceNames=kthreesconfigs.bootstrap.cluster.x-k8s.io;kthreesconfigtemplates.bootstrap.cluster.x-k8s.io
+// +kubebuilder:rbac:groups=bootstrap.cluster.x-k8s.io,resources=kthreesconfigs;kthreesconfigtemplates,verbs=get;list;watch;patch;update
+// +kubebuilder:rbac:groups=bootstrap.cluster.x-k8s.io,resources=kthreesconfigs/status,verbs=update;patch
+
 func main() {
 	var metricsAddr string
 	var enableLeaderElection bool
 	var syncPeriod time.Duration
 	var concurrencyNumber int
+	var skipCRDMigrationPhases []string
 
 	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,
@@ -68,9 +77,13 @@ func main() {
 	flag.IntVar(&concurrencyNumber, "concurrency", 1,
 		"Number of core resources to process simultaneously")
 
+	crdmigration.AddSkipPhasesFlag(flag.CommandLine, &skipCRDMigrationPhases)
+
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
+
+	ctx := ctrl.SetupSignalHandler()
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme: scheme,
@@ -88,6 +101,15 @@ func main() {
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
+		os.Exit(1)
+	}
+
+	// NOTE: The kubebuilder RBAC markers above main have to be kept in sync with the CRDs migrated here.
+	if err := crdmigration.SetupWithManager(ctx, mgr, skipCRDMigrationPhases, map[client.Object]crdmigrator.ByObjectConfig{
+		&bootstrapv1.KThreesConfig{}:         {UseCache: false, UseStatusForStorageVersionMigration: true},
+		&bootstrapv1.KThreesConfigTemplate{}: {UseCache: false},
+	}); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "CRDMigrator")
 		os.Exit(1)
 	}
 
@@ -113,7 +135,7 @@ func main() {
 	// +kubebuilder:scaffold:builder
 
 	setupLog.Info("Starting manager", "concurrency", concurrencyNumber)
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+	if err := mgr.Start(ctx); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}

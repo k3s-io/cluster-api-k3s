@@ -34,6 +34,7 @@ type KThreesConfigTemplateResource struct {
 }
 
 // +kubebuilder:object:root=true
+// +kubebuilder:deprecatedversion:warning="bootstrap.cluster.x-k8s.io/v1beta1 KThreesConfigTemplate is deprecated; use bootstrap.cluster.x-k8s.io/v1beta2 KThreesConfigTemplate"
 
 // KThreesConfigTemplate is the Schema for the kthreesconfigtemplates API.
 type KThreesConfigTemplate struct {

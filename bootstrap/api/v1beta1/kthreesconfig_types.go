@@ -177,6 +177,7 @@ type KThreesConfigStatus struct {
 }
 
 // +kubebuilder:object:root=true
+// +kubebuilder:deprecatedversion:warning="bootstrap.cluster.x-k8s.io/v1beta1 KThreesConfig is deprecated; use bootstrap.cluster.x-k8s.io/v1beta2 KThreesConfig"
 // +kubebuilder:subresource:status
 
 // KThreesConfig is the Schema for the kthreesconfigs API.
