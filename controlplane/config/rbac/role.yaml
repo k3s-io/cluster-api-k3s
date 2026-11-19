@@ -34,6 +34,17 @@ rules:
   - list
   - watch
 - apiGroups:
+  - apiextensions.k8s.io
+  resourceNames:
+  - kthreescontrolplanes.controlplane.cluster.x-k8s.io
+  - kthreescontrolplanetemplates.controlplane.cluster.x-k8s.io
+  resources:
+  - customresourcedefinitions
+  - customresourcedefinitions/status
+  verbs:
+  - patch
+  - update
+- apiGroups:
   - bootstrap.cluster.x-k8s.io
   - controlplane.cluster.x-k8s.io
   - infrastructure.cluster.x-k8s.io
@@ -69,3 +80,21 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - controlplane.cluster.x-k8s.io
+  resources:
+  - kthreescontrolplanes
+  - kthreescontrolplanetemplates
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - controlplane.cluster.x-k8s.io
+  resources:
+  - kthreescontrolplanes/status
+  verbs:
+  - patch
+  - update
