@@ -156,6 +156,23 @@ Cluster API k3s has been tested on AWS, Azure, AzureStackHCI, Nutanix, OpenStack
 - To try out the OpenStack flow, fork the repo and look at `samples/openstack/setup.sh`.
 - To try out the Vsphere flow, fork the repo and look at `samples/vsphere-capv/setup.sh`.
 
+## API versions
+
+| API version | Status |
+|-------------|--------|
+| `v1beta2`   | Served, storage version. |
+| `v1beta1`   | **Deprecated.** Still served and converted to `v1beta2`, but it will be removed in a future release. |
+
+Using `v1beta1` (for example with `kubectl` or a GitOps tool) returns a deprecation warning. Please update your
+manifests to `bootstrap.cluster.x-k8s.io/v1beta2` and `controlplane.cluster.x-k8s.io/v1beta2`.
+
+Both provider managers run the Cluster API CRD migrator. On startup it rewrites stored objects to the current storage
+version and removes old versions from the CRDs' `status.storedVersions`, so that `v1beta1` can be removed safely later.
+The migrator adds the `crd-migration.cluster.x-k8s.io/observed-generation` annotation to the CRDs; if you deploy the
+CRDs with a tool like Argo CD, Flux or kapp, make sure it does not keep removing that annotation.
+Individual phases can be skipped with the `--skip-crd-migration-phases` flag
+(valid values: `StorageVersionMigration`, `CleanupManagedFields`).
+
 ## Developer Setup
 
 You could also build and install CABP3 and CACP3 from src:

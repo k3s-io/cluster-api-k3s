@@ -14,7 +14,10 @@ spec:
     singular: kthreesconfigtemplate
   scope: Namespaced
   versions:
-  - name: v1beta1
+  - deprecated: true
+    deprecationWarning: bootstrap.cluster.x-k8s.io/v1beta1 KThreesConfigTemplate is
+      deprecated; use bootstrap.cluster.x-k8s.io/v1beta2 KThreesConfigTemplate
+    name: v1beta1
     schema:
       openAPIV3Schema:
         description: KThreesConfigTemplate is the Schema for the kthreesconfigtemplates
