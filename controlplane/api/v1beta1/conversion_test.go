@@ -17,8 +17,10 @@ import (
 	"testing"
 
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/apitesting/fuzzer"
 	"k8s.io/apimachinery/pkg/runtime"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	utilconversion "sigs.k8s.io/cluster-api/util/conversion"
 
 	bootstrapv1beta2 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
@@ -36,4 +38,22 @@ func TestFuzzyConversion(t *testing.T) {
 		Spoke:       &KThreesControlPlane{},
 		FuzzerFuncs: []fuzzer.FuzzerFuncs{},
 	}))
+}
+
+func TestConversionPreservesMachineTemplateTaints(t *testing.T) {
+	g := NewWithT(t)
+	taints := []clusterv1.MachineTaint{{
+		Key:         "node-role.kubernetes.io/control-plane",
+		Effect:      corev1.TaintEffectNoSchedule,
+		Propagation: clusterv1.MachineTaintPropagationAlways,
+	}}
+	hub := &bootstrapv1beta2.KThreesControlPlane{}
+	hub.Spec.MachineTemplate.Spec.Taints = taints
+
+	spoke := &KThreesControlPlane{}
+	g.Expect(spoke.ConvertFrom(hub)).To(Succeed())
+
+	roundTripped := &bootstrapv1beta2.KThreesControlPlane{}
+	g.Expect(spoke.ConvertTo(roundTripped)).To(Succeed())
+	g.Expect(roundTripped.Spec.MachineTemplate.Spec.Taints).To(Equal(taints))
 }
