@@ -251,9 +251,8 @@ type KThreesControlPlaneStatus struct {
 // See https://github.com/kubernetes-sigs/cluster-api/blob/main/docs/proposals/20240916-improve-status-in-CAPI-resources.md for more context.
 type KThreesControlPlaneV1Beta2Status struct {
 	// conditions represents the observations of a KThreesControlPlane's current state.
-	// Known condition types are Available, Initialized, CertificatesAvailable, TokenAvailable, EtcdClusterHealthy,
-	// ControlPlaneComponentsHealthy, MachinesReady, MachinesUpToDate, RollingOut, ScalingUp, ScalingDown,
-	// Remediating, Deleting, Paused.
+	// Known condition types are Available, Initialized, CertificatesAvailable, EtcdClusterHealthy,
+	// ControlPlaneComponentsHealthy, MachinesReady, RollingOut, ScalingUp, ScalingDown, Deleting.
 	// +optional
 	// +listType=map
 	// +listMapKey=type
@@ -289,7 +288,6 @@ type LastRemediationStatus struct {
 }
 
 // +kubebuilder:object:root=true
-// +kubebuilder:storageversion
 // +kubebuilder:subresource:status
 // +kubebuilder:subresource:scale:specpath=.spec.replicas,statuspath=.status.replicas,selectorpath=.status.selector
 // +kubebuilder:printcolumn:name="Initialized",type=boolean,JSONPath=".status.initialized",description="This denotes whether or not the control plane has completed the k3s server initialization"

@@ -216,7 +216,6 @@ type KThreesConfigV1Beta2Status struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:storageversion
 
 // KThreesConfig is the Schema for the kthreesconfigs API.
 type KThreesConfig struct {

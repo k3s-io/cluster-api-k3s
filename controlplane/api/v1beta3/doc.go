@@ -15,10 +15,6 @@ limitations under the License.
 */
 
 // Package v1beta3 contains API Schema definitions for the controlplane v1beta3 API group.
-//
-// NOTE: this API version is not served yet. The +kubebuilder:skip marker keeps it out of
-// the generated CRDs until the provider implements the Cluster API v1beta2 contract with it.
-// +kubebuilder:skip
 // +kubebuilder:object:generate=true
 // +groupName=controlplane.cluster.x-k8s.io
 // +k8s:defaulter-gen=TypeMeta

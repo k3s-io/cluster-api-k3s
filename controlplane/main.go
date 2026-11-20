@@ -22,9 +22,9 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
-	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
@@ -33,10 +33,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	bootstrapv1beta1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta1"
-	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
+	bootstrapv1beta2 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
+	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta3"
 	controlplanev1beta1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta1"
-	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
+	controlplanev1beta2 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
+	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta3"
 	"github.com/k3s-io/cluster-api-k3s/controlplane/controllers"
+	pkgcontract "github.com/k3s-io/cluster-api-k3s/pkg/contract"
 	"github.com/k3s-io/cluster-api-k3s/pkg/etcd"
 )
 
@@ -47,12 +50,13 @@ var (
 
 func init() {
 	_ = clientgoscheme.AddToScheme(scheme)
-	_ = clusterv1beta1.AddToScheme(scheme)
 	_ = clusterv1.AddToScheme(scheme)
 	_ = bootstrapv1beta1.AddToScheme(scheme)
+	_ = bootstrapv1beta2.AddToScheme(scheme)
 	_ = bootstrapv1.AddToScheme(scheme)
 
 	_ = controlplanev1beta1.AddToScheme(scheme)
+	_ = controlplanev1beta2.AddToScheme(scheme)
 	_ = controlplanev1.AddToScheme(scheme)
 	// +kubebuilder:scaffold:scheme
 }
@@ -141,6 +145,12 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "Machine")
 		os.Exit(1)
 	}
+
+	// Setup the func to retrieve apiVersion for a GroupKind for conversion webhooks:
+	// v1beta2 uses ObjectReferences (with apiVersion), while v1beta3 uses ContractVersionedObjectReferences (with apiGroup).
+	controlplanev1beta2.SetAPIVersionGetter(func(gk schema.GroupKind) (string, error) {
+		return pkgcontract.GetAPIVersion(ctx, mgr.GetClient(), gk)
+	})
 
 	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
 		if err = (&controlplanev1.KThreesControlPlane{}).SetupWebhookWithManager(mgr); err != nil {

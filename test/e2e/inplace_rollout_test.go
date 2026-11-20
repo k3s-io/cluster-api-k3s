@@ -30,12 +30,11 @@ import (
 	"golang.org/x/exp/rand"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
 
-	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
+	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta3"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/test/framework"
 	"sigs.k8s.io/cluster-api/test/framework/clusterctl"
@@ -237,21 +236,15 @@ func assertControlPlaneTopologyFields(g Gomega, controlPlane *controlplanev1.KTh
 	}
 
 	if controlPlaneTopology.Deletion.NodeDrainTimeoutSeconds != nil {
-		nodeDrainTimeout := controlPlane.Spec.MachineTemplate.NodeDrainTimeout
-		expected := metav1.Duration{Duration: time.Duration(*controlPlaneTopology.Deletion.NodeDrainTimeoutSeconds) * time.Second}
-		g.Expect(nodeDrainTimeout).To(Equal(&expected))
+		g.Expect(controlPlane.Spec.MachineTemplate.Spec.Deletion.NodeDrainTimeoutSeconds).To(Equal(controlPlaneTopology.Deletion.NodeDrainTimeoutSeconds))
 	}
 
 	if controlPlaneTopology.Deletion.NodeDeletionTimeoutSeconds != nil {
-		nodeDeletionTimeout := controlPlane.Spec.MachineTemplate.NodeDeletionTimeout
-		expected := metav1.Duration{Duration: time.Duration(*controlPlaneTopology.Deletion.NodeDeletionTimeoutSeconds) * time.Second}
-		g.Expect(nodeDeletionTimeout).To(Equal(&expected))
+		g.Expect(controlPlane.Spec.MachineTemplate.Spec.Deletion.NodeDeletionTimeoutSeconds).To(Equal(controlPlaneTopology.Deletion.NodeDeletionTimeoutSeconds))
 	}
 
 	if controlPlaneTopology.Deletion.NodeVolumeDetachTimeoutSeconds != nil {
-		nodeVolumeDetachTimeout := controlPlane.Spec.MachineTemplate.NodeVolumeDetachTimeout
-		expected := metav1.Duration{Duration: time.Duration(*controlPlaneTopology.Deletion.NodeVolumeDetachTimeoutSeconds) * time.Second}
-		g.Expect(nodeVolumeDetachTimeout).To(Equal(&expected))
+		g.Expect(controlPlane.Spec.MachineTemplate.Spec.Deletion.NodeVolumeDetachTimeoutSeconds).To(Equal(controlPlaneTopology.Deletion.NodeVolumeDetachTimeoutSeconds))
 	}
 }
 

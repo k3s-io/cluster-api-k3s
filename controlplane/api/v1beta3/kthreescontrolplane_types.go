@@ -20,7 +20,6 @@ import (
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 
 	bootstrapv1beta3 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta3"
@@ -214,73 +213,141 @@ type RemediationStrategy struct {
 }
 
 // KThreesControlPlaneStatus defines the observed state of KThreesControlPlane.
+// +kubebuilder:validation:MinProperties=1
 type KThreesControlPlaneStatus struct {
-	// Selector is the label selector in string format to avoid introspection
+	// conditions represents the observations of a KThreesControlPlane's current state.
+	// Known condition types are Available, Initialized, CertificatesAvailable, EtcdClusterHealthy,
+	// ControlPlaneComponentsHealthy, MachinesReady, RollingOut, ScalingUp, ScalingDown, Deleting.
+	// +optional
+	// +listType=map
+	// +listMapKey=type
+	// +kubebuilder:validation:MaxItems=32
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// initialization provides observations of the KThreesControlPlane initialization process.
+	// NOTE: Fields in this struct are part of the Cluster API contract and are used to orchestrate initial Machine provisioning.
+	// +optional
+	Initialization KThreesControlPlaneInitializationStatus `json:"initialization,omitempty,omitzero"`
+
+	// selector is the label selector in string format to avoid introspection
 	// by clients, and is used to provide the CRD-based integration for the
 	// scale subresource and additional integrations for things like kubectl
 	// describe.. The string will be in the same format as the query-param syntax.
 	// More info about label selectors: http://kubernetes.io/docs/user-guide/labels#label-selectors
 	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=4096
 	Selector string `json:"selector,omitempty"`
 
-	// Total number of non-terminated machines targeted by this control plane
+	// replicas is the total number of non-terminated machines targeted by this control plane
 	// (their labels match the selector).
 	// +optional
-	Replicas int32 `json:"replicas,omitempty"`
+	Replicas *int32 `json:"replicas,omitempty"`
 
-	// Version represents the minimum Kubernetes version for the control plane machines
+	// readyReplicas is the number of ready replicas for this KThreesControlPlane. A machine is considered ready when Machine's Ready condition is true.
+	// +optional
+	ReadyReplicas *int32 `json:"readyReplicas,omitempty"`
+
+	// availableReplicas is the number of available replicas targeted by this KThreesControlPlane. A machine is considered available when Machine's Available condition is true.
+	// +optional
+	AvailableReplicas *int32 `json:"availableReplicas,omitempty"`
+
+	// upToDateReplicas is the number of up-to-date replicas targeted by this KThreesControlPlane. A machine is considered up-to-date when Machine's UpToDate condition is true.
+	// +optional
+	UpToDateReplicas *int32 `json:"upToDateReplicas,omitempty"`
+
+	// version represents the minimum Kubernetes version for the control plane machines
 	// in the cluster.
 	// +optional
-	Version *string `json:"version,omitempty"`
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=256
+	Version string `json:"version,omitempty"`
 
-	// Total number of non-terminated machines targeted by this control plane
-	// that have the desired template spec.
+	// observedGeneration is the latest generation observed by the controller.
 	// +optional
-	UpdatedReplicas int32 `json:"updatedReplicas,omitempty"`
-
-	// Total number of fully running and ready control plane machines.
-	// +optional
-	ReadyReplicas int32 `json:"readyReplicas,omitempty"`
-
-	// Total number of unavailable machines targeted by this control plane.
-	// This is the total number of machines that are still required for
-	// the deployment to have 100% available capacity. They may either
-	// be machines that are running but not yet ready or machines
-	// that still have not been created.
-	// +optional
-	UnavailableReplicas int32 `json:"unavailableReplicas,omitempty"`
-
-	// Initialized denotes whether or not the k3s server is initialized.
-	// +optional
-	Initialized bool `json:"initialized"`
-
-	// Ready denotes that the KThreesControlPlane API Server is ready to
-	// receive requests.
-	// +optional
-	Ready bool `json:"ready"`
-
-	// FailureReason indicates that there is a terminal problem reconciling the
-	// state, and will be set to a token value suitable for
-	// programmatic interpretation.
-	// +optional
-	FailureReason errors.KThreesControlPlaneStatusError `json:"failureReason,omitempty"`
-
-	// ErrorMessage indicates that there is a terminal problem reconciling the
-	// state, and will be set to a descriptive error message.
-	// +optional
-	FailureMessage *string `json:"failureMessage,omitempty"`
-
-	// ObservedGeneration is the latest generation observed by the controller.
-	// +optional
+	// +kubebuilder:validation:Minimum=1
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
-
-	// Conditions defines current service state of the KThreesControlPlane.
-	// +optional
-	Conditions clusterv1beta1.Conditions `json:"conditions,omitempty"`
 
 	// LastRemediation stores info about last remediation performed.
 	// +optional
 	LastRemediation *LastRemediationStatus `json:"lastRemediation,omitempty"`
+
+	// deprecated groups all the status fields that are deprecated and will be removed when all the nested field are removed.
+	// +optional
+	Deprecated *KThreesControlPlaneDeprecatedStatus `json:"deprecated,omitempty"`
+}
+
+// KThreesControlPlaneInitializationStatus provides observations of the KThreesControlPlane initialization process.
+// +kubebuilder:validation:MinProperties=1
+type KThreesControlPlaneInitializationStatus struct {
+	// controlPlaneInitialized is true when the KThreesControlPlane provider reports that the Kubernetes control plane is initialized;
+	// A control plane is considered initialized when it can accept requests, no matter if this happens before
+	// the control plane is fully provisioned or not.
+	// NOTE: this field is part of the Cluster API contract, and it is used to orchestrate initial Machine provisioning.
+	// +optional
+	ControlPlaneInitialized *bool `json:"controlPlaneInitialized,omitempty"`
+}
+
+// KThreesControlPlaneDeprecatedStatus groups all the status fields that are deprecated and will be removed in a future version.
+type KThreesControlPlaneDeprecatedStatus struct {
+	// v1beta1 groups all the status fields that are deprecated and will be removed when support for v1beta1 will be dropped.
+	// +optional
+	V1Beta1 *KThreesControlPlaneV1Beta1DeprecatedStatus `json:"v1beta1,omitempty"`
+}
+
+// KThreesControlPlaneV1Beta1DeprecatedStatus groups all the status fields that are deprecated and will be removed when support for v1beta1 will be dropped.
+type KThreesControlPlaneV1Beta1DeprecatedStatus struct {
+	// conditions defines current service state of the KThreesControlPlane.
+	//
+	// Deprecated: This field is deprecated and is going to be removed when support for v1beta1 will be dropped.
+	//
+	// +optional
+	Conditions clusterv1.Conditions `json:"conditions,omitempty"`
+
+	// failureReason indicates that there is a terminal problem reconciling the
+	// state, and will be set to a token value suitable for
+	// programmatic interpretation.
+	//
+	// Deprecated: This field is deprecated and is going to be removed when support for v1beta1 will be dropped.
+	//
+	// +optional
+	FailureReason errors.KThreesControlPlaneStatusError `json:"failureReason,omitempty"`
+
+	// failureMessage indicates that there is a terminal problem reconciling the
+	// state, and will be set to a descriptive error message.
+	//
+	// Deprecated: This field is deprecated and is going to be removed when support for v1beta1 will be dropped.
+	//
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=10240
+	FailureMessage *string `json:"failureMessage,omitempty"`
+
+	// updatedReplicas is the total number of non-terminated machines targeted by this control plane
+	// that have the desired template spec.
+	//
+	// Deprecated: This field is deprecated and is going to be removed when support for v1beta1 will be dropped.
+	//
+	// +optional
+	UpdatedReplicas int32 `json:"updatedReplicas"`
+
+	// readyReplicas is the total number of fully running and ready control plane machines.
+	//
+	// Deprecated: This field is deprecated and is going to be removed when support for v1beta1 will be dropped.
+	//
+	// +optional
+	ReadyReplicas int32 `json:"readyReplicas"`
+
+	// unavailableReplicas is the total number of unavailable machines targeted by this control plane.
+	// This is the total number of machines that are still required for
+	// the deployment to have 100% available capacity. They may either
+	// be machines that are running but not yet ready or machines
+	// that still have not been created.
+	//
+	// Deprecated: This field is deprecated and is going to be removed when support for v1beta1 will be dropped.
+	//
+	// +optional
+	UnavailableReplicas int32 `json:"unavailableReplicas"`
 }
 
 // LastRemediationStatus  stores info about last remediation performed.
@@ -299,15 +366,19 @@ type LastRemediationStatus struct {
 }
 
 // +kubebuilder:object:root=true
+// +kubebuilder:storageversion
 // +kubebuilder:subresource:status
 // +kubebuilder:subresource:scale:specpath=.spec.replicas,statuspath=.status.replicas,selectorpath=.status.selector
-// +kubebuilder:printcolumn:name="Initialized",type=boolean,JSONPath=".status.initialized",description="This denotes whether or not the control plane has completed the k3s server initialization"
-// +kubebuilder:printcolumn:name="API Server Available",type=boolean,JSONPath=".status.ready",description="KThreesControlPlane API Server is ready to receive requests"
+// +kubebuilder:printcolumn:name="Cluster",type="string",JSONPath=".metadata.labels['cluster\\.x-k8s\\.io/cluster-name']",description="Cluster"
+// +kubebuilder:printcolumn:name="Available",type="string",JSONPath=`.status.conditions[?(@.type=="Available")].status`,description="Cluster pass all availability checks"
+// +kubebuilder:printcolumn:name="Desired",type=integer,JSONPath=".spec.replicas",description="The desired number of machines"
+// +kubebuilder:printcolumn:name="Current",type="integer",JSONPath=".status.replicas",description="The number of machines"
+// +kubebuilder:printcolumn:name="Ready",type="integer",JSONPath=".status.readyReplicas",description="The number of machines with Ready condition true"
+// +kubebuilder:printcolumn:name="Available",type=integer,JSONPath=".status.availableReplicas",description="The number of machines with Available condition true"
+// +kubebuilder:printcolumn:name="Up-to-date",type=integer,JSONPath=".status.upToDateReplicas",description="The number of machines with UpToDate condition true"
+// +kubebuilder:printcolumn:name="Initialized",type=boolean,JSONPath=".status.initialization.controlPlaneInitialized",description="This denotes whether or not the control plane can accept requests"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description="Time duration since creation of KThreesControlPlane"
 // +kubebuilder:printcolumn:name="Version",type=string,JSONPath=".spec.version",description="Kubernetes version associated with this control plane"
-// +kubebuilder:printcolumn:name="Replicas",type=integer,JSONPath=".status.replicas",description="Total number of non-terminated machines targeted by this control plane"
-// +kubebuilder:printcolumn:name="Ready",type=integer,JSONPath=".status.readyReplicas",description="Total number of fully running and ready control plane machines"
-// +kubebuilder:printcolumn:name="Updated",type=integer,JSONPath=".status.updatedReplicas",description="Total number of non-terminated machines targeted by this control plane that have the desired template spec"
-// +kubebuilder:printcolumn:name="Unavailable",type=integer,JSONPath=".status.unavailableReplicas",description="Total number of unavailable machines targeted by this control plane"
 
 // KThreesControlPlane is the Schema for the kthreescontrolplanes API.
 type KThreesControlPlane struct {
@@ -315,14 +386,35 @@ type KThreesControlPlane struct {
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	Spec   KThreesControlPlaneSpec   `json:"spec,omitempty"`
-	Status KThreesControlPlaneStatus `json:"status,omitempty"`
+	Status KThreesControlPlaneStatus `json:"status,omitempty,omitzero"`
 }
 
-func (in *KThreesControlPlane) GetConditions() clusterv1beta1.Conditions {
+// GetV1Beta1Conditions returns the set of conditions for this object.
+func (in *KThreesControlPlane) GetV1Beta1Conditions() clusterv1.Conditions {
+	if in.Status.Deprecated == nil || in.Status.Deprecated.V1Beta1 == nil {
+		return nil
+	}
+	return in.Status.Deprecated.V1Beta1.Conditions
+}
+
+// SetV1Beta1Conditions sets the conditions on this object.
+func (in *KThreesControlPlane) SetV1Beta1Conditions(conditions clusterv1.Conditions) {
+	if in.Status.Deprecated == nil {
+		in.Status.Deprecated = &KThreesControlPlaneDeprecatedStatus{}
+	}
+	if in.Status.Deprecated.V1Beta1 == nil {
+		in.Status.Deprecated.V1Beta1 = &KThreesControlPlaneV1Beta1DeprecatedStatus{}
+	}
+	in.Status.Deprecated.V1Beta1.Conditions = conditions
+}
+
+// GetConditions returns the set of conditions for this object.
+func (in *KThreesControlPlane) GetConditions() []metav1.Condition {
 	return in.Status.Conditions
 }
 
-func (in *KThreesControlPlane) SetConditions(conditions clusterv1beta1.Conditions) {
+// SetConditions sets conditions for an API object.
+func (in *KThreesControlPlane) SetConditions(conditions []metav1.Condition) {
 	in.Status.Conditions = conditions
 }
 

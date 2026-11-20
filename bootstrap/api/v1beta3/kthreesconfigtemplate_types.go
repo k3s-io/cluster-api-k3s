@@ -33,6 +33,7 @@ type KThreesConfigTemplateResource struct {
 }
 
 // +kubebuilder:object:root=true
+// +kubebuilder:storageversion
 
 // KThreesConfigTemplate is the Schema for the kthreesconfigtemplates API.
 type KThreesConfigTemplate struct {

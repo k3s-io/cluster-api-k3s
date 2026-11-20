@@ -32,7 +32,6 @@ import (
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apiserver/pkg/storage/names"
 	"k8s.io/utils/ptr"
-	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/controllers/external"
 	"sigs.k8s.io/cluster-api/util"
@@ -42,8 +41,9 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
-	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
+	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta3"
+	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta3"
+	pkgcontract "github.com/k3s-io/cluster-api-k3s/pkg/contract"
 	k3s "github.com/k3s-io/cluster-api-k3s/pkg/k3s"
 	"github.com/k3s-io/cluster-api-k3s/pkg/util/ssa"
 )
@@ -146,7 +146,7 @@ func (r *KThreesControlPlaneReconciler) scaleDownControlPlane(
 		}
 
 		mAnnotations := machineToDelete.GetAnnotations()
-		mAnnotations[clusterv1beta1.PreTerminateDeleteHookAnnotationPrefix] = k3sHookName
+		mAnnotations[clusterv1.PreTerminateDeleteHookAnnotationPrefix] = k3sHookName
 		machineToDelete.SetAnnotations(mAnnotations)
 
 		if err := patchHelper.Patch(ctx, machineToDelete); err != nil {
@@ -190,10 +190,10 @@ func (r *KThreesControlPlaneReconciler) preflightChecks(_ context.Context, contr
 	}
 
 	// Check machine health conditions; if there are conditions with False or Unknown, then wait.
-	allMachineHealthConditions := []string{controlplanev1.MachineAgentHealthyV1Beta2Condition}
+	allMachineHealthConditions := []string{controlplanev1.MachineAgentHealthyCondition}
 	if controlPlane.IsEtcdManaged() {
 		allMachineHealthConditions = append(allMachineHealthConditions,
-			controlplanev1.MachineEtcdMemberHealthyV1Beta2Condition,
+			controlplanev1.MachineEtcdMemberHealthyCondition,
 		)
 	}
 
@@ -275,9 +275,14 @@ func (r *KThreesControlPlaneReconciler) cloneConfigsAndGenerateMachine(ctx conte
 	}
 
 	// Clone the infrastructure template
+	templateRef, err := r.infrastructureTemplateObjectReference(ctx, kcp)
+	if err != nil {
+		// Safe to return early here since no resources have been created yet.
+		return fmt.Errorf("failed to clone infrastructure template: %w", err)
+	}
 	_, infraRef, err := external.CreateFromTemplate(ctx, &external.CreateFromTemplateInput{
 		Client:      r.Client,
-		TemplateRef: &kcp.Spec.MachineTemplate.InfrastructureRef,
+		TemplateRef: templateRef,
 		Namespace:   kcp.Namespace,
 		OwnerRef:    infraCloneOwner,
 		ClusterName: cluster.Name,
@@ -313,6 +318,22 @@ func (r *KThreesControlPlaneReconciler) cloneConfigsAndGenerateMachine(ctx conte
 	}
 
 	return nil
+}
+
+// infrastructureTemplateObjectReference returns an ObjectReference to the infrastructure machine template
+// of the KThreesControlPlane, with the apiVersion resolved from the corresponding CRD according to the Cluster API contract.
+func (r *KThreesControlPlaneReconciler) infrastructureTemplateObjectReference(ctx context.Context, kcp *controlplanev1.KThreesControlPlane) (*corev1.ObjectReference, error) {
+	ref := kcp.Spec.MachineTemplate.Spec.InfrastructureRef
+	apiVersion, err := pkgcontract.GetAPIVersion(ctx, r.Client, schema.GroupKind{Group: ref.APIGroup, Kind: ref.Kind})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get apiVersion for %s: %w", ref.Kind, err)
+	}
+	return &corev1.ObjectReference{
+		APIVersion: apiVersion,
+		Kind:       ref.Kind,
+		Name:       ref.Name,
+		Namespace:  kcp.Namespace,
+	}, nil
 }
 
 func (r *KThreesControlPlaneReconciler) cleanupFromGeneration(ctx context.Context, namespace string, remoteRefs ...*clusterv1.ContractVersionedObjectReference) error {
@@ -483,17 +504,12 @@ func (r *KThreesControlPlaneReconciler) computeDesiredMachine(kcp *controlplanev
 			Version:       ptr.Deref(version, ""),
 			FailureDomain: failureDomain,
 			Taints:        kcp.Spec.MachineTemplate.Spec.Taints,
-			Deletion:      clusterv1.MachineDeletionSpec{},
+			Deletion: clusterv1.MachineDeletionSpec{
+				NodeDrainTimeoutSeconds:        kcp.Spec.MachineTemplate.Spec.Deletion.NodeDrainTimeoutSeconds,
+				NodeVolumeDetachTimeoutSeconds: kcp.Spec.MachineTemplate.Spec.Deletion.NodeVolumeDetachTimeoutSeconds,
+				NodeDeletionTimeoutSeconds:     kcp.Spec.MachineTemplate.Spec.Deletion.NodeDeletionTimeoutSeconds,
+			},
 		},
-	}
-	if kcp.Spec.MachineTemplate.NodeDrainTimeout != nil {
-		desiredMachine.Spec.Deletion.NodeDrainTimeoutSeconds = ptr.To(int32(kcp.Spec.MachineTemplate.NodeDrainTimeout.Seconds()))
-	}
-	if kcp.Spec.MachineTemplate.NodeVolumeDetachTimeout != nil {
-		desiredMachine.Spec.Deletion.NodeVolumeDetachTimeoutSeconds = ptr.To(int32(kcp.Spec.MachineTemplate.NodeVolumeDetachTimeout.Seconds()))
-	}
-	if kcp.Spec.MachineTemplate.NodeDeletionTimeout != nil {
-		desiredMachine.Spec.Deletion.NodeDeletionTimeoutSeconds = ptr.To(int32(kcp.Spec.MachineTemplate.NodeDeletionTimeout.Seconds()))
 	}
 
 	// Set annotations

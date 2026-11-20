@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
+	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta3"
 )
 
 const DefaultK3sConfigLocation = "/etc/rancher/k3s/config.yaml"

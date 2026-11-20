@@ -66,6 +66,7 @@ type KThreesControlPlaneTemplateResourceSpec struct {
 }
 
 // +kubebuilder:object:root=true
+// +kubebuilder:storageversion
 // +kubebuilder:subresource:status
 
 // KThreesControlPlaneTemplate is the Schema for the kthreescontrolplanetemplate API.
