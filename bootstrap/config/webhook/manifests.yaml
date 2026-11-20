@@ -11,7 +11,7 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /mutate-bootstrap-cluster-x-k8s-io-v1beta2-kthreesconfig
+      path: /mutate-bootstrap-cluster-x-k8s-io-v1beta3-kthreesconfig
   failurePolicy: Fail
   matchPolicy: Equivalent
   name: default.kthreesconfig.bootstrap.cluster.x-k8s.io
@@ -19,7 +19,7 @@ webhooks:
   - apiGroups:
     - bootstrap.cluster.x-k8s.io
     apiVersions:
-    - v1beta2
+    - v1beta3
     operations:
     - CREATE
     - UPDATE
@@ -33,7 +33,7 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /mutate-bootstrap-cluster-x-k8s-io-v1beta2-kthreesconfigtemplate
+      path: /mutate-bootstrap-cluster-x-k8s-io-v1beta3-kthreesconfigtemplate
   failurePolicy: Fail
   matchPolicy: Equivalent
   name: default.kthreesconfigtemplate.bootstrap.cluster.x-k8s.io
@@ -41,7 +41,7 @@ webhooks:
   - apiGroups:
     - bootstrap.cluster.x-k8s.io
     apiVersions:
-    - v1beta2
+    - v1beta3
     operations:
     - CREATE
     - UPDATE
@@ -61,7 +61,7 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-bootstrap-cluster-x-k8s-io-v1beta2-kthreesconfig
+      path: /validate-bootstrap-cluster-x-k8s-io-v1beta3-kthreesconfig
   failurePolicy: Fail
   matchPolicy: Equivalent
   name: validation.kthreesconfig.bootstrap.cluster.x-k8s.io
@@ -69,7 +69,7 @@ webhooks:
   - apiGroups:
     - bootstrap.cluster.x-k8s.io
     apiVersions:
-    - v1beta2
+    - v1beta3
     operations:
     - CREATE
     - UPDATE
@@ -83,7 +83,7 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-bootstrap-cluster-x-k8s-io-v1beta2-kthreesconfigtemplate
+      path: /validate-bootstrap-cluster-x-k8s-io-v1beta3-kthreesconfigtemplate
   failurePolicy: Fail
   matchPolicy: Equivalent
   name: validation.kthreesconfigtemplate.bootstrap.cluster.x-k8s.io
@@ -91,7 +91,7 @@ webhooks:
   - apiGroups:
     - bootstrap.cluster.x-k8s.io
     apiVersions:
-    - v1beta2
+    - v1beta3
     operations:
     - CREATE
     - UPDATE

@@ -73,6 +73,7 @@ linters-settings:
           - github.com/onsi/gomega
 
           - sigs.k8s.io/yaml
+          - sigs.k8s.io/randfill
           - sigs.k8s.io/controller-runtime
           - sigs.k8s.io/cluster-api
 
@@ -178,7 +179,12 @@ issues:
     - linters:
         - staticcheck
       path: .*\.go$
-      text: 'SA1019: .*ConditionType is deprecated: This type is deprecated and is going to be removed when support for v1beta1 will be dropped.'
+      text: 'SA1019: .*(ConditionType|Conditions) is deprecated: This type is deprecated and is going to be removed when support for v1beta1 will be dropped.'
+    # Fields under status.deprecated.v1beta1 are deprecated, but they must be used until support for v1beta1 is dropped.
+    - linters:
+        - staticcheck
+      path: .*\.go$
+      text: 'SA1019: .* is deprecated: This field is deprecated and is going to be removed when support for v1beta1 will be dropped.'
     - linters:
         - staticcheck
       path: .*\.go$

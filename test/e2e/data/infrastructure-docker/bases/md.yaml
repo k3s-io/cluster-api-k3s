@@ -24,7 +24,7 @@ spec:
       clusterName: ${CLUSTER_NAME}
       bootstrap:
         configRef:
-          apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+          apiVersion: bootstrap.cluster.x-k8s.io/v1beta3
           kind: KThreesConfigTemplate
           name: ${CLUSTER_NAME}-md-0
       infrastructureRef:
@@ -42,7 +42,7 @@ spec:
     spec:
       customImage: kindest/node:${KIND_IMAGE_VERSION}
 ---
-apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta3
 kind: KThreesConfigTemplate
 metadata:
   name: ${CLUSTER_NAME}-md-0

@@ -224,6 +224,35 @@ type KThreesControlPlaneStatus struct {
 	// LastRemediation stores info about last remediation performed.
 	// +optional
 	LastRemediation *LastRemediationStatus `json:"lastRemediation,omitempty"`
+
+	// v1beta2 groups all the fields that will be added or modified in KThreesControlPlane's status with the V1Beta2 version.
+	// +optional
+	V1Beta2 *KThreesControlPlaneV1Beta2Status `json:"v1beta2,omitempty"`
+}
+
+// KThreesControlPlaneV1Beta2Status groups all the fields that will be added or modified in KThreesControlPlaneStatus with the V1Beta2 version.
+// See https://github.com/kubernetes-sigs/cluster-api/blob/main/docs/proposals/20240916-improve-status-in-CAPI-resources.md for more context.
+type KThreesControlPlaneV1Beta2Status struct {
+	// conditions represents the observations of a KThreesControlPlane's current state.
+	// Known condition types are Available, Initialized, CertificatesAvailable, EtcdClusterHealthy,
+	// ControlPlaneComponentsHealthy, MachinesReady, ScalingUp, ScalingDown, Deleting.
+	// +optional
+	// +listType=map
+	// +listMapKey=type
+	// +kubebuilder:validation:MaxItems=32
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// readyReplicas is the number of ready replicas for this KThreesControlPlane. A machine is considered ready when Machine's Ready condition is true.
+	// +optional
+	ReadyReplicas *int32 `json:"readyReplicas,omitempty"`
+
+	// availableReplicas is the number of available replicas targeted by this KThreesControlPlane. A machine is considered available when Machine's Available condition is true.
+	// +optional
+	AvailableReplicas *int32 `json:"availableReplicas,omitempty"`
+
+	// upToDateReplicas is the number of up-to-date replicas targeted by this KThreesControlPlane. A machine is considered up-to-date when Machine's UpToDate condition is true.
+	// +optional
+	UpToDateReplicas *int32 `json:"upToDateReplicas,omitempty"`
 }
 
 // LastRemediationStatus  stores info about last remediation performed.
@@ -242,7 +271,6 @@ type LastRemediationStatus struct {
 }
 
 // +kubebuilder:object:root=true
-// +kubebuilder:storageversion
 // +kubebuilder:subresource:status
 // +kubebuilder:subresource:scale:specpath=.spec.replicas,statuspath=.status.replicas,selectorpath=.status.selector
 // +kubebuilder:printcolumn:name="Initialized",type=boolean,JSONPath=".status.initialized",description="This denotes whether or not the control plane has completed the k3s server initialization"
@@ -268,6 +296,22 @@ func (in *KThreesControlPlane) GetConditions() clusterv1beta1.Conditions {
 
 func (in *KThreesControlPlane) SetConditions(conditions clusterv1beta1.Conditions) {
 	in.Status.Conditions = conditions
+}
+
+// GetV1Beta2Conditions returns the set of conditions for this object.
+func (in *KThreesControlPlane) GetV1Beta2Conditions() []metav1.Condition {
+	if in.Status.V1Beta2 == nil {
+		return nil
+	}
+	return in.Status.V1Beta2.Conditions
+}
+
+// SetV1Beta2Conditions sets conditions for an API object.
+func (in *KThreesControlPlane) SetV1Beta2Conditions(conditions []metav1.Condition) {
+	if in.Status.V1Beta2 == nil {
+		in.Status.V1Beta2 = &KThreesControlPlaneV1Beta2Status{}
+	}
+	in.Status.V1Beta2.Conditions = conditions
 }
 
 // +kubebuilder:object:root=true

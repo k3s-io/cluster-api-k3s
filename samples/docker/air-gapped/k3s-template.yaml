@@ -13,7 +13,7 @@ spec:
       cidrBlocks:
       - 10.46.0.0/16
   controlPlaneRef:
-    apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta3
     kind: KThreesControlPlane
     name: ${CLUSTER_NAME}-control-plane
   infrastructureRef:
@@ -40,7 +40,7 @@ spec:
     spec:
       bootstrap:
         configRef:
-          apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+          apiVersion: bootstrap.cluster.x-k8s.io/v1beta3
           kind: KThreesConfigTemplate
           name: ${CLUSTER_NAME}-md-0
       clusterName: ${CLUSTER_NAME}
@@ -50,7 +50,7 @@ spec:
         name: ${CLUSTER_NAME}-md-0
       version: ${KUBERNETES_VERSION}
 ---
-apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+apiVersion: controlplane.cluster.x-k8s.io/v1beta3
 kind: KThreesControlPlane
 metadata:
   name: ${CLUSTER_NAME}-control-plane
@@ -65,10 +65,11 @@ spec:
       airGapped: true
       airGappedInstallScriptPath: ${AIRGAPPED_INSTALL_SCRIPT_PATH}
   machineTemplate:
-    infrastructureRef:
-      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-      kind: DockerMachineTemplate
-      name: ${CLUSTER_NAME}-control-plane
+    spec:
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: DockerMachineTemplate
+        name: ${CLUSTER_NAME}-control-plane
   replicas: ${CONTROL_PLANE_MACHINE_COUNT}
   version: ${KUBERNETES_VERSION}
 ---
@@ -98,7 +99,7 @@ spec:
     spec:
       customImage: ${AIRGAPPED_KIND_IMAGE}
 ---
-apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta3
 kind: KThreesConfigTemplate
 metadata:
   name: ${CLUSTER_NAME}-md-0

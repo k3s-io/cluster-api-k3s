@@ -13,4 +13,10 @@ resources:
 - group: bootstrap
   kind: KThreesConfigTemplate
   version: v1beta2
+- group: bootstrap
+  kind: KThreesConfig
+  version: v1beta3
+- group: bootstrap
+  kind: KThreesConfigTemplate
+  version: v1beta3
 version: "2"
