@@ -35,11 +35,11 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/cert"
-	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/util/certs"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
+	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta3"
 )
 
 const (
@@ -232,14 +232,14 @@ func (c *Certificate) AsSecret(clusterName client.ObjectKey, owner metav1.OwnerR
 			Namespace: clusterName.Namespace,
 			Name:      Name(clusterName.Name, c.Purpose),
 			Labels: map[string]string{
-				clusterv1beta1.ClusterNameLabel: clusterName.Name,
+				clusterv1.ClusterNameLabel: clusterName.Name,
 			},
 		},
 		Data: map[string][]byte{
 			TLSKeyDataName: c.KeyPair.Key,
 			TLSCrtDataName: c.KeyPair.Cert,
 		},
-		Type: clusterv1beta1.ClusterSecretType,
+		Type: clusterv1.ClusterSecretType,
 	}
 
 	if c.Generated {

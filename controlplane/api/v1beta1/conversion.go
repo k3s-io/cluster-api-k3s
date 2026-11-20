@@ -19,7 +19,6 @@ import (
 
 	"k8s.io/apimachinery/pkg/conversion"
 	utilconversion "sigs.k8s.io/cluster-api/util/conversion"
-	ctrlconversion "sigs.k8s.io/controller-runtime/pkg/conversion"
 
 	bootstrapv1beta1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta1"
 	bootstrapv1beta2 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
@@ -75,9 +74,8 @@ func Convert_v1beta2_KThreesControlPlaneStatus_To_v1beta1_KThreesControlPlaneSta
 	return autoConvert_v1beta2_KThreesControlPlaneStatus_To_v1beta1_KThreesControlPlaneStatus(in, out, s)
 }
 
-// ConvertTo converts the v1beta1 KThreesControlPlane receiver to a v1beta2 KThreesControlPlane.
-func (in *KThreesControlPlane) ConvertTo(dstRaw ctrlconversion.Hub) error {
-	dst := dstRaw.(*controlplanev1beta2.KThreesControlPlane)
+// convertToV1beta2 converts the v1beta1 KThreesControlPlane receiver to a v1beta2 KThreesControlPlane.
+func (in *KThreesControlPlane) convertToV1beta2(dst *controlplanev1beta2.KThreesControlPlane) error {
 	if err := Convert_v1beta1_KThreesControlPlane_To_v1beta2_KThreesControlPlane(in, dst, nil); err != nil {
 		return fmt.Errorf("converting KThreesControlPlane v1beta1 to v1beta2: %w", err)
 	}
@@ -103,9 +101,8 @@ func (in *KThreesControlPlane) ConvertTo(dstRaw ctrlconversion.Hub) error {
 	return nil
 }
 
-// ConvertFrom converts the v1beta1 KThreesControlPlane receiver from a v1beta2 KThreesControlPlane.
-func (in *KThreesControlPlane) ConvertFrom(srcRaw ctrlconversion.Hub) error {
-	src := srcRaw.(*controlplanev1beta2.KThreesControlPlane)
+// convertFromV1beta2 converts the v1beta1 KThreesControlPlane receiver from a v1beta2 KThreesControlPlane.
+func (in *KThreesControlPlane) convertFromV1beta2(src *controlplanev1beta2.KThreesControlPlane) error {
 	if err := Convert_v1beta2_KThreesControlPlane_To_v1beta1_KThreesControlPlane(src, in, nil); err != nil {
 		return fmt.Errorf("converting KThreesControlPlane v1beta1 from v1beta2: %w", err)
 	}
@@ -116,18 +113,16 @@ func (in *KThreesControlPlane) ConvertFrom(srcRaw ctrlconversion.Hub) error {
 	return nil
 }
 
-// ConvertTo converts the v1beta1 KThreesControlPlaneList receiver to a v1beta2 KThreesControlPlaneList.
-func (in *KThreesControlPlaneList) ConvertTo(dstRaw ctrlconversion.Hub) error {
-	dst := dstRaw.(*controlplanev1beta2.KThreesControlPlaneList)
+// convertToV1beta2 converts the v1beta1 KThreesControlPlaneList receiver to a v1beta2 KThreesControlPlaneList.
+func (in *KThreesControlPlaneList) convertToV1beta2(dst *controlplanev1beta2.KThreesControlPlaneList) error {
 	if err := Convert_v1beta1_KThreesControlPlaneList_To_v1beta2_KThreesControlPlaneList(in, dst, nil); err != nil {
 		return fmt.Errorf("converting KThreesControlPlaneList v1beta1 to v1beta2: %w", err)
 	}
 	return nil
 }
 
-// ConvertFrom converts the v1beta1 KThreesControlPlaneList receiver from a v1beta2 KThreesControlPlaneList.
-func (in *KThreesControlPlaneList) ConvertFrom(srcRaw ctrlconversion.Hub) error {
-	src := srcRaw.(*controlplanev1beta2.KThreesControlPlaneList)
+// convertFromV1beta2 converts the v1beta1 KThreesControlPlaneList receiver from a v1beta2 KThreesControlPlaneList.
+func (in *KThreesControlPlaneList) convertFromV1beta2(src *controlplanev1beta2.KThreesControlPlaneList) error {
 	if err := Convert_v1beta2_KThreesControlPlaneList_To_v1beta1_KThreesControlPlaneList(src, in, nil); err != nil {
 		return fmt.Errorf("converting KThreesControlPlaneList v1beta1 from v1beta2: %w", err)
 	}

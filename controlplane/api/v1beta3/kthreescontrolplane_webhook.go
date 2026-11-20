@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1beta2
+package v1beta3
 
 import (
 	"context"
@@ -32,8 +32,8 @@ func (in *KThreesControlPlane) SetupWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
-// +kubebuilder:webhook:verbs=create;update,path=/validate-controlplane-cluster-x-k8s-io-v1beta2-kthreescontrolplane,mutating=false,failurePolicy=fail,matchPolicy=Equivalent,groups=controlplane.cluster.x-k8s.io,resources=kthreescontrolplanes,versions=v1beta2,name=validation.kthreescontrolplane.controlplane.cluster.x-k8s.io,sideEffects=None,admissionReviewVersions=v1;v1beta1
-// +kubebuilder:webhook:verbs=create;update,path=/mutate-controlplane-cluster-x-k8s-io-v1beta2-kthreescontrolplane,mutating=true,failurePolicy=fail,matchPolicy=Equivalent,groups=controlplane.cluster.x-k8s.io,resources=kthreescontrolplanes,versions=v1beta2,name=default.kthreescontrolplane.controlplane.cluster.x-k8s.io,sideEffects=None,admissionReviewVersions=v1;v1beta1
+// +kubebuilder:webhook:verbs=create;update,path=/validate-controlplane-cluster-x-k8s-io-v1beta3-kthreescontrolplane,mutating=false,failurePolicy=fail,matchPolicy=Equivalent,groups=controlplane.cluster.x-k8s.io,resources=kthreescontrolplanes,versions=v1beta3,name=validation.kthreescontrolplane.controlplane.cluster.x-k8s.io,sideEffects=None,admissionReviewVersions=v1;v1beta1
+// +kubebuilder:webhook:verbs=create;update,path=/mutate-controlplane-cluster-x-k8s-io-v1beta3-kthreescontrolplane,mutating=true,failurePolicy=fail,matchPolicy=Equivalent,groups=controlplane.cluster.x-k8s.io,resources=kthreescontrolplanes,versions=v1beta3,name=default.kthreescontrolplane.controlplane.cluster.x-k8s.io,sideEffects=None,admissionReviewVersions=v1;v1beta1
 
 var _ admission.Defaulter[*KThreesControlPlane] = &KThreesControlPlane{}
 var _ admission.Validator[*KThreesControlPlane] = &KThreesControlPlane{}
@@ -55,18 +55,14 @@ func (in *KThreesControlPlane) ValidateDelete(_ context.Context, _ *KThreesContr
 
 // Default will set default values for the KThreesControlPlane.
 func (in *KThreesControlPlane) Default(_ context.Context, c *KThreesControlPlane) error {
-	defaultKThreesControlPlaneSpec(&c.Spec, c.Namespace)
+	defaultKThreesControlPlaneSpec(&c.Spec)
 	return nil
 }
 
-func defaultKThreesControlPlaneSpec(s *KThreesControlPlaneSpec, namespace string) {
+func defaultKThreesControlPlaneSpec(s *KThreesControlPlaneSpec) {
 	if s.Replicas == nil {
 		replicas := int32(1)
 		s.Replicas = &replicas
-	}
-
-	if s.MachineTemplate.InfrastructureRef.Namespace == "" {
-		s.MachineTemplate.InfrastructureRef.Namespace = namespace
 	}
 
 	if s.KThreesConfigSpec.ServerConfig.DisableCloudController == nil {

@@ -20,13 +20,13 @@ import (
 	"reflect"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/util/collections"
 	"sigs.k8s.io/cluster-api/util/conditions"
 
-	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
-	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
+	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta3"
+	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta3"
 )
 
 type Func = collections.Func
@@ -53,8 +53,8 @@ func MatchesTemplateClonedFrom(infraConfigs map[string]*unstructured.Unstructure
 			return true
 		}
 
-		clonedFromName, ok1 := infraObj.GetAnnotations()[clusterv1beta1.TemplateClonedFromNameAnnotation]
-		clonedFromGroupKind, ok2 := infraObj.GetAnnotations()[clusterv1beta1.TemplateClonedFromGroupKindAnnotation]
+		clonedFromName, ok1 := infraObj.GetAnnotations()[clusterv1.TemplateClonedFromNameAnnotation]
+		clonedFromGroupKind, ok2 := infraObj.GetAnnotations()[clusterv1.TemplateClonedFromGroupKindAnnotation]
 		if !ok1 || !ok2 {
 			// All kcp cloned infra machines should have this annotation.
 			// Missing the annotation may be due to older version machines or adopted machines.
@@ -63,8 +63,9 @@ func MatchesTemplateClonedFrom(infraConfigs map[string]*unstructured.Unstructure
 		}
 
 		// Check if the machine's infrastructure reference has been created from the current KCP infrastructure template.
-		if clonedFromName != kcp.Spec.MachineTemplate.InfrastructureRef.Name ||
-			clonedFromGroupKind != kcp.Spec.MachineTemplate.InfrastructureRef.GroupVersionKind().GroupKind().String() {
+		infraRef := kcp.Spec.MachineTemplate.Spec.InfrastructureRef
+		if clonedFromName != infraRef.Name ||
+			clonedFromGroupKind != (schema.GroupKind{Group: infraRef.APIGroup, Kind: infraRef.Kind}).String() {
 			return false
 		}
 		return true
@@ -122,6 +123,6 @@ func AgentHealthy() Func {
 		if machine == nil {
 			return false
 		}
-		return conditions.IsTrue(machine, controlplanev1.MachineAgentHealthyV1Beta2Condition)
+		return conditions.IsTrue(machine, controlplanev1.MachineAgentHealthyCondition)
 	}
 }

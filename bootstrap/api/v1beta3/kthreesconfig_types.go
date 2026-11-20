@@ -18,7 +18,7 @@ package v1beta3
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 )
 
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
@@ -167,35 +167,87 @@ type KThreesAgentConfig struct {
 }
 
 // KThreesConfigStatus defines the observed state of KThreesConfig.
+// +kubebuilder:validation:MinProperties=1
 type KThreesConfigStatus struct {
-	// Ready indicates the BootstrapData field is ready to be consumed
-	Ready bool `json:"ready,omitempty"`
-
-	BootstrapData []byte `json:"bootstrapData,omitempty"`
-
-	// DataSecretName is the name of the secret that stores the bootstrap data script.
+	// conditions represents the observations of a KThreesConfig's current state.
+	// Known condition types are Ready, DataSecretAvailable, CertificatesAvailable.
 	// +optional
-	DataSecretName *string `json:"dataSecretName,omitempty"`
+	// +listType=map
+	// +listMapKey=type
+	// +kubebuilder:validation:MaxItems=32
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
-	// FailureReason will be set on non-retryable errors
+	// initialization provides observations of the KThreesConfig initialization process.
+	// NOTE: Fields in this struct are part of the Cluster API contract and are used to orchestrate initial Machine provisioning.
 	// +optional
-	FailureReason string `json:"failureReason,omitempty"`
+	Initialization KThreesConfigInitializationStatus `json:"initialization,omitempty,omitzero"`
 
-	// FailureMessage will be set on non-retryable errors
+	// dataSecretName is the name of the secret that stores the bootstrap data script.
 	// +optional
-	FailureMessage string `json:"failureMessage,omitempty"`
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	DataSecretName string `json:"dataSecretName,omitempty"`
 
-	// ObservedGeneration is the latest generation observed by the controller.
+	// observedGeneration is the latest generation observed by the controller.
 	// +optional
+	// +kubebuilder:validation:Minimum=1
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
-	// Conditions defines current service state of the KThreesConfig.
+	// deprecated groups all the status fields that are deprecated and will be removed when all the nested field are removed.
 	// +optional
-	Conditions clusterv1beta1.Conditions `json:"conditions,omitempty"`
+	Deprecated *KThreesConfigDeprecatedStatus `json:"deprecated,omitempty"`
+}
+
+// KThreesConfigInitializationStatus provides observations of the KThreesConfig initialization process.
+// +kubebuilder:validation:MinProperties=1
+type KThreesConfigInitializationStatus struct {
+	// dataSecretCreated is true when the Machine's boostrap secret is created.
+	// NOTE: this field is part of the Cluster API contract, and it is used to orchestrate initial Machine provisioning.
+	// +optional
+	DataSecretCreated *bool `json:"dataSecretCreated,omitempty"`
+}
+
+// KThreesConfigDeprecatedStatus groups all the status fields that are deprecated and will be removed in a future version.
+type KThreesConfigDeprecatedStatus struct {
+	// v1beta1 groups all the status fields that are deprecated and will be removed when support for v1beta1 will be dropped.
+	// +optional
+	V1Beta1 *KThreesConfigV1Beta1DeprecatedStatus `json:"v1beta1,omitempty"`
+}
+
+// KThreesConfigV1Beta1DeprecatedStatus groups all the status fields that are deprecated and will be removed when support for v1beta1 will be dropped.
+type KThreesConfigV1Beta1DeprecatedStatus struct {
+	// conditions defines current service state of the KThreesConfig.
+	//
+	// Deprecated: This field is deprecated and is going to be removed when support for v1beta1 will be dropped.
+	//
+	// +optional
+	Conditions clusterv1.Conditions `json:"conditions,omitempty"`
+
+	// failureReason will be set on non-retryable errors
+	//
+	// Deprecated: This field is deprecated and is going to be removed when support for v1beta1 will be dropped.
+	//
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=256
+	FailureReason string `json:"failureReason,omitempty"`
+
+	// failureMessage will be set on non-retryable errors
+	//
+	// Deprecated: This field is deprecated and is going to be removed when support for v1beta1 will be dropped.
+	//
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=10240
+	FailureMessage string `json:"failureMessage,omitempty"`
 }
 
 // +kubebuilder:object:root=true
+// +kubebuilder:storageversion
 // +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Cluster",type="string",JSONPath=".metadata.labels['cluster\\.x-k8s\\.io/cluster-name']",description="Cluster"
+// +kubebuilder:printcolumn:name="Data secret created",type="boolean",JSONPath=".status.initialization.dataSecretCreated",description="Boostrap secret is created"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description="Time duration since creation of KThreesConfig"
 
 // KThreesConfig is the Schema for the kthreesconfigs API.
 type KThreesConfig struct {
@@ -203,14 +255,35 @@ type KThreesConfig struct {
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	Spec   KThreesConfigSpec   `json:"spec,omitempty"`
-	Status KThreesConfigStatus `json:"status,omitempty"`
+	Status KThreesConfigStatus `json:"status,omitempty,omitzero"`
 }
 
-func (c *KThreesConfig) GetConditions() clusterv1beta1.Conditions {
+// GetV1Beta1Conditions returns the set of conditions for this object.
+func (c *KThreesConfig) GetV1Beta1Conditions() clusterv1.Conditions {
+	if c.Status.Deprecated == nil || c.Status.Deprecated.V1Beta1 == nil {
+		return nil
+	}
+	return c.Status.Deprecated.V1Beta1.Conditions
+}
+
+// SetV1Beta1Conditions sets the conditions on this object.
+func (c *KThreesConfig) SetV1Beta1Conditions(conditions clusterv1.Conditions) {
+	if c.Status.Deprecated == nil {
+		c.Status.Deprecated = &KThreesConfigDeprecatedStatus{}
+	}
+	if c.Status.Deprecated.V1Beta1 == nil {
+		c.Status.Deprecated.V1Beta1 = &KThreesConfigV1Beta1DeprecatedStatus{}
+	}
+	c.Status.Deprecated.V1Beta1.Conditions = conditions
+}
+
+// GetConditions returns the set of conditions for this object.
+func (c *KThreesConfig) GetConditions() []metav1.Condition {
 	return c.Status.Conditions
 }
 
-func (c *KThreesConfig) SetConditions(conditions clusterv1beta1.Conditions) {
+// SetConditions sets conditions for an API object.
+func (c *KThreesConfig) SetConditions(conditions []metav1.Condition) {
 	c.Status.Conditions = conditions
 }
 

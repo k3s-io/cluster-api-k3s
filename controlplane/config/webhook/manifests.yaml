@@ -11,7 +11,7 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /mutate-controlplane-cluster-x-k8s-io-v1beta2-kthreescontrolplane
+      path: /mutate-controlplane-cluster-x-k8s-io-v1beta3-kthreescontrolplane
   failurePolicy: Fail
   matchPolicy: Equivalent
   name: default.kthreescontrolplane.controlplane.cluster.x-k8s.io
@@ -19,7 +19,7 @@ webhooks:
   - apiGroups:
     - controlplane.cluster.x-k8s.io
     apiVersions:
-    - v1beta2
+    - v1beta3
     operations:
     - CREATE
     - UPDATE
@@ -39,7 +39,7 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-controlplane-cluster-x-k8s-io-v1beta2-kthreescontrolplane
+      path: /validate-controlplane-cluster-x-k8s-io-v1beta3-kthreescontrolplane
   failurePolicy: Fail
   matchPolicy: Equivalent
   name: validation.kthreescontrolplane.controlplane.cluster.x-k8s.io
@@ -47,7 +47,7 @@ webhooks:
   - apiGroups:
     - controlplane.cluster.x-k8s.io
     apiVersions:
-    - v1beta2
+    - v1beta3
     operations:
     - CREATE
     - UPDATE
