@@ -2,6 +2,7 @@ package k3s
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
@@ -45,7 +46,7 @@ func GenerateInitControlPlaneConfig(controlPlaneEndpoint string, token string, s
 	k3sServerConfig := K3sServerConfig{
 		DisableCloudController:    getDisableCloudController(serverConfig),
 		ClusterInit:               true,
-		KubeAPIServerArgs:         append(serverConfig.KubeAPIServerArgs, "anonymous-auth=true", getTLSCipherSuiteArg()),
+		KubeAPIServerArgs:         getKubeAPIServerArgs(serverConfig),
 		TLSSan:                    append(serverConfig.TLSSan, controlPlaneEndpoint),
 		KubeControllerManagerArgs: append(serverConfig.KubeControllerManagerArgs, kubeletExtraArgs...),
 		KubeSchedulerArgs:         serverConfig.KubeSchedulerArgs,
@@ -78,7 +79,7 @@ func GenerateJoinControlPlaneConfig(serverURL string, token string, controlplane
 	kubeletExtraArgs := getKubeletExtraArgs(serverConfig)
 	k3sServerConfig := K3sServerConfig{
 		DisableCloudController:    getDisableCloudController(serverConfig),
-		KubeAPIServerArgs:         append(serverConfig.KubeAPIServerArgs, "anonymous-auth=true", getTLSCipherSuiteArg()),
+		KubeAPIServerArgs:         getKubeAPIServerArgs(serverConfig),
 		TLSSan:                    append(serverConfig.TLSSan, controlplaneendpoint),
 		KubeControllerManagerArgs: append(serverConfig.KubeControllerManagerArgs, kubeletExtraArgs...),
 		KubeSchedulerArgs:         serverConfig.KubeSchedulerArgs,
@@ -157,6 +158,29 @@ func getTLSCipherSuiteArg() string {
 	ciphersList = strings.TrimRight(ciphersList, ",")
 
 	return fmt.Sprintf("tls-cipher-suites=%s", ciphersList)
+}
+
+// getKubeAPIServerArgs adds the default kube-apiserver args unless the user already sets them.
+// anonymous-auth is also left out when an authentication config file is given, as k3s does,
+// because kube-apiserver refuses the flag if that file configures anonymous auth.
+func getKubeAPIServerArgs(serverConfig bootstrapv1.KThreesServerConfig) []string {
+	args := slices.Clone(serverConfig.KubeAPIServerArgs)
+	if !hasArg(args, "anonymous-auth") && !hasArg(args, "authentication-config") {
+		args = append(args, "anonymous-auth=true")
+	}
+	if !hasArg(args, "tls-cipher-suites") {
+		args = append(args, getTLSCipherSuiteArg())
+	}
+	return args
+}
+
+func hasArg(args []string, name string) bool {
+	for _, arg := range args {
+		if key, _, _ := strings.Cut(strings.TrimLeft(arg, "-"), "="); key == name {
+			return true
+		}
+	}
+	return false
 }
 
 func getKubeletExtraArgs(serverConfig bootstrapv1.KThreesServerConfig) []string {
