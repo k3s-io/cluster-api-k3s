@@ -26,6 +26,7 @@ import (
 	"sigs.k8s.io/cluster-api/util/collections"
 	"sigs.k8s.io/cluster-api/util/conditions"
 	v1beta1conditions "sigs.k8s.io/cluster-api/util/deprecated/v1beta1/conditions"
+	v1beta2conditions "sigs.k8s.io/cluster-api/util/deprecated/v1beta1/conditions/v1beta2"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -195,6 +196,12 @@ func (w *Workload) UpdateAgentConditions(ctx context.Context, controlPlane *Cont
 			}
 		}
 		v1beta1conditions.MarkUnknown(controlPlane.KCP, controlplanev1.ControlPlaneComponentsHealthyCondition, controlplanev1.ControlPlaneComponentsInspectionFailedReason, "Failed to list nodes which are hosting control plane components")
+		v1beta2conditions.Set(controlPlane.KCP, metav1.Condition{
+			Type:    controlplanev1.KThreesControlPlaneControlPlaneComponentsHealthyV1Beta2Condition,
+			Status:  metav1.ConditionUnknown,
+			Reason:  controlplanev1.KThreesControlPlaneControlPlaneComponentsInspectionFailedV1Beta2Reason,
+			Message: "Failed to get Nodes hosting control plane components",
+		})
 		return
 	}
 
@@ -322,6 +329,11 @@ func (w *Workload) UpdateAgentConditions(ctx context.Context, controlPlane *Cont
 		unhealthyReason:   controlplanev1.ControlPlaneComponentsUnhealthyReason,
 		unknownReason:     controlplanev1.ControlPlaneComponentsUnknownReason,
 		note:              "control plane",
+
+		v1beta2Condition:           controlplanev1.KThreesControlPlaneControlPlaneComponentsHealthyV1Beta2Condition,
+		v1beta2HealthyReason:       controlplanev1.KThreesControlPlaneControlPlaneComponentsHealthyV1Beta2Reason,
+		v1beta2NotHealthyReason:    controlplanev1.KThreesControlPlaneControlPlaneComponentsNotHealthyV1Beta2Reason,
+		v1beta2HealthUnknownReason: controlplanev1.KThreesControlPlaneControlPlaneComponentsHealthUnknownV1Beta2Reason,
 	})
 }
 
@@ -333,6 +345,12 @@ type aggregateFromMachinesToKCPInput struct {
 	unhealthyReason   string
 	unknownReason     string
 	note              string
+
+	// v1beta2Condition and the v1beta2*Reason fields are used for the condition in status.v1beta2.conditions.
+	v1beta2Condition           string
+	v1beta2HealthyReason       string
+	v1beta2NotHealthyReason    string
+	v1beta2HealthUnknownReason string
 }
 
 // aggregateFromMachinesToKCP aggregates a group of conditions from machines to KCP.
@@ -367,30 +385,63 @@ func aggregateFromMachinesToKCP(input aggregateFromMachinesToKCPInput) {
 		input.kcpErrors = append(input.kcpErrors, fmt.Sprintf("Following machines are reporting %s false: %s", input.note, strings.Join(kcpMachinesWithFalse.List(), ", ")))
 	}
 	if len(input.kcpErrors) > 0 {
-		v1beta1conditions.MarkFalse(input.controlPlane.KCP, input.condition, input.unhealthyReason, clusterv1beta1.ConditionSeverityError, "errors found: %s", strings.Join(input.kcpErrors, "; "))
+		message := strings.Join(input.kcpErrors, "; ")
+		v1beta1conditions.MarkFalse(input.controlPlane.KCP, input.condition, input.unhealthyReason, clusterv1beta1.ConditionSeverityError, "errors found: %s", message)
+		v1beta2conditions.Set(input.controlPlane.KCP, metav1.Condition{
+			Type:    input.v1beta2Condition,
+			Status:  metav1.ConditionFalse,
+			Reason:  input.v1beta2NotHealthyReason,
+			Message: message,
+		})
 		return
 	}
 
 	// In case of no errors, no warning, and at least one machine with info, report false, info.
 	if len(kcpMachinesWithInfo) > 0 {
-		v1beta1conditions.MarkFalse(input.controlPlane.KCP, input.condition, input.unhealthyReason, clusterv1beta1.ConditionSeverityWarning, "Following machines are reporting %s info: %s", input.note, strings.Join(kcpMachinesWithInfo.List(), ", "))
+		message := fmt.Sprintf("Following machines are reporting %s info: %s", input.note, strings.Join(kcpMachinesWithInfo.List(), ", "))
+		v1beta1conditions.MarkFalse(input.controlPlane.KCP, input.condition, input.unhealthyReason, clusterv1beta1.ConditionSeverityWarning, "%s", message)
+		v1beta2conditions.Set(input.controlPlane.KCP, metav1.Condition{
+			Type:    input.v1beta2Condition,
+			Status:  metav1.ConditionFalse,
+			Reason:  input.v1beta2NotHealthyReason,
+			Message: message,
+		})
 		return
 	}
 
 	// In case of no errors, no warning, no Info, and at least one machine with true conditions, report true.
 	if len(kcpMachinesWithTrue) > 0 {
 		v1beta1conditions.MarkTrue(input.controlPlane.KCP, input.condition)
+		v1beta2conditions.Set(input.controlPlane.KCP, metav1.Condition{
+			Type:   input.v1beta2Condition,
+			Status: metav1.ConditionTrue,
+			Reason: input.v1beta2HealthyReason,
+		})
 		return
 	}
 
 	// Otherwise, if there is at least one machine with unknown, report unknown.
 	if len(kcpMachinesWithUnknown) > 0 {
-		v1beta1conditions.MarkUnknown(input.controlPlane.KCP, input.condition, input.unknownReason, "Following machines are reporting unknown %s status: %s", input.note, strings.Join(kcpMachinesWithUnknown.List(), ", "))
+		message := fmt.Sprintf("Following machines are reporting unknown %s status: %s", input.note, strings.Join(kcpMachinesWithUnknown.List(), ", "))
+		v1beta1conditions.MarkUnknown(input.controlPlane.KCP, input.condition, input.unknownReason, "%s", message)
+		v1beta2conditions.Set(input.controlPlane.KCP, metav1.Condition{
+			Type:    input.v1beta2Condition,
+			Status:  metav1.ConditionUnknown,
+			Reason:  input.v1beta2HealthUnknownReason,
+			Message: message,
+		})
 		return
 	}
 
 	// This last case should happen only if there are no provisioned machines, and thus without conditions.
-	// So there will be no condition at KCP level too.
+	// The v1beta1 condition is not set in this case, while the v1beta2 condition is set to unknown,
+	// so that it is always surfaced.
+	v1beta2conditions.Set(input.controlPlane.KCP, metav1.Condition{
+		Type:    input.v1beta2Condition,
+		Status:  metav1.ConditionUnknown,
+		Reason:  input.v1beta2HealthUnknownReason,
+		Message: fmt.Sprintf("No Machines reporting %s status", input.note),
+	})
 }
 
 // UpdateEtcdConditions is responsible for updating machine conditions reflecting the status of all the etcd members.
@@ -406,6 +457,12 @@ func (w *Workload) updateManagedEtcdConditions(ctx context.Context, controlPlane
 	controlPlaneNodes, err := w.getControlPlaneNodes(ctx)
 	if err != nil {
 		v1beta1conditions.MarkUnknown(controlPlane.KCP, controlplanev1.EtcdClusterHealthyCondition, controlplanev1.EtcdClusterInspectionFailedReason, "Failed to list nodes which are hosting the etcd members")
+		v1beta2conditions.Set(controlPlane.KCP, metav1.Condition{
+			Type:    controlplanev1.KThreesControlPlaneEtcdClusterHealthyV1Beta2Condition,
+			Status:  metav1.ConditionUnknown,
+			Reason:  controlplanev1.KThreesControlPlaneEtcdClusterInspectionFailedV1Beta2Reason,
+			Message: "Failed to get Nodes hosting the etcd cluster",
+		})
 		for _, m := range controlPlane.Machines {
 			conditions.Set(m, metav1.Condition{
 				Type:    string(controlplanev1.MachineEtcdMemberHealthyCondition),
@@ -548,6 +605,11 @@ func (w *Workload) updateManagedEtcdConditions(ctx context.Context, controlPlane
 		unhealthyReason:   controlplanev1.EtcdClusterUnhealthyReason,
 		unknownReason:     controlplanev1.EtcdClusterUnknownReason,
 		note:              "etcd member",
+
+		v1beta2Condition:           controlplanev1.KThreesControlPlaneEtcdClusterHealthyV1Beta2Condition,
+		v1beta2HealthyReason:       controlplanev1.KThreesControlPlaneEtcdClusterHealthyV1Beta2Reason,
+		v1beta2NotHealthyReason:    controlplanev1.KThreesControlPlaneEtcdClusterNotHealthyV1Beta2Reason,
+		v1beta2HealthUnknownReason: controlplanev1.KThreesControlPlaneEtcdClusterHealthUnknownV1Beta2Reason,
 	})
 }
 

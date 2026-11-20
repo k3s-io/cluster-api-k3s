@@ -321,6 +321,26 @@ func (c *ControlPlane) MachinesNeedingRollout() collections.Machines {
 	)
 }
 
+// MachineNotUpToDateReasons returns the reasons why a machine is not up-to-date with the KThreesControlPlane spec;
+// if the machine is up-to-date, the returned list is empty.
+// NOTE: This checks the same criteria used by MachinesNeedingRollout.
+func (c *ControlPlane) MachineNotUpToDateReasons(machine *clusterv1.Machine) []string {
+	var reasons []string
+	if !machinefilters.MatchesKubernetesVersion(c.KCP.Spec.Version)(machine) {
+		reasons = append(reasons, fmt.Sprintf("Version %s, %s required", machine.Spec.Version, c.KCP.Spec.Version))
+	}
+	if !machinefilters.MatchesKThreesBootstrapConfig(c.KthreesConfigs, c.KCP)(machine) {
+		reasons = append(reasons, "KThreesConfig is not up-to-date")
+	}
+	if !machinefilters.MatchesTemplateClonedFrom(c.InfraResources, c.KCP)(machine) {
+		reasons = append(reasons, "InfrastructureMachine is not up-to-date")
+	}
+	if c.KCP.Spec.RolloutAfter != nil && collections.ShouldRolloutAfter(&c.reconciliationTime, *c.KCP.Spec.RolloutAfter)(machine) {
+		reasons = append(reasons, "KThreesControlPlane spec.rolloutAfter expired")
+	}
+	return reasons
+}
+
 // UpToDateMachines returns the machines that are up to date with the control
 // plane's configuration and therefore do not require rollout.
 func (c *ControlPlane) UpToDateMachines() collections.Machines {
@@ -391,6 +411,7 @@ func (c *ControlPlane) PatchMachines(ctx context.Context) error {
 		machine := c.Machines[i]
 		if helper, ok := c.machinesPatchHelpers[machine.Name]; ok {
 			if err := helper.Patch(ctx, machine, patch.WithOwnedConditions{Conditions: []string{
+				clusterv1.MachineUpToDateCondition,
 				controlplanev1.MachineAgentHealthyV1Beta2Condition,
 				controlplanev1.MachineEtcdMemberHealthyV1Beta2Condition,
 			}}); err != nil {
