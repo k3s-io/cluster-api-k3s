@@ -98,6 +98,7 @@ func (in *KThreesControlPlane) ConvertTo(dstRaw ctrlconversion.Hub) error {
 	dst.Spec.MachineTemplate.NodeVolumeDetachTimeout = restored.Spec.MachineTemplate.NodeVolumeDetachTimeout
 	dst.Spec.MachineTemplate.NodeDeletionTimeout = restored.Spec.MachineTemplate.NodeDeletionTimeout
 	dst.Status.Version = restored.Status.Version
+	dst.Status.V1Beta2 = restored.Status.V1Beta2
 	dst.Spec.KThreesConfigSpec.AgentConfig.AirGappedInstallScriptPath = restored.Spec.KThreesConfigSpec.AgentConfig.AirGappedInstallScriptPath
 	return nil
 }
