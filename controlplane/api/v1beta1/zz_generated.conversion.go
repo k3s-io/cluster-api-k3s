@@ -282,6 +282,7 @@ func autoConvert_v1beta2_KThreesControlPlaneStatus_To_v1beta1_KThreesControlPlan
 	out.ObservedGeneration = in.ObservedGeneration
 	out.Conditions = *(*corev1beta1.Conditions)(unsafe.Pointer(&in.Conditions))
 	out.LastRemediation = (*LastRemediationStatus)(unsafe.Pointer(in.LastRemediation))
+	// WARNING: in.V1Beta2 requires manual conversion: does not exist in peer-type
 	return nil
 }
 
