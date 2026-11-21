@@ -10,4 +10,10 @@ resources:
 - group: controlplane
   kind: KThreesControlPlaneTemplate
   version: v1beta2
+- group: controlplane
+  kind: KThreesControlPlane
+  version: v1beta3
+- group: controlplane
+  kind: KThreesControlPlaneTemplate
+  version: v1beta3
 version: "2"
