@@ -53,5 +53,5 @@ type KThreesConfigTemplateList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&KThreesConfigTemplate{}, &KThreesConfigTemplateList{})
+	objectTypes = append(objectTypes, &KThreesConfigTemplate{}, &KThreesConfigTemplateList{})
 }

@@ -341,5 +341,5 @@ type KThreesControlPlaneList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&KThreesControlPlane{}, &KThreesControlPlaneList{})
+	objectTypes = append(objectTypes, &KThreesControlPlane{}, &KThreesControlPlaneList{})
 }

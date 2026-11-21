@@ -21,6 +21,7 @@ import (
 	"time"
 
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
+	//nolint:staticcheck // Keep using this package for now, as Cluster API does: client-go SPDY still returns these types.
 	"k8s.io/apimachinery/pkg/util/httpstream"
 )
 

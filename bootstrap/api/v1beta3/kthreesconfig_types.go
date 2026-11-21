@@ -356,5 +356,5 @@ type SecretFileSource struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&KThreesConfig{}, &KThreesConfigList{})
+	objectTypes = append(objectTypes, &KThreesConfig{}, &KThreesConfigList{})
 }
