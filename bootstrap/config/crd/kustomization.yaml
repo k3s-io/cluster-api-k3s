@@ -1,5 +1,10 @@
 commonLabels:
+  # API versions implementing the Cluster API v1beta1 contract.
+  # Note: This is needed so the topology reconciler can figure out the contract
+  # of older API versions when they are still used in ClusterClasses.
   cluster.x-k8s.io/v1beta1: v1beta1_v1beta2
+  # API versions implementing the Cluster API v1beta2 contract.
+  cluster.x-k8s.io/v1beta2: v1beta3
   clusterctl.cluster.x-k8s.io: ""
 
 # This kustomization.yaml is not intended to be run by itself,

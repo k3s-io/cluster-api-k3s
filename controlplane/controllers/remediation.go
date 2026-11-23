@@ -27,7 +27,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/klog/v2"
-	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
+	"k8s.io/utils/ptr"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/annotations"
@@ -36,7 +36,7 @@ import (
 	"sigs.k8s.io/cluster-api/util/patch"
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
+	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta3"
 	k3s "github.com/k3s-io/cluster-api-k3s/pkg/k3s"
 )
 
@@ -52,8 +52,8 @@ func (r *KThreesControlPlaneReconciler) reconcileUnhealthyMachines(ctx context.C
 	errList := []error{}
 	healthyMachines := controlPlane.HealthyMachines()
 	for _, m := range healthyMachines {
-		if conditions.IsTrue(m, string(clusterv1beta1.MachineHealthCheckSucceededCondition)) &&
-			conditions.IsFalse(m, string(clusterv1beta1.MachineOwnerRemediatedCondition)) &&
+		if conditions.IsTrue(m, clusterv1.MachineHealthCheckSucceededCondition) &&
+			conditions.IsFalse(m, clusterv1.MachineOwnerRemediatedCondition) &&
 			m.DeletionTimestamp.IsZero() {
 			patchHelper, err := patch.NewHelper(m, r.Client)
 			if err != nil {
@@ -61,10 +61,10 @@ func (r *KThreesControlPlaneReconciler) reconcileUnhealthyMachines(ctx context.C
 				continue
 			}
 
-			conditions.Delete(m, string(clusterv1beta1.MachineOwnerRemediatedCondition))
+			conditions.Delete(m, clusterv1.MachineOwnerRemediatedCondition)
 
 			if err := patchHelper.Patch(ctx, m, patch.WithOwnedConditions{Conditions: []string{
-				string(clusterv1beta1.MachineOwnerRemediatedCondition),
+				clusterv1.MachineOwnerRemediatedCondition,
 			}}); err != nil {
 				errList = append(errList, errors.Wrapf(err, "failed to patch machine %s", m.Name))
 			}
@@ -96,7 +96,7 @@ func (r *KThreesControlPlaneReconciler) reconcileUnhealthyMachines(ctx context.C
 		return ctrl.Result{}, nil
 	}
 
-	log = log.WithValues("Machine", klog.KObj(machineToBeRemediated), "initialized", controlPlane.KCP.Status.Initialized)
+	log = log.WithValues("Machine", klog.KObj(machineToBeRemediated), "initialized", ptr.Deref(controlPlane.KCP.Status.Initialization.ControlPlaneInitialized, false))
 
 	// Returns if another remediation is in progress but the new Machine is not yet created.
 	// Note: This condition is checked after we check for unhealthy Machines and if machineToBeRemediated
@@ -114,7 +114,7 @@ func (r *KThreesControlPlaneReconciler) reconcileUnhealthyMachines(ctx context.C
 	defer func() {
 		// Always attempt to Patch the Machine conditions after each reconcileUnhealthyMachines.
 		if err := patchHelper.Patch(ctx, machineToBeRemediated, patch.WithOwnedConditions{Conditions: []string{
-			string(clusterv1beta1.MachineOwnerRemediatedCondition),
+			clusterv1.MachineOwnerRemediatedCondition,
 		}}); err != nil {
 			log.Error(err, "Failed to patch control plane Machine", "Machine", machineToBeRemediated.Name)
 			if retErr == nil {
@@ -138,7 +138,7 @@ func (r *KThreesControlPlaneReconciler) reconcileUnhealthyMachines(ctx context.C
 		return ctrl.Result{}, nil
 	}
 
-	if controlPlane.KCP.Status.Initialized {
+	if ptr.Deref(controlPlane.KCP.Status.Initialization.ControlPlaneInitialized, false) {
 		// Executes checks that apply only if the control plane is already initialized; in this case KCP can
 		// remediate only if it can safely assume that the operation preserves the operation state of the
 		// existing cluster (or at least it doesn't make it worse).
@@ -147,9 +147,9 @@ func (r *KThreesControlPlaneReconciler) reconcileUnhealthyMachines(ctx context.C
 		if controlPlane.Machines.Len() <= 1 {
 			log.Info("A control plane machine needs remediation, but the number of current replicas is less or equal to 1. Skipping remediation", "Replicas", controlPlane.Machines.Len())
 			conditions.Set(machineToBeRemediated, metav1.Condition{
-				Type:    string(clusterv1beta1.MachineOwnerRemediatedCondition),
+				Type:    clusterv1.MachineOwnerRemediatedCondition,
 				Status:  metav1.ConditionFalse,
-				Reason:  clusterv1beta1.WaitingForRemediationReason,
+				Reason:  controlplanev1.KThreesControlPlaneMachineCannotBeRemediatedReason,
 				Message: "KCP can't remediate if current replicas are less or equal to 1",
 			})
 
@@ -160,9 +160,9 @@ func (r *KThreesControlPlaneReconciler) reconcileUnhealthyMachines(ctx context.C
 		if controlPlane.HasHealthyMachineStillProvisioning() {
 			log.Info("A control plane machine needs remediation, but there are other control-plane machines being provisioned. Skipping remediation")
 			conditions.Set(machineToBeRemediated, metav1.Condition{
-				Type:    string(clusterv1beta1.MachineOwnerRemediatedCondition),
+				Type:    clusterv1.MachineOwnerRemediatedCondition,
 				Status:  metav1.ConditionFalse,
-				Reason:  clusterv1beta1.WaitingForRemediationReason,
+				Reason:  controlplanev1.KThreesControlPlaneMachineRemediationDeferredReason,
 				Message: "KCP waiting for control plane machine provisioning to complete before triggering remediation",
 			})
 			return ctrl.Result{}, nil
@@ -172,9 +172,9 @@ func (r *KThreesControlPlaneReconciler) reconcileUnhealthyMachines(ctx context.C
 		if controlPlane.HasDeletingMachine() {
 			log.Info("A control plane machine needs remediation, but there are other control-plane machines being deleted. Skipping remediation")
 			conditions.Set(machineToBeRemediated, metav1.Condition{
-				Type:    string(clusterv1beta1.MachineOwnerRemediatedCondition),
+				Type:    clusterv1.MachineOwnerRemediatedCondition,
 				Status:  metav1.ConditionFalse,
-				Reason:  clusterv1beta1.WaitingForRemediationReason,
+				Reason:  controlplanev1.KThreesControlPlaneMachineRemediationDeferredReason,
 				Message: "KCP waiting for control plane machine deletion to complete before triggering remediation",
 			})
 			return ctrl.Result{}, nil
@@ -186,9 +186,9 @@ func (r *KThreesControlPlaneReconciler) reconcileUnhealthyMachines(ctx context.C
 			canSafelyRemediate, err := r.canSafelyRemoveEtcdMember(ctx, controlPlane, machineToBeRemediated)
 			if err != nil {
 				conditions.Set(machineToBeRemediated, metav1.Condition{
-					Type:    string(clusterv1beta1.MachineOwnerRemediatedCondition),
+					Type:    clusterv1.MachineOwnerRemediatedCondition,
 					Status:  metav1.ConditionFalse,
-					Reason:  clusterv1beta1.RemediationFailedReason,
+					Reason:  controlplanev1.KThreesControlPlaneMachineRemediationInternalErrorReason,
 					Message: err.Error(),
 				})
 				return ctrl.Result{}, err
@@ -196,9 +196,9 @@ func (r *KThreesControlPlaneReconciler) reconcileUnhealthyMachines(ctx context.C
 			if !canSafelyRemediate {
 				log.Info("A control plane machine needs remediation, but removing this machine could result in etcd quorum loss. Skipping remediation")
 				conditions.Set(machineToBeRemediated, metav1.Condition{
-					Type:    string(clusterv1beta1.MachineOwnerRemediatedCondition),
+					Type:    clusterv1.MachineOwnerRemediatedCondition,
 					Status:  metav1.ConditionFalse,
-					Reason:  clusterv1beta1.WaitingForRemediationReason,
+					Reason:  controlplanev1.KThreesControlPlaneMachineCannotBeRemediatedReason,
 					Message: "KCP can't remediate this machine because this could result in etcd loosing quorum",
 				})
 				return ctrl.Result{}, nil
@@ -223,9 +223,9 @@ func (r *KThreesControlPlaneReconciler) reconcileUnhealthyMachines(ctx context.C
 			if etcdLeaderCandidate == nil {
 				log.Info("A control plane machine needs remediation, but there is no healthy machine to forward etcd leadership to")
 				conditions.Set(machineToBeRemediated, metav1.Condition{
-					Type:    string(clusterv1beta1.MachineOwnerRemediatedCondition),
+					Type:    clusterv1.MachineOwnerRemediatedCondition,
 					Status:  metav1.ConditionFalse,
-					Reason:  clusterv1beta1.RemediationFailedReason,
+					Reason:  controlplanev1.KThreesControlPlaneMachineCannotBeRemediatedReason,
 					Message: "A control plane machine needs remediation, but there is no healthy machine to forward etcd leadership to. Skipping remediation",
 				})
 
@@ -234,9 +234,9 @@ func (r *KThreesControlPlaneReconciler) reconcileUnhealthyMachines(ctx context.C
 			if err := workloadCluster.ForwardEtcdLeadership(ctx, machineToBeRemediated, etcdLeaderCandidate); err != nil {
 				log.Error(err, "Failed to move etcd leadership to candidate machine", "candidate", klog.KObj(etcdLeaderCandidate))
 				conditions.Set(machineToBeRemediated, metav1.Condition{
-					Type:    string(clusterv1beta1.MachineOwnerRemediatedCondition),
+					Type:    clusterv1.MachineOwnerRemediatedCondition,
 					Status:  metav1.ConditionFalse,
-					Reason:  clusterv1beta1.RemediationFailedReason,
+					Reason:  controlplanev1.KThreesControlPlaneMachineRemediationInternalErrorReason,
 					Message: err.Error(),
 				})
 
@@ -249,7 +249,7 @@ func (r *KThreesControlPlaneReconciler) reconcileUnhealthyMachines(ctx context.C
 			}
 
 			mAnnotations := machineToBeRemediated.GetAnnotations()
-			mAnnotations[clusterv1beta1.PreTerminateDeleteHookAnnotationPrefix] = k3sHookName
+			mAnnotations[clusterv1.PreTerminateDeleteHookAnnotationPrefix] = k3sHookName
 			machineToBeRemediated.SetAnnotations(mAnnotations)
 
 			if err := patchHelper.Patch(ctx, machineToBeRemediated); err != nil {
@@ -261,9 +261,9 @@ func (r *KThreesControlPlaneReconciler) reconcileUnhealthyMachines(ctx context.C
 	// Delete the machine
 	if err := r.Client.Delete(ctx, machineToBeRemediated); err != nil {
 		conditions.Set(machineToBeRemediated, metav1.Condition{
-			Type:    string(clusterv1beta1.MachineOwnerRemediatedCondition),
+			Type:    clusterv1.MachineOwnerRemediatedCondition,
 			Status:  metav1.ConditionFalse,
-			Reason:  clusterv1beta1.RemediationFailedReason,
+			Reason:  controlplanev1.KThreesControlPlaneMachineRemediationInternalErrorReason,
 			Message: err.Error(),
 		})
 
@@ -273,9 +273,9 @@ func (r *KThreesControlPlaneReconciler) reconcileUnhealthyMachines(ctx context.C
 	// Surface the operation is in progress.
 	log.Info("Remediating unhealthy machine")
 	conditions.Set(machineToBeRemediated, metav1.Condition{
-		Type:   string(clusterv1beta1.MachineOwnerRemediatedCondition),
+		Type:   clusterv1.MachineOwnerRemediatedCondition,
 		Status: metav1.ConditionFalse,
-		Reason: clusterv1beta1.RemediationInProgressReason,
+		Reason: controlplanev1.KThreesControlPlaneMachineRemediationMachineDeletingReason,
 	})
 
 	// Prepare the info for tracking the remediation progress into the RemediationInProgressAnnotation.
@@ -373,9 +373,9 @@ func (r *KThreesControlPlaneReconciler) checkRetryLimits(log logr.Logger, machin
 	if lastRemediationTime.Add(retryPeriod).After(reconciliationTime) {
 		log.Info(fmt.Sprintf("A control plane machine needs remediation, but the operation already failed in the latest %s. Skipping remediation", retryPeriod))
 		conditions.Set(machineToBeRemediated, metav1.Condition{
-			Type:    string(clusterv1beta1.MachineOwnerRemediatedCondition),
+			Type:    clusterv1.MachineOwnerRemediatedCondition,
 			Status:  metav1.ConditionFalse,
-			Reason:  clusterv1beta1.WaitingForRemediationReason,
+			Reason:  controlplanev1.KThreesControlPlaneMachineRemediationDeferredReason,
 			Message: fmt.Sprintf("KCP can't remediate this machine because the operation already failed in the latest %s (RetryPeriod)", retryPeriod),
 		})
 
@@ -388,9 +388,9 @@ func (r *KThreesControlPlaneReconciler) checkRetryLimits(log logr.Logger, machin
 		if remediationInProgressData.RetryCount >= maxRetry {
 			log.Info(fmt.Sprintf("A control plane machine needs remediation, but the operation already failed %d times (MaxRetry %d). Skipping remediation", remediationInProgressData.RetryCount, maxRetry))
 			conditions.Set(machineToBeRemediated, metav1.Condition{
-				Type:    string(clusterv1beta1.MachineOwnerRemediatedCondition),
+				Type:    clusterv1.MachineOwnerRemediatedCondition,
 				Status:  metav1.ConditionFalse,
-				Reason:  clusterv1beta1.WaitingForRemediationReason,
+				Reason:  controlplanev1.KThreesControlPlaneMachineCannotBeRemediatedReason,
 				Message: fmt.Sprintf("KCP can't remediate this machine because the operation already failed %d times (MaxRetry)", maxRetry),
 			})
 
@@ -528,7 +528,7 @@ type RemediationData struct {
 func RemediationDataFromAnnotation(value string) (*RemediationData, error) {
 	ret := &RemediationData{}
 	if err := json.Unmarshal([]byte(value), ret); err != nil {
-		return nil, errors.Wrapf(err, "failed to unmarshal value %s for %s annotation", value, clusterv1beta1.RemediationInProgressReason)
+		return nil, errors.Wrapf(err, "failed to unmarshal value %s for %s annotation", value, controlplanev1.RemediationInProgressAnnotation)
 	}
 	return ret, nil
 }
@@ -537,7 +537,7 @@ func RemediationDataFromAnnotation(value string) (*RemediationData, error) {
 func (r *RemediationData) Marshal() (string, error) {
 	b, err := json.Marshal(r)
 	if err != nil {
-		return "", errors.Wrapf(err, "failed to marshal value for %s annotation", clusterv1beta1.RemediationInProgressReason)
+		return "", errors.Wrapf(err, "failed to marshal value for %s annotation", controlplanev1.RemediationInProgressAnnotation)
 	}
 	return string(b), nil
 }

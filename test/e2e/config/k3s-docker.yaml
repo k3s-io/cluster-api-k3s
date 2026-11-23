@@ -87,7 +87,7 @@ providers:
       # is modified
       - name: v9.9.99 # next; use manifest from source files
         value: "../../../bootstrap/config/default"
-        contract: v1beta1
+        contract: v1beta2
         files:
           - sourcePath: "../data/shared/k3s/v1alpha1_provider/metadata.yaml"
             targetName: "metadata.yaml"

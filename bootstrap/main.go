@@ -24,7 +24,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
-	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
@@ -33,7 +32,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	bootstrapv1beta1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta1"
-	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
+	bootstrapv1beta2 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
+	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta3"
 	"github.com/k3s-io/cluster-api-k3s/bootstrap/controllers"
 )
 
@@ -44,9 +44,9 @@ var (
 
 func init() {
 	_ = clientgoscheme.AddToScheme(scheme)
-	_ = clusterv1beta1.AddToScheme(scheme)
 	_ = clusterv1.AddToScheme(scheme)
 	_ = bootstrapv1beta1.AddToScheme(scheme)
+	_ = bootstrapv1beta2.AddToScheme(scheme)
 	_ = bootstrapv1.AddToScheme(scheme)
 	// +kubebuilder:scaffold:scheme
 }
@@ -56,6 +56,8 @@ func main() {
 	var enableLeaderElection bool
 	var syncPeriod time.Duration
 	var concurrencyNumber int
+	var restConfigQPS float64
+	var restConfigBurst int
 
 	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,
@@ -65,6 +67,11 @@ func main() {
 	flag.DurationVar(&syncPeriod, "sync-period", 10*time.Minute,
 		"The minimum interval at which watched resources are reconciled (e.g. 15m)")
 
+	flag.Float64Var(&restConfigQPS, "kube-api-qps", 100,
+		"Maximum queries per second from the controller client to the Kubernetes API server.")
+	flag.IntVar(&restConfigBurst, "kube-api-burst", 200,
+		"Maximum number of queries allowed in one burst from the controller client to the Kubernetes API server.")
+
 	flag.IntVar(&concurrencyNumber, "concurrency", 1,
 		"Number of core resources to process simultaneously")
 
@@ -72,7 +79,11 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	restConfig := ctrl.GetConfigOrDie()
+	restConfig.QPS = float32(restConfigQPS)
+	restConfig.Burst = restConfigBurst
+
+	mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
 		Scheme: scheme,
 		Metrics: server.Options{
 			BindAddress: metricsAddr,

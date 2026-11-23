@@ -22,9 +22,9 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
-	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
@@ -33,10 +33,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	bootstrapv1beta1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta1"
-	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
+	bootstrapv1beta2 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
+	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta3"
 	controlplanev1beta1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta1"
-	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
+	controlplanev1beta2 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
+	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta3"
 	"github.com/k3s-io/cluster-api-k3s/controlplane/controllers"
+	pkgcontract "github.com/k3s-io/cluster-api-k3s/pkg/contract"
 	"github.com/k3s-io/cluster-api-k3s/pkg/etcd"
 )
 
@@ -47,12 +50,13 @@ var (
 
 func init() {
 	_ = clientgoscheme.AddToScheme(scheme)
-	_ = clusterv1beta1.AddToScheme(scheme)
 	_ = clusterv1.AddToScheme(scheme)
 	_ = bootstrapv1beta1.AddToScheme(scheme)
+	_ = bootstrapv1beta2.AddToScheme(scheme)
 	_ = bootstrapv1.AddToScheme(scheme)
 
 	_ = controlplanev1beta1.AddToScheme(scheme)
+	_ = controlplanev1beta2.AddToScheme(scheme)
 	_ = controlplanev1.AddToScheme(scheme)
 	// +kubebuilder:scaffold:scheme
 }
@@ -64,6 +68,8 @@ func main() {
 	var etcdDialTimeout time.Duration
 	var etcdCallTimeout time.Duration
 	var concurrencyNumber int
+	var restConfigQPS float64
+	var restConfigBurst int
 
 	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,
@@ -79,6 +85,11 @@ func main() {
 	flag.DurationVar(&etcdCallTimeout, "etcd-call-timeout-duration", etcd.DefaultCallTimeout,
 		"Duration that the etcd client waits at most for read and write operations to etcd.")
 
+	flag.Float64Var(&restConfigQPS, "kube-api-qps", 100,
+		"Maximum queries per second from the controller client to the Kubernetes API server.")
+	flag.IntVar(&restConfigBurst, "kube-api-burst", 200,
+		"Maximum number of queries allowed in one burst from the controller client to the Kubernetes API server.")
+
 	flag.IntVar(&concurrencyNumber, "concurrency", 1,
 		"Number of core resources to process simultaneously")
 
@@ -88,7 +99,11 @@ func main() {
 
 	ctx := ctrl.SetupSignalHandler()
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	restConfig := ctrl.GetConfigOrDie()
+	restConfig.QPS = float32(restConfigQPS)
+	restConfig.Burst = restConfigBurst
+
+	mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
 		Scheme: scheme,
 		Metrics: server.Options{
 			BindAddress: metricsAddr,
@@ -130,6 +145,12 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "Machine")
 		os.Exit(1)
 	}
+
+	// Setup the func to retrieve apiVersion for a GroupKind for conversion webhooks:
+	// v1beta2 uses ObjectReferences (with apiVersion), while v1beta3 uses ContractVersionedObjectReferences (with apiGroup).
+	controlplanev1beta2.SetAPIVersionGetter(func(gk schema.GroupKind) (string, error) {
+		return pkgcontract.GetAPIVersion(ctx, mgr.GetClient(), gk)
+	})
 
 	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
 		if err = (&controlplanev1.KThreesControlPlane{}).SetupWebhookWithManager(mgr); err != nil {

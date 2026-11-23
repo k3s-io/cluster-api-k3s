@@ -21,7 +21,7 @@ import (
 
 	. "github.com/onsi/gomega"
 
-	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
+	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta3"
 )
 
 func TestKThreesConfigReconciler_ResolveEtcdProxyFile(t *testing.T) {

@@ -18,4 +18,5 @@ limitations under the License.
 // +kubebuilder:object:generate=true
 // +groupName=bootstrap.cluster.x-k8s.io
 // +k8s:defaulter-gen=TypeMeta
+// +k8s:conversion-gen=github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta3
 package v1beta2
