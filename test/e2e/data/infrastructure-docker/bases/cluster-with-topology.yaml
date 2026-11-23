@@ -1,4 +1,4 @@
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: Cluster
 metadata:
   name: ${CLUSTER_NAME}
@@ -13,7 +13,8 @@ spec:
       - 10.46.0.0/16
     serviceDomain: cluster.local
   topology:
-    class: k3s
+    classRef:
+      name: k3s
     version: ${KUBERNETES_VERSION}
     controlPlane:
       metadata:
@@ -24,15 +25,17 @@ spec:
           Cluster.topology.controlPlane.oldLabel: "Cluster.topology.controlPlane.oldLabelValue"
         annotations:
           Cluster.topology.controlPlane.oldAnnotation: "Cluster.topology.controlPlane.oldAnnotationValue"
-      nodeDeletionTimeout: "30s"
-      nodeVolumeDetachTimeout: "5m"
+      deletion:
+        nodeDeletionTimeoutSeconds: 30
+        nodeVolumeDetachTimeoutSeconds: 300
       replicas: ${CONTROL_PLANE_MACHINE_COUNT}
     workers:
       machineDeployments:
       - class: k3s-default-worker
         name: ${CLUSTER_NAME}-md-0
-        nodeDeletionTimeout: "30s"
-        nodeVolumeDetachTimeout: "5m"
+        deletion:
+          nodeDeletionTimeoutSeconds: 30
+          nodeVolumeDetachTimeoutSeconds: 300
         minReadySeconds: 5
         replicas: ${WORKER_MACHINE_COUNT}
 
@@ -40,8 +43,9 @@ spec:
       # machinePools:
       # - class: k3s-default-worker
       #   name: ${CLUSTER_NAME}-mp-0
-      #   nodeDeletionTimeout: "30s"
-      #   nodeVolumeDetachTimeout: "5m"
+      #   deletion:
+      #     nodeDeletionTimeoutSeconds: 30
+      #     nodeVolumeDetachTimeoutSeconds: 300
       #   minReadySeconds: 5
       #   replicas: ${WORKER_MACHINE_COUNT}
     variables:

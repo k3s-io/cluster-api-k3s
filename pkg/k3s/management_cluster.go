@@ -11,10 +11,12 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/kubernetes/scheme"
-	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/controllers/remote"
 	"sigs.k8s.io/cluster-api/util/collections"
+	kcfg "sigs.k8s.io/cluster-api/util/kubeconfig"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/k3s-io/cluster-api-k3s/pkg/secret"
@@ -60,7 +62,7 @@ func (m *Management) List(ctx context.Context, list client.ObjectList, opts ...c
 // If no filter is supplied then all machines associated with the target cluster are returned.
 func (m *Management) GetMachinesForCluster(ctx context.Context, cluster client.ObjectKey, filters ...collections.Func) (collections.Machines, error) {
 	selector := map[string]string{
-		clusterv1beta1.ClusterNameLabel: cluster.Name,
+		clusterv1.ClusterNameLabel: cluster.Name,
 	}
 	ml := &clusterv1.MachineList{}
 	if err := m.Client.List(ctx, ml, client.InNamespace(cluster.Namespace), client.MatchingLabels(selector)); err != nil {
@@ -76,14 +78,31 @@ const (
 	KThreesControlPlaneControllerName = "kthrees-controlplane-controller"
 )
 
+// restConfig returns a REST configuration for the workload cluster, built from the Cluster's kubeconfig secret.
+// NOTE: This inlines remote.RESTConfig, which is deprecated since Cluster API v1.14.
+func (m *Management) restConfig(ctx context.Context, clusterKey client.ObjectKey) (*rest.Config, error) {
+	kubeConfig, err := kcfg.FromSecret(ctx, m.Client, clusterKey)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to retrieve kubeconfig secret for Cluster %s", clusterKey.String())
+	}
+
+	restConfig, err := clientcmd.RESTConfigFromKubeConfig(kubeConfig)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to create REST configuration for Cluster %s", clusterKey.String())
+	}
+
+	restConfig.UserAgent = remote.DefaultClusterAPIUserAgent(KThreesControlPlaneControllerName)
+	restConfig.Timeout = 30 * time.Second
+	return restConfig, nil
+}
+
 // GetWorkloadCluster builds a cluster object.
 // The cluster comes with an etcd client generator to connect to any etcd pod living on a managed machine.
 func (m *Management) GetWorkloadCluster(ctx context.Context, clusterKey client.ObjectKey) (*Workload, error) {
-	restConfig, err := remote.RESTConfig(ctx, KThreesControlPlaneControllerName, m.Client, clusterKey)
+	restConfig, err := m.restConfig(ctx, clusterKey)
 	if err != nil {
 		return nil, &RemoteClusterConnectionError{Name: clusterKey.String(), Err: err}
 	}
-	restConfig.Timeout = 30 * time.Second
 
 	c, err := client.New(restConfig, client.Options{Scheme: scheme.Scheme})
 	if err != nil {

@@ -15,8 +15,8 @@ providers:
   - name: cluster-api
     type: CoreProvider
     versions:
-      - name: v1.12.9
-        value: https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.12.9/core-components.yaml
+      - name: v1.14.4
+        value: https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.14.4/core-components.yaml
         type: url
         contract: v1beta2
         files:
@@ -38,8 +38,8 @@ providers:
     versions:
       # Will use the latest version defined in ../data/shared/v1beta2/metadata.yaml
       # to init the management cluster
-      - name: v1.12.9 # used during e2e-test
-        value: https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.12.9/infrastructure-components-development.yaml
+      - name: v1.14.4 # used during e2e-test
+        value: https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.14.4/infrastructure-components-development.yaml
         type: url
         contract: v1beta2
         files:
@@ -87,7 +87,7 @@ providers:
       # is modified
       - name: v9.9.99 # next; use manifest from source files
         value: "../../../bootstrap/config/default"
-        contract: v1beta1
+        contract: v1beta2
         files:
           - sourcePath: "../data/shared/k3s/v1alpha1_provider/metadata.yaml"
             targetName: "metadata.yaml"

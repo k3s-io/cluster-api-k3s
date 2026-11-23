@@ -17,7 +17,7 @@ spec:
     kind: ProxmoxCluster
     name: "${CLUSTER_NAME}"
   controlPlaneRef:
-    apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta3
     kind: KThreesControlPlane
     name: "${CLUSTER_NAME}-control-plane"
 ---
@@ -82,16 +82,17 @@ spec:
           bridge: ${BRIDGE}
           model: virtio
 ---
-apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+apiVersion: controlplane.cluster.x-k8s.io/v1beta3
 kind: KThreesControlPlane
 metadata:
   name: "${CLUSTER_NAME}-control-plane"
 spec:
   machineTemplate:
-    infrastructureRef:
-      apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
-      kind: ProxmoxMachineTemplate
-      name: "${CLUSTER_NAME}-control-plane"
+    spec:
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: ProxmoxMachineTemplate
+        name: "${CLUSTER_NAME}-control-plane"
   kthreesConfigSpec:
     serverConfig:
       # cloudProviderName: "external"
@@ -243,7 +244,7 @@ spec:
   replicas: ${CONTROL_PLANE_MACHINE_COUNT=1}
   version: "${KUBERNETES_VERSION}"
 ---
-apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta3
 kind: KThreesConfigTemplate
 metadata:
   name: "${CLUSTER_NAME}-worker"
@@ -274,7 +275,7 @@ spec:
       version: "${KUBERNETES_VERSION}"
       bootstrap:
         configRef:
-          apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+          apiVersion: bootstrap.cluster.x-k8s.io/v1beta3
           kind: KThreesConfigTemplate
           name: "${CLUSTER_NAME}-worker"
       infrastructureRef:

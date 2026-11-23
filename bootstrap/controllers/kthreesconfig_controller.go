@@ -32,13 +32,12 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/utils/ptr"
-	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
-	bsutil "sigs.k8s.io/cluster-api/bootstrap/util"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/annotations"
-	v1beta1conditions "sigs.k8s.io/cluster-api/util/deprecated/v1beta1/conditions"
-	v1beta1patch "sigs.k8s.io/cluster-api/util/deprecated/v1beta1/patch"
+	"sigs.k8s.io/cluster-api/util/conditions"
+	v1beta1conditions "sigs.k8s.io/cluster-api/util/conditions/deprecated/v1beta1"
+	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/cluster-api/util/predicates"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -46,8 +45,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	kubeyaml "sigs.k8s.io/yaml"
 
-	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
+	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta3"
 	"github.com/k3s-io/cluster-api-k3s/pkg/cloudinit"
+	bsutil "github.com/k3s-io/cluster-api-k3s/pkg/configowner"
 	"github.com/k3s-io/cluster-api-k3s/pkg/etcd"
 	"github.com/k3s-io/cluster-api-k3s/pkg/k3s"
 	"github.com/k3s-io/cluster-api-k3s/pkg/locking"
@@ -57,7 +57,7 @@ import (
 
 // InitLocker is a lock that is used around k3s init.
 type InitLocker interface {
-	Lock(ctx context.Context, cluster *clusterv1.Cluster, machine *clusterv1beta1.Machine) bool
+	Lock(ctx context.Context, cluster *clusterv1.Cluster, machine *clusterv1.Machine) bool
 	Unlock(ctx context.Context, cluster *clusterv1.Cluster) bool
 }
 
@@ -146,7 +146,7 @@ func (r *KThreesConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	// Initialize the patch helper.
-	patchHelper, err := v1beta1patch.NewHelper(config, r.Client)
+	patchHelper, err := patch.NewHelper(config, r.Client)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -157,15 +157,46 @@ func (r *KThreesConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 		v1beta1conditions.SetSummary(config,
 			v1beta1conditions.WithConditions(
-				bootstrapv1.DataSecretAvailableCondition,
-				bootstrapv1.CertificatesAvailableCondition,
+				bootstrapv1.DataSecretAvailableV1Beta1Condition,
+				bootstrapv1.CertificatesAvailableV1Beta1Condition,
 			),
 		)
+		if err := conditions.SetSummaryCondition(config, config, bootstrapv1.KThreesConfigReadyCondition,
+			conditions.ForConditionTypes{
+				bootstrapv1.KThreesConfigDataSecretAvailableCondition,
+				bootstrapv1.KThreesConfigCertificatesAvailableCondition,
+			},
+			// Using a custom merge strategy to override reasons applied during merge and to ignore some
+			// info message so the ready condition aggregation in other resources is less noisy.
+			conditions.CustomMergeStrategy{
+				MergeStrategy: conditions.DefaultMergeStrategy(
+					// Use custom reasons.
+					conditions.ComputeReasonFunc(conditions.GetDefaultComputeMergeReasonFunc(
+						bootstrapv1.KThreesConfigNotReadyReason,
+						bootstrapv1.KThreesConfigReadyUnknownReason,
+						bootstrapv1.KThreesConfigReadyReason,
+					)),
+				),
+			},
+		); err != nil {
+			rerr = kerrors.NewAggregate([]error{rerr, err})
+		}
 
 		// Patch ObservedGeneration only if the reconciliation completed successfully
-		patchOpts := []v1beta1patch.Option{}
+		patchOpts := []patch.Option{
+			patch.WithOwnedV1Beta1Conditions{Conditions: []clusterv1.ConditionType{
+				clusterv1.ReadyV1Beta1Condition,
+				bootstrapv1.DataSecretAvailableV1Beta1Condition,
+				bootstrapv1.CertificatesAvailableV1Beta1Condition,
+			}},
+			patch.WithOwnedConditions{Conditions: []string{
+				bootstrapv1.KThreesConfigReadyCondition,
+				bootstrapv1.KThreesConfigDataSecretAvailableCondition,
+				bootstrapv1.KThreesConfigCertificatesAvailableCondition,
+			}},
+		}
 		if rerr == nil {
-			patchOpts = append(patchOpts, v1beta1patch.WithStatusObservedGeneration{})
+			patchOpts = append(patchOpts, patch.WithStatusObservedGeneration{})
 		}
 		if err := patchHelper.Patch(ctx, config, patchOpts...); err != nil {
 			log.Error(rerr, "Failed to patch config")
@@ -179,17 +210,29 @@ func (r *KThreesConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	// Wait for the infrastructure to be ready.
 	case !ptr.Deref(cluster.Status.Initialization.InfrastructureProvisioned, false):
 		log.Info("Cluster infrastructure is not ready, waiting")
-		v1beta1conditions.MarkFalse(config, bootstrapv1.DataSecretAvailableCondition, bootstrapv1.WaitingForClusterInfrastructureReason, clusterv1beta1.ConditionSeverityInfo, "")
+		v1beta1conditions.MarkFalse(config, bootstrapv1.DataSecretAvailableV1Beta1Condition, bootstrapv1.WaitingForClusterInfrastructureV1Beta1Reason, clusterv1.ConditionSeverityInfo, "")
+		conditions.Set(config, metav1.Condition{
+			Type:    bootstrapv1.KThreesConfigDataSecretAvailableCondition,
+			Status:  metav1.ConditionFalse,
+			Reason:  bootstrapv1.KThreesConfigDataSecretNotAvailableReason,
+			Message: "Waiting for Cluster status.initialization.infrastructureProvisioned to be true",
+		})
 		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 	// Reconcile status for machines that already have a secret reference, but our status isn't up to date.
 	// This case solves the pivoting scenario (or a backup restore) which doesn't preserve the status subresource on objects.
-	case configOwner.DataSecretName() != nil && (!config.Status.Ready || config.Status.DataSecretName == nil):
-		config.Status.Ready = true
-		config.Status.DataSecretName = configOwner.DataSecretName()
-		v1beta1conditions.MarkTrue(config, bootstrapv1.DataSecretAvailableCondition)
+	case configOwner.DataSecretName() != nil && (!ptr.Deref(config.Status.Initialization.DataSecretCreated, false) || config.Status.DataSecretName == ""):
+		config.Status.Initialization.DataSecretCreated = ptr.To(true)
+		config.Status.DataSecretName = *configOwner.DataSecretName()
+		v1beta1conditions.MarkTrue(config, bootstrapv1.DataSecretAvailableV1Beta1Condition)
+		markDataSecretAndCertificatesAvailable(config)
 		return ctrl.Result{}, nil
-	// Status is ready means a config has been generated.
-	case config.Status.Ready:
+	// DataSecretCreated means a config has been generated.
+	// This also solves the upgrade scenario to a version which includes v1beta3 to ensure the new conditions are properly set.
+	case ptr.Deref(config.Status.Initialization.DataSecretCreated, false):
+		// Based on existing code paths status.initialization.dataSecretCreated is only true if status.dataSecretName is set,
+		// and generating the data secret requires certificates to be available.
+		v1beta1conditions.MarkTrue(config, bootstrapv1.DataSecretAvailableV1Beta1Condition)
+		markDataSecretAndCertificatesAvailable(config)
 		// In any other case just return as the config is already generated and need not be generated again.
 		return ctrl.Result{}, nil
 	}
@@ -214,7 +257,7 @@ func (r *KThreesConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 }
 
 func (r *KThreesConfigReconciler) joinControlplane(ctx context.Context, scope *Scope) error {
-	machine := &clusterv1beta1.Machine{}
+	machine := &clusterv1.Machine{}
 	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(scope.ConfigOwner.Object, machine); err != nil {
 		return fmt.Errorf("cannot convert %s to Machine: %w", scope.ConfigOwner.GetKind(), err)
 	}
@@ -226,7 +269,7 @@ func (r *KThreesConfigReconciler) joinControlplane(ctx context.Context, scope *S
 
 	tokn, err := token.Lookup(ctx, r.Client, client.ObjectKeyFromObject(scope.Cluster))
 	if err != nil {
-		v1beta1conditions.MarkFalse(scope.Config, bootstrapv1.DataSecretAvailableCondition, bootstrapv1.DataSecretGenerationFailedReason, clusterv1beta1.ConditionSeverityWarning, "%s", err.Error())
+		markDataSecretGenerationFailed(scope.Config, err)
 		return err
 	}
 
@@ -248,14 +291,14 @@ func (r *KThreesConfigReconciler) joinControlplane(ctx context.Context, scope *S
 
 	files, err := r.resolveFiles(ctx, scope.Config)
 	if err != nil {
-		v1beta1conditions.MarkFalse(scope.Config, bootstrapv1.DataSecretAvailableCondition, bootstrapv1.DataSecretGenerationFailedReason, clusterv1beta1.ConditionSeverityWarning, "%s", err.Error())
+		markDataSecretGenerationFailed(scope.Config, err)
 		return err
 	}
 
 	if scope.Config.Spec.IsEtcdEmbedded() {
 		etcdProxyFile, err := r.resolveEtcdProxyFile(scope.Config)
 		if err != nil {
-			v1beta1conditions.MarkFalse(scope.Config, bootstrapv1.DataSecretAvailableCondition, bootstrapv1.DataSecretGenerationFailedReason, clusterv1beta1.ConditionSeverityWarning, "%s", err.Error())
+			markDataSecretGenerationFailed(scope.Config, err)
 			return fmt.Errorf("failed to resolve etcd proxy file: %w", err)
 		}
 
@@ -287,7 +330,7 @@ func (r *KThreesConfigReconciler) joinControlplane(ctx context.Context, scope *S
 }
 
 func (r *KThreesConfigReconciler) joinWorker(ctx context.Context, scope *Scope) error {
-	machine := &clusterv1beta1.Machine{}
+	machine := &clusterv1.Machine{}
 	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(scope.ConfigOwner.Object, machine); err != nil {
 		return fmt.Errorf("cannot convert %s to Machine: %w", scope.ConfigOwner.GetKind(), err)
 	}
@@ -299,7 +342,7 @@ func (r *KThreesConfigReconciler) joinWorker(ctx context.Context, scope *Scope) 
 
 	tokn, err := token.Lookup(ctx, r.Client, client.ObjectKeyFromObject(scope.Cluster))
 	if err != nil {
-		v1beta1conditions.MarkFalse(scope.Config, bootstrapv1.DataSecretAvailableCondition, bootstrapv1.DataSecretGenerationFailedReason, clusterv1beta1.ConditionSeverityWarning, "%s", err.Error())
+		markDataSecretGenerationFailed(scope.Config, err)
 		return err
 	}
 
@@ -319,7 +362,7 @@ func (r *KThreesConfigReconciler) joinWorker(ctx context.Context, scope *Scope) 
 
 	files, err := r.resolveFiles(ctx, scope.Config)
 	if err != nil {
-		v1beta1conditions.MarkFalse(scope.Config, bootstrapv1.DataSecretAvailableCondition, bootstrapv1.DataSecretGenerationFailedReason, clusterv1beta1.ConditionSeverityWarning, "%s", err.Error())
+		markDataSecretGenerationFailed(scope.Config, err)
 		return err
 	}
 
@@ -422,8 +465,14 @@ func (r *KThreesConfigReconciler) handleClusterNotInitialized(ctx context.Contex
 	// initialize the DataSecretAvailableCondition if missing.
 	// this is required in order to avoid the condition's LastTransitionTime to flicker in case of errors surfacing
 	// using the DataSecretGeneratedFailedReason
-	if v1beta1conditions.GetReason(scope.Config, bootstrapv1.DataSecretAvailableCondition) != bootstrapv1.DataSecretGenerationFailedReason {
-		v1beta1conditions.MarkFalse(scope.Config, bootstrapv1.DataSecretAvailableCondition, clusterv1beta1.WaitingForControlPlaneAvailableReason, clusterv1beta1.ConditionSeverityInfo, "")
+	if !conditions.Has(scope.Config, bootstrapv1.KThreesConfigDataSecretAvailableCondition) {
+		v1beta1conditions.MarkFalse(scope.Config, bootstrapv1.DataSecretAvailableV1Beta1Condition, clusterv1.WaitingForControlPlaneAvailableV1Beta1Reason, clusterv1.ConditionSeverityInfo, "")
+		conditions.Set(scope.Config, metav1.Condition{
+			Type:    bootstrapv1.KThreesConfigDataSecretAvailableCondition,
+			Status:  metav1.ConditionFalse,
+			Reason:  bootstrapv1.KThreesConfigDataSecretNotAvailableReason,
+			Message: "Waiting for Cluster control plane to be initialized",
+		})
 	}
 
 	// if it's NOT a control plane machine, requeue
@@ -431,7 +480,7 @@ func (r *KThreesConfigReconciler) handleClusterNotInitialized(ctx context.Contex
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
-	machine := &clusterv1beta1.Machine{}
+	machine := &clusterv1.Machine{}
 	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(scope.ConfigOwner.Object, machine); err != nil {
 		return ctrl.Result{}, fmt.Errorf("cannot convert %s to Machine: %w", scope.ConfigOwner.GetKind(), err)
 	}
@@ -466,10 +515,21 @@ func (r *KThreesConfigReconciler) handleClusterNotInitialized(ctx context.Contex
 		*metav1.NewControllerRef(scope.Config, bootstrapv1.GroupVersion.WithKind("KThreesConfig")),
 	)
 	if err != nil {
-		v1beta1conditions.MarkFalse(scope.Config, bootstrapv1.CertificatesAvailableCondition, bootstrapv1.CertificatesGenerationFailedReason, clusterv1beta1.ConditionSeverityWarning, "failed looking up or generating certificates: %s", err.Error())
+		v1beta1conditions.MarkFalse(scope.Config, bootstrapv1.CertificatesAvailableV1Beta1Condition, bootstrapv1.CertificatesGenerationFailedV1Beta1Reason, clusterv1.ConditionSeverityWarning, "failed looking up or generating certificates: %s", err.Error())
+		conditions.Set(scope.Config, metav1.Condition{
+			Type:    bootstrapv1.KThreesConfigCertificatesAvailableCondition,
+			Status:  metav1.ConditionUnknown,
+			Reason:  bootstrapv1.KThreesConfigCertificatesAvailableInternalErrorReason,
+			Message: "Please check controller logs for errors",
+		})
 		return ctrl.Result{}, err
 	}
-	v1beta1conditions.MarkTrue(scope.Config, bootstrapv1.CertificatesAvailableCondition)
+	v1beta1conditions.MarkTrue(scope.Config, bootstrapv1.CertificatesAvailableV1Beta1Condition)
+	conditions.Set(scope.Config, metav1.Condition{
+		Type:   bootstrapv1.KThreesConfigCertificatesAvailableCondition,
+		Status: metav1.ConditionTrue,
+		Reason: bootstrapv1.KThreesConfigCertificatesAvailableReason,
+	})
 
 	token, err := token.Lookup(ctx, r.Client, client.ObjectKeyFromObject(scope.Cluster))
 	if err != nil {
@@ -498,14 +558,14 @@ func (r *KThreesConfigReconciler) handleClusterNotInitialized(ctx context.Contex
 
 	files, err := r.resolveFiles(ctx, scope.Config)
 	if err != nil {
-		v1beta1conditions.MarkFalse(scope.Config, bootstrapv1.DataSecretAvailableCondition, bootstrapv1.DataSecretGenerationFailedReason, clusterv1beta1.ConditionSeverityWarning, "%s", err.Error())
+		markDataSecretGenerationFailed(scope.Config, err)
 		return ctrl.Result{}, err
 	}
 
 	if scope.Config.Spec.IsEtcdEmbedded() {
 		etcdProxyFile, err := r.resolveEtcdProxyFile(scope.Config)
 		if err != nil {
-			v1beta1conditions.MarkFalse(scope.Config, bootstrapv1.DataSecretAvailableCondition, bootstrapv1.DataSecretGenerationFailedReason, clusterv1beta1.ConditionSeverityWarning, "%s", err.Error())
+			markDataSecretGenerationFailed(scope.Config, err)
 			return ctrl.Result{}, fmt.Errorf("failed to resolve etcd proxy file: %w", err)
 		}
 		files = append(files, *etcdProxyFile)
@@ -559,7 +619,7 @@ func (r *KThreesConfigReconciler) storeBootstrapData(ctx context.Context, scope 
 			Name:      scope.Config.Name,
 			Namespace: scope.Config.Namespace,
 			Labels: map[string]string{
-				clusterv1beta1.ClusterNameLabel: scope.Cluster.Name,
+				clusterv1.ClusterNameLabel: scope.Cluster.Name,
 			},
 			OwnerReferences: []metav1.OwnerReference{
 				{
@@ -574,7 +634,7 @@ func (r *KThreesConfigReconciler) storeBootstrapData(ctx context.Context, scope 
 		Data: map[string][]byte{
 			"value": data,
 		},
-		Type: clusterv1beta1.ClusterSecretType,
+		Type: clusterv1.ClusterSecretType,
 	}
 
 	// as secret creation and scope.Config status patch are not atomic operations
@@ -589,18 +649,49 @@ func (r *KThreesConfigReconciler) storeBootstrapData(ctx context.Context, scope 
 		}
 	}
 
-	scope.Config.Status.DataSecretName = ptr.To[string](secret.Name)
-	scope.Config.Status.Ready = true
-	v1beta1conditions.MarkTrue(scope.Config, bootstrapv1.DataSecretAvailableCondition)
+	scope.Config.Status.DataSecretName = secret.Name
+	scope.Config.Status.Initialization.DataSecretCreated = ptr.To(true)
+	v1beta1conditions.MarkTrue(scope.Config, bootstrapv1.DataSecretAvailableV1Beta1Condition)
+	conditions.Set(scope.Config, metav1.Condition{
+		Type:   bootstrapv1.KThreesConfigDataSecretAvailableCondition,
+		Status: metav1.ConditionTrue,
+		Reason: bootstrapv1.KThreesConfigDataSecretAvailableReason,
+	})
 	return nil
 }
 
-func (r *KThreesConfigReconciler) reconcileTopLevelObjectSettings(_ *clusterv1.Cluster, machine *clusterv1beta1.Machine, config *bootstrapv1.KThreesConfig) {
+// markDataSecretAndCertificatesAvailable sets the DataSecretAvailable and CertificatesAvailable conditions to true.
+// NOTE: Certificates must be available to generate the bootstrap data secret.
+func markDataSecretAndCertificatesAvailable(config *bootstrapv1.KThreesConfig) {
+	conditions.Set(config, metav1.Condition{
+		Type:   bootstrapv1.KThreesConfigDataSecretAvailableCondition,
+		Status: metav1.ConditionTrue,
+		Reason: bootstrapv1.KThreesConfigDataSecretAvailableReason,
+	})
+	conditions.Set(config, metav1.Condition{
+		Type:   bootstrapv1.KThreesConfigCertificatesAvailableCondition,
+		Status: metav1.ConditionTrue,
+		Reason: bootstrapv1.KThreesConfigCertificatesAvailableReason,
+	})
+}
+
+// markDataSecretGenerationFailed reports a failure in generating the bootstrap data secret.
+func markDataSecretGenerationFailed(config *bootstrapv1.KThreesConfig, err error) {
+	v1beta1conditions.MarkFalse(config, bootstrapv1.DataSecretAvailableV1Beta1Condition, bootstrapv1.DataSecretGenerationFailedV1Beta1Reason, clusterv1.ConditionSeverityWarning, "%s", err.Error())
+	conditions.Set(config, metav1.Condition{
+		Type:    bootstrapv1.KThreesConfigDataSecretAvailableCondition,
+		Status:  metav1.ConditionFalse,
+		Reason:  bootstrapv1.KThreesConfigDataSecretNotAvailableReason,
+		Message: fmt.Sprintf("Failed to generate the bootstrap data secret: %s", err.Error()),
+	})
+}
+
+func (r *KThreesConfigReconciler) reconcileTopLevelObjectSettings(_ *clusterv1.Cluster, machine *clusterv1.Machine, config *bootstrapv1.KThreesConfig) {
 	log := r.Log.WithValues("kthreesconfig", fmt.Sprintf("%s/%s", config.Namespace, config.Name))
 
 	// If there are no Version settings defined in Config, use Version from machine, if defined
-	if config.Spec.Version == "" && machine.Spec.Version != nil {
-		config.Spec.Version = *machine.Spec.Version
+	if config.Spec.Version == "" && machine.Spec.Version != "" {
+		config.Spec.Version = machine.Spec.Version
 		log.Info("Altering Config", "Version", config.Spec.Version)
 	}
 }

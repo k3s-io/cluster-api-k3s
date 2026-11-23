@@ -35,7 +35,7 @@ import (
 	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
+	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta3"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
@@ -422,20 +422,19 @@ func WaitForControlPlaneToBeReady(ctx context.Context, input WaitForControlPlane
 			return false, errors.Wrapf(err, "failed to get KCP")
 		}
 
-		desiredReplicas := controlplane.Spec.Replicas
-		statusReplicas := controlplane.Status.Replicas
-		updatedReplicas := controlplane.Status.UpdatedReplicas
-		readyReplicas := controlplane.Status.ReadyReplicas
-		unavailableReplicas := controlplane.Status.UnavailableReplicas
+		desiredReplicas := ptr.Deref(controlplane.Spec.Replicas, 0)
+		statusReplicas := ptr.Deref(controlplane.Status.Replicas, 0)
+		upToDateReplicas := ptr.Deref(controlplane.Status.UpToDateReplicas, 0)
+		readyReplicas := ptr.Deref(controlplane.Status.ReadyReplicas, 0)
+		availableReplicas := ptr.Deref(controlplane.Status.AvailableReplicas, 0)
 
-		// Control plane is still rolling out (and thus not ready) if:
-		// * .spec.replicas, .status.replicas, .status.updatedReplicas,
-		//   .status.readyReplicas are not equal and
-		// * unavailableReplicas > 0
-		if statusReplicas != *desiredReplicas ||
-			updatedReplicas != *desiredReplicas ||
-			readyReplicas != *desiredReplicas ||
-			unavailableReplicas > 0 {
+		// Control plane is still rolling out (and thus not ready) if
+		// .spec.replicas, .status.replicas, .status.upToDateReplicas,
+		// .status.readyReplicas and .status.availableReplicas are not equal.
+		if statusReplicas != desiredReplicas ||
+			upToDateReplicas != desiredReplicas ||
+			readyReplicas != desiredReplicas ||
+			availableReplicas != desiredReplicas {
 			return false, nil
 		}
 

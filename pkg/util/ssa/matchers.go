@@ -86,7 +86,7 @@ func (fom *fieldOwnershipMatcher) Match(actual interface{}) (bool, error) {
 	for _, managedFieldsEntry := range managedFields {
 		if managedFieldsEntry.Manager == fom.manager && managedFieldsEntry.Operation == fom.operation {
 			fieldsV1 := map[string]interface{}{}
-			if err := json.Unmarshal(managedFieldsEntry.FieldsV1.Raw, &fieldsV1); err != nil {
+			if err := json.Unmarshal(managedFieldsEntry.FieldsV1.GetRawBytes(), &fieldsV1); err != nil {
 				return false, errors.Wrap(err, "failed to parse managedFieldsEntry.FieldsV1")
 			}
 			FilterIntent(&FilterIntentInput{

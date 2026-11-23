@@ -29,7 +29,6 @@ import (
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apiserver/pkg/storage/names"
 	"k8s.io/utils/ptr"
-	clusterv1beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/controllers/external"
 	"sigs.k8s.io/cluster-api/util"
@@ -38,8 +37,8 @@ import (
 	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta2"
-	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
+	bootstrapv1 "github.com/k3s-io/cluster-api-k3s/bootstrap/api/v1beta3"
+	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta3"
 	"github.com/k3s-io/cluster-api-k3s/pkg/machinefilters"
 )
 
@@ -150,8 +149,8 @@ func (c *ControlPlane) Version() *string {
 }
 
 // InfrastructureTemplate returns the KThreesControlPlane's infrastructure template.
-func (c *ControlPlane) InfrastructureTemplate() *corev1.ObjectReference {
-	return &c.KCP.Spec.MachineTemplate.InfrastructureRef
+func (c *ControlPlane) InfrastructureTemplate() *clusterv1.ContractVersionedObjectReference {
+	return &c.KCP.Spec.MachineTemplate.Spec.InfrastructureRef
 }
 
 // AsOwnerReference returns an owner reference to the KThreesControlPlane.
@@ -183,7 +182,7 @@ func (c *ControlPlane) MachineInFailureDomainWithMostMachines(ctx context.Contex
 // MachineWithDeleteAnnotation returns a machine that has been annotated with DeleteMachineAnnotation key.
 func (c *ControlPlane) MachineWithDeleteAnnotation(machines collections.Machines) collections.Machines {
 	// See if there are any machines with DeleteMachineAnnotation key.
-	annotatedMachines := machines.Filter(collections.HasAnnotationKey(clusterv1beta1.DeleteMachineAnnotation))
+	annotatedMachines := machines.Filter(collections.HasAnnotationKey(clusterv1.DeleteMachineAnnotation))
 	// If there are, return list of annotated machines.
 	return annotatedMachines
 }
@@ -253,15 +252,15 @@ func ControlPlaneLabelsForCluster(clusterName string, machineTemplate controlpla
 	for key, value := range machineTemplate.ObjectMeta.Labels {
 		labels[key] = value
 	}
-	labels[clusterv1beta1.ClusterNameLabel] = clusterName
-	labels[clusterv1beta1.MachineControlPlaneNameLabel] = ""
-	labels[clusterv1beta1.MachineControlPlaneLabel] = ""
+	labels[clusterv1.ClusterNameLabel] = clusterName
+	labels[clusterv1.MachineControlPlaneNameLabel] = ""
+	labels[clusterv1.MachineControlPlaneLabel] = ""
 	return labels
 }
 
 // NewMachine returns a machine configured to be a part of the control plane.
-func (c *ControlPlane) NewMachine(infraRef, bootstrapRef *corev1.ObjectReference, failureDomain *string) *clusterv1beta1.Machine {
-	return &clusterv1beta1.Machine{
+func (c *ControlPlane) NewMachine(infraRef, bootstrapRef clusterv1.ContractVersionedObjectReference, failureDomain string) *clusterv1.Machine {
+	return &clusterv1.Machine{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      names.SimpleNameGenerator.GenerateName(c.KCP.Name + "-"),
 			Namespace: c.KCP.Namespace,
@@ -270,11 +269,11 @@ func (c *ControlPlane) NewMachine(infraRef, bootstrapRef *corev1.ObjectReference
 				*metav1.NewControllerRef(c.KCP, controlplanev1.GroupVersion.WithKind("KThreesControlPlane")),
 			},
 		},
-		Spec: clusterv1beta1.MachineSpec{
+		Spec: clusterv1.MachineSpec{
 			ClusterName:       c.Cluster.Name,
-			Version:           c.Version(),
-			InfrastructureRef: *infraRef,
-			Bootstrap: clusterv1beta1.Bootstrap{
+			Version:           c.KCP.Spec.Version,
+			InfrastructureRef: infraRef,
+			Bootstrap: clusterv1.Bootstrap{
 				ConfigRef: bootstrapRef,
 			},
 			FailureDomain: failureDomain,
@@ -307,18 +306,33 @@ func (c *ControlPlane) MachinesNeedingRollout() collections.Machines {
 	// Ignore machines to be deleted.
 	machines := c.Machines.Filter(collections.Not(collections.HasDeletionTimestamp))
 
-	rolloutAfter := c.KCP.Spec.RolloutAfter
-	if rolloutAfter == nil {
-		rolloutAfter = &metav1.Time{}
-	}
-
 	// Return machines if they are scheduled for rollout or if with an outdated configuration.
 	return machines.AnyFilter(
-		// Machines that are scheduled for rollout (KCP.Spec.RolloutAfter set, the RolloutAfter deadline is expired, and the machine was created before the deadline).
-		collections.ShouldRolloutAfter(&c.reconciliationTime, *rolloutAfter),
+		// Machines that are scheduled for rollout (KCP.Spec.Rollout.After set, the Rollout.After deadline is expired, and the machine was created before the deadline).
+		collections.ShouldRolloutAfter(&c.reconciliationTime, c.KCP.Spec.Rollout.After),
 		// Machines that do not match with KCP config.
 		collections.Not(machinefilters.MatchesKCPConfiguration(c.InfraResources, c.KthreesConfigs, c.KCP)),
 	)
+}
+
+// MachineNotUpToDateReasons returns the reasons why a machine is not up-to-date with the KThreesControlPlane spec;
+// if the machine is up-to-date, the returned list is empty.
+// NOTE: This checks the same criteria used by MachinesNeedingRollout.
+func (c *ControlPlane) MachineNotUpToDateReasons(machine *clusterv1.Machine) []string {
+	var reasons []string
+	if !machinefilters.MatchesKubernetesVersion(c.KCP.Spec.Version)(machine) {
+		reasons = append(reasons, fmt.Sprintf("Version %s, %s required", machine.Spec.Version, c.KCP.Spec.Version))
+	}
+	if !machinefilters.MatchesKThreesBootstrapConfig(c.KthreesConfigs, c.KCP)(machine) {
+		reasons = append(reasons, "KThreesConfig is not up-to-date")
+	}
+	if !machinefilters.MatchesTemplateClonedFrom(c.InfraResources, c.KCP)(machine) {
+		reasons = append(reasons, "InfrastructureMachine is not up-to-date")
+	}
+	if collections.ShouldRolloutAfter(&c.reconciliationTime, c.KCP.Spec.Rollout.After)(machine) {
+		reasons = append(reasons, "KThreesControlPlane spec.rollout.after expired")
+	}
+	return reasons
 }
 
 // UpToDateMachines returns the machines that are up to date with the control
@@ -391,8 +405,9 @@ func (c *ControlPlane) PatchMachines(ctx context.Context) error {
 		machine := c.Machines[i]
 		if helper, ok := c.machinesPatchHelpers[machine.Name]; ok {
 			if err := helper.Patch(ctx, machine, patch.WithOwnedConditions{Conditions: []string{
-				controlplanev1.MachineAgentHealthyV1Beta2Condition,
-				controlplanev1.MachineEtcdMemberHealthyV1Beta2Condition,
+				clusterv1.MachineUpToDateCondition,
+				controlplanev1.MachineAgentHealthyCondition,
+				controlplanev1.MachineEtcdMemberHealthyCondition,
 			}}); err != nil {
 				errList = append(errList, fmt.Errorf("failed to patch machine %s: %w", machine.Name, err))
 			}

@@ -29,7 +29,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/cluster-api/util/patch"
 
-	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta2"
+	controlplanev1 "github.com/k3s-io/cluster-api-k3s/controlplane/api/v1beta3"
 )
 
 const (
@@ -316,11 +316,11 @@ func extractImageVersion(tag string) (string, error) {
 // Some of the checks come from
 // https://github.com/coredns/corefile-migration/blob/v1.0.6/migration/migrate.go#L414
 // func validateCoreDNSImageTag(fromTag, toTag string) error {
-// 	from, err := version.ParseMajorMinorPatch(fromTag)
+// 	from, err := semver.Parse(strings.TrimPrefix(fromTag, "v"))
 // 	if err != nil {
 // 		return fmt.Errorf("failed to parse CoreDNS current version %q: %w", fromTag, err)
 // 	}
-// 	to, err := version.ParseMajorMinorPatch(toTag)
+// 	to, err := semver.Parse(strings.TrimPrefix(toTag, "v"))
 // 	if err != nil {
 // 		return fmt.Errorf("failed to parse CoreDNS target version %q: %w", toTag, err)
 // 	}

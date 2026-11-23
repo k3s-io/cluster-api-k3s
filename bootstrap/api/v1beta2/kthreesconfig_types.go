@@ -196,11 +196,26 @@ type KThreesConfigStatus struct {
 	// Conditions defines current service state of the KThreesConfig.
 	// +optional
 	Conditions clusterv1beta1.Conditions `json:"conditions,omitempty"`
+
+	// v1beta2 groups all the fields that will be added or modified in KThreesConfig's status with the V1Beta2 version.
+	// +optional
+	V1Beta2 *KThreesConfigV1Beta2Status `json:"v1beta2,omitempty"`
+}
+
+// KThreesConfigV1Beta2Status groups all the fields that will be added or modified in KThreesConfigStatus with the V1Beta2 version.
+// See https://github.com/kubernetes-sigs/cluster-api/blob/main/docs/proposals/20240916-improve-status-in-CAPI-resources.md for more context.
+type KThreesConfigV1Beta2Status struct {
+	// conditions represents the observations of a KThreesConfig's current state.
+	// Known condition types are Ready, DataSecretAvailable, CertificatesAvailable.
+	// +optional
+	// +listType=map
+	// +listMapKey=type
+	// +kubebuilder:validation:MaxItems=32
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:storageversion
 
 // KThreesConfig is the Schema for the kthreesconfigs API.
 type KThreesConfig struct {
@@ -217,6 +232,22 @@ func (c *KThreesConfig) GetConditions() clusterv1beta1.Conditions {
 
 func (c *KThreesConfig) SetConditions(conditions clusterv1beta1.Conditions) {
 	c.Status.Conditions = conditions
+}
+
+// GetV1Beta2Conditions returns the set of conditions for this object.
+func (c *KThreesConfig) GetV1Beta2Conditions() []metav1.Condition {
+	if c.Status.V1Beta2 == nil {
+		return nil
+	}
+	return c.Status.V1Beta2.Conditions
+}
+
+// SetV1Beta2Conditions sets conditions for an API object.
+func (c *KThreesConfig) SetV1Beta2Conditions(conditions []metav1.Condition) {
+	if c.Status.V1Beta2 == nil {
+		c.Status.V1Beta2 = &KThreesConfigV1Beta2Status{}
+	}
+	c.Status.V1Beta2.Conditions = conditions
 }
 
 // +kubebuilder:object:root=true
@@ -288,5 +319,5 @@ type SecretFileSource struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&KThreesConfig{}, &KThreesConfigList{})
+	objectTypes = append(objectTypes, &KThreesConfig{}, &KThreesConfigList{})
 }

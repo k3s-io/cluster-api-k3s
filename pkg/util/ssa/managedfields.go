@@ -66,7 +66,7 @@ func DropManagedFields(ctx context.Context, c client.Client, obj client.Object, 
 			managedField.Operation == metav1.ManagedFieldsOperationUpdate {
 			// Unmarshal the managed fields into a map[string]interface{}
 			fieldsV1 := map[string]interface{}{}
-			if err := json.Unmarshal(managedField.FieldsV1.Raw, &fieldsV1); err != nil {
+			if err := json.Unmarshal(managedField.FieldsV1.GetRawBytes(), &fieldsV1); err != nil {
 				return errors.Wrap(err, "failed to unmarshal managed fields")
 			}
 
@@ -81,7 +81,7 @@ func DropManagedFields(ctx context.Context, c client.Client, obj client.Object, 
 			if err != nil {
 				return errors.Wrap(err, "failed to marshal managed fields")
 			}
-			managedField.FieldsV1.Raw = fieldsV1Raw
+			managedField.FieldsV1.SetRawBytes(fieldsV1Raw)
 
 			managedFields = append(managedFields, managedField)
 		} else {
@@ -160,7 +160,7 @@ func CleanUpManagedFieldsForSSAAdoption(ctx context.Context, c client.Client, ob
 		APIVersion: gvk.GroupVersion().String(),
 		Time:       &now,
 		FieldsType: "FieldsV1",
-		FieldsV1:   &metav1.FieldsV1{Raw: fieldV1},
+		FieldsV1:   metav1.NewFieldsV1(string(fieldV1)),
 	})
 
 	obj.SetManagedFields(managedFields)

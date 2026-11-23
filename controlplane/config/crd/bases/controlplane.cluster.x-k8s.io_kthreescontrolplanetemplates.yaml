@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.0
+    controller-gen.kubebuilder.io/version: v0.21.0
   name: kthreescontrolplanetemplates.controlplane.cluster.x-k8s.io
 spec:
   group: controlplane.cluster.x-k8s.io
@@ -360,6 +360,69 @@ spec:
                               NodeVolumeDetachTimeout is the total amount of time that the controller will spend on waiting for all volumes
                               to be detached. The default value is 0, meaning that the volumes can be detached without any time limitations.
                             type: string
+                          spec:
+                            description: Spec contains configuration for control plane
+                              Machines.
+                            properties:
+                              taints:
+                                description: |-
+                                  Taints are the node taints that Cluster API will manage. Other Kubernetes components may add or remove taints.
+                                  There can be at most 64 taints. Only those defined here are managed by Cluster API controllers.
+                                items:
+                                  description: MachineTaint defines a taint equivalent
+                                    to corev1.Taint, but additionally having a propagation
+                                    field.
+                                  properties:
+                                    effect:
+                                      description: effect is the effect for the taint.
+                                        Valid values are NoSchedule, PreferNoSchedule
+                                        and NoExecute.
+                                      enum:
+                                      - NoSchedule
+                                      - PreferNoSchedule
+                                      - NoExecute
+                                      type: string
+                                    key:
+                                      description: |-
+                                        key is the taint key to be applied to a node.
+                                        Must be a valid qualified name of maximum size 63 characters
+                                        with an optional subdomain prefix of maximum size 253 characters,
+                                        separated by a `/`.
+                                      maxLength: 317
+                                      minLength: 1
+                                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*\/)?([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]$
+                                      type: string
+                                    propagation:
+                                      description: |-
+                                        propagation defines how this taint should be propagated to nodes.
+                                        Valid values are 'Always' and 'OnInitialization'.
+                                        Always: The taint will be continuously reconciled. If it is not set for a node, it will be added during reconciliation.
+                                        OnInitialization: The taint will be added during node initialization. If it gets removed from the node later on it will not get added again.
+                                      enum:
+                                      - Always
+                                      - OnInitialization
+                                      type: string
+                                    value:
+                                      description: |-
+                                        value is the taint value corresponding to the taint key.
+                                        It must be a valid label value of maximum size 63 characters.
+                                      maxLength: 63
+                                      minLength: 1
+                                      pattern: ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
+                                      type: string
+                                  required:
+                                  - effect
+                                  - key
+                                  - propagation
+                                  type: object
+                                maxItems: 64
+                                minItems: 1
+                                type: array
+                                x-kubernetes-list-map-keys:
+                                - key
+                                - effect
+                                x-kubernetes-list-type: map
+                            type: object
                         required:
                         - infrastructureRef
                         type: object
@@ -420,6 +483,528 @@ spec:
                           KThreesControlPlane
                         format: date-time
                         type: string
+                    type: object
+                required:
+                - spec
+                type: object
+            required:
+            - template
+            type: object
+        type: object
+    served: true
+    storage: false
+    subresources:
+      status: {}
+  - name: v1beta3
+    schema:
+      openAPIV3Schema:
+        description: KThreesControlPlaneTemplate is the Schema for the kthreescontrolplanetemplate
+          API.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: KThreesControlPlaneTemplateSpec defines the desired state
+              of KThreesControlPlaneTemplateSpec.
+            properties:
+              template:
+                description: KThreesControlPlaneTemplateResource describes the data
+                  needed to create a KThreesControlPlane from a template.
+                properties:
+                  metadata:
+                    description: |-
+                      metadata is the standard object's metadata.
+                      More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
+                    minProperties: 1
+                    properties:
+                      annotations:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          annotations is an unstructured key value map stored with a resource that may be
+                          set by external tools to store and retrieve arbitrary metadata. They are not
+                          queryable and should be preserved when modifying objects.
+                          More info: http://kubernetes.io/docs/user-guide/annotations
+                        type: object
+                      labels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          labels is a map of string keys and values that can be used to organize and categorize
+                          (scope and select) objects. May match selectors of replication controllers
+                          and services.
+                          More info: http://kubernetes.io/docs/user-guide/labels
+                        type: object
+                    type: object
+                  spec:
+                    description: spec is the desired state of KThreesControlPlaneTemplateResource.
+                    properties:
+                      kthreesConfigSpec:
+                        description: |-
+                          kthreesConfigSpec is a KThreesConfigSpec
+                          to use for initializing and joining machines to the control plane.
+                        properties:
+                          agentConfig:
+                            description: AgentConfig specifies configuration for the
+                              agent nodes
+                            properties:
+                              airGapped:
+                                description: |-
+                                  AirGapped is a boolean value to define if the bootstrapping should be air-gapped,
+                                  basically supposing that online container registries and k3s install scripts are not reachable.
+                                  User should prepare docker image, k3s binary, and put the install script in AirGappedInstallScriptPath (default path: "/opt/install.sh")
+                                  on all nodes in the air-gap environment.
+                                type: boolean
+                              airGappedInstallScriptPath:
+                                description: |-
+                                  AirGappedInstallScriptPath is the path to the install script in the air-gapped environment.
+                                  The install script should be prepared by the user. The value is only
+                                  used when AirGapped is set to true (default: "/opt/install.sh").
+                                type: string
+                              kubeProxyArgs:
+                                description: KubeProxyArgs Customized flag for kube-proxy
+                                  process
+                                items:
+                                  type: string
+                                type: array
+                              kubeletArgs:
+                                description: KubeletArgs Customized flag for kubelet
+                                  process
+                                items:
+                                  type: string
+                                type: array
+                              nodeLabels:
+                                description: NodeLabels  Registering and starting
+                                  kubelet with set of labels
+                                items:
+                                  type: string
+                                type: array
+                              nodeName:
+                                description: NodeName Name of the Node
+                                type: string
+                              nodeTaints:
+                                description: NodeTaints Registering kubelet with set
+                                  of taints
+                                items:
+                                  type: string
+                                type: array
+                              privateRegistry:
+                                description: 'PrivateRegistry  registry configuration
+                                  file (default: "/etc/rancher/k3s/registries.yaml")'
+                                type: string
+                            type: object
+                          files:
+                            description: Files specifies extra files to be passed
+                              to user_data upon creation.
+                            items:
+                              description: File defines the input for generating write_files
+                                in cloud-init.
+                              properties:
+                                content:
+                                  description: Content is the actual content of the
+                                    file.
+                                  type: string
+                                contentFrom:
+                                  description: ContentFrom is a referenced source
+                                    of content to populate the file.
+                                  properties:
+                                    secret:
+                                      description: Secret represents a secret that
+                                        should populate this file.
+                                      properties:
+                                        key:
+                                          description: Key is the key in the secret's
+                                            data map for this value.
+                                          type: string
+                                        name:
+                                          description: Name of the secret in the KThreesBootstrapConfig's
+                                            namespace to use.
+                                          type: string
+                                      required:
+                                      - key
+                                      - name
+                                      type: object
+                                  required:
+                                  - secret
+                                  type: object
+                                encoding:
+                                  description: Encoding specifies the encoding of
+                                    the file contents.
+                                  enum:
+                                  - base64
+                                  - gzip
+                                  - gzip+base64
+                                  type: string
+                                owner:
+                                  description: Owner specifies the ownership of the
+                                    file, e.g. "root:root".
+                                  type: string
+                                path:
+                                  description: Path specifies the full path on disk
+                                    where to store the file.
+                                  type: string
+                                permissions:
+                                  description: Permissions specifies the permissions
+                                    to assign to the file, e.g. "0640".
+                                  type: string
+                              required:
+                              - path
+                              type: object
+                            type: array
+                          postK3sCommands:
+                            description: PostK3sCommands specifies extra commands
+                              to run after k3s setup runs
+                            items:
+                              type: string
+                            type: array
+                          preK3sCommands:
+                            description: PreK3sCommands specifies extra commands to
+                              run before k3s setup runs
+                            items:
+                              type: string
+                            type: array
+                          serverConfig:
+                            description: ServerConfig specifies configuration for
+                              the agent nodes
+                            properties:
+                              advertiseAddress:
+                                description: 'AdvertiseAddress IP address that apiserver
+                                  uses to advertise to members of the cluster (default:
+                                  node-external-ip/node-ip)'
+                                type: string
+                              advertisePort:
+                                description: 'AdvertisePort Port that apiserver uses
+                                  to advertise to members of the cluster (default:
+                                  listen-port) (default: 0)'
+                                type: string
+                              bindAddress:
+                                description: 'BindAddress k3s bind address (default:
+                                  0.0.0.0)'
+                                type: string
+                              cloudProviderName:
+                                description: 'CloudProviderName defines the --cloud-provider=
+                                  kubelet extra arg. (default: "external")'
+                                type: string
+                              clusterCidr:
+                                description: 'ClusterCidr  Network CIDR to use for
+                                  pod IPs (default: "10.42.0.0/16")'
+                                type: string
+                              clusterDNS:
+                                description: 'ClusterDNS  Cluster IP for coredns service.
+                                  Should be in your service-cidr range (default: 10.43.0.10)'
+                                type: string
+                              clusterDomain:
+                                description: 'ClusterDomain Cluster Domain (default:
+                                  "cluster.local")'
+                                type: string
+                              disableCloudController:
+                                description: 'DisableCloudController disables k3s
+                                  default cloud controller manager. (default: true)'
+                                type: boolean
+                              disableComponents:
+                                description: DisableComponents  specifies extra commands
+                                  to run before k3s setup runs
+                                items:
+                                  type: string
+                                type: array
+                              etcdProxyImage:
+                                description: 'Customized etcd proxy image for management
+                                  cluster to communicate with workload cluster etcd
+                                  (default: "alpine/socat")'
+                                type: string
+                              httpsListenPort:
+                                description: 'HTTPSListenPort HTTPS listen port (default:
+                                  6443)'
+                                type: string
+                              kubeAPIServerArg:
+                                description: KubeAPIServerArgs is a customized flag
+                                  for kube-apiserver process
+                                items:
+                                  type: string
+                                type: array
+                              kubeControllerManagerArgs:
+                                description: KubeControllerManagerArgs is a customized
+                                  flag for kube-controller-manager process
+                                items:
+                                  type: string
+                                type: array
+                              kubeSchedulerArgs:
+                                description: KubeSchedulerArgs is a customized flag
+                                  for kube-scheduler process
+                                items:
+                                  type: string
+                                type: array
+                              serviceCidr:
+                                description: 'ServiceCidr Network CIDR to use for
+                                  services IPs (default: "10.43.0.0/16")'
+                                type: string
+                              systemDefaultRegistry:
+                                description: SystemDefaultRegistry defines private
+                                  registry to be used for all system images
+                                type: string
+                              tlsSan:
+                                description: TLSSan Add additional hostname or IP
+                                  as a Subject Alternative Name in the TLS cert
+                                items:
+                                  type: string
+                                type: array
+                            type: object
+                          version:
+                            description: Version specifies the k3s version
+                            type: string
+                        type: object
+                      machineTemplate:
+                        description: |-
+                          machineTemplate contains information about how machines
+                          should be shaped when creating or updating a control plane.
+                        properties:
+                          metadata:
+                            description: |-
+                              metadata is the standard object's metadata.
+                              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
+                            minProperties: 1
+                            properties:
+                              annotations:
+                                additionalProperties:
+                                  type: string
+                                description: |-
+                                  annotations is an unstructured key value map stored with a resource that may be
+                                  set by external tools to store and retrieve arbitrary metadata. They are not
+                                  queryable and should be preserved when modifying objects.
+                                  More info: http://kubernetes.io/docs/user-guide/annotations
+                                type: object
+                              labels:
+                                additionalProperties:
+                                  type: string
+                                description: |-
+                                  labels is a map of string keys and values that can be used to organize and categorize
+                                  (scope and select) objects. May match selectors of replication controllers
+                                  and services.
+                                  More info: http://kubernetes.io/docs/user-guide/labels
+                                type: object
+                            type: object
+                          spec:
+                            description: |-
+                              spec defines the spec for Machines
+                              in a KThreesControlPlane object.
+                            properties:
+                              deletion:
+                                description: deletion contains configuration options
+                                  for Machine deletion.
+                                minProperties: 1
+                                properties:
+                                  nodeDeletionTimeoutSeconds:
+                                    description: |-
+                                      nodeDeletionTimeoutSeconds defines how long the machine controller will attempt to delete the Node that the Machine
+                                      hosts after the Machine is marked for deletion. A duration of 0 will retry deletion indefinitely.
+                                      If no value is provided, the default value for this property of the Machine resource will be used.
+                                    format: int32
+                                    minimum: 0
+                                    type: integer
+                                  nodeDrainTimeoutSeconds:
+                                    description: |-
+                                      nodeDrainTimeoutSeconds is the total amount of time that the controller will spend on draining a controlplane node
+                                      The default value is 0, meaning that the node can be drained without any time limitations.
+                                      NOTE: nodeDrainTimeoutSeconds is different from `kubectl drain --timeout`
+                                    format: int32
+                                    minimum: 0
+                                    type: integer
+                                  nodeVolumeDetachTimeoutSeconds:
+                                    description: |-
+                                      nodeVolumeDetachTimeoutSeconds is the total amount of time that the controller will spend on waiting for all volumes
+                                      to be detached. The default value is 0, meaning that the volumes can be detached without any time limitations.
+                                    format: int32
+                                    minimum: 0
+                                    type: integer
+                                type: object
+                              infrastructureRef:
+                                description: |-
+                                  infrastructureRef is a required reference to a custom resource
+                                  offered by an infrastructure provider.
+                                properties:
+                                  apiGroup:
+                                    description: |-
+                                      apiGroup is the group of the resource being referenced.
+                                      apiGroup must be fully qualified domain name.
+                                      The corresponding version for this reference will be looked up from the contract
+                                      labels of the corresponding CRD of the resource being referenced.
+                                    maxLength: 253
+                                    minLength: 1
+                                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                                    type: string
+                                  kind:
+                                    description: |-
+                                      kind of the resource being referenced.
+                                      kind must consist of alphanumeric characters or '-', start with an alphabetic character, and end with an alphanumeric character.
+                                    maxLength: 63
+                                    minLength: 1
+                                    pattern: ^[a-zA-Z]([-a-zA-Z0-9]*[a-zA-Z0-9])?$
+                                    type: string
+                                  name:
+                                    description: |-
+                                      name of the resource being referenced.
+                                      name must consist of lower case alphanumeric characters, '-' or '.', and must start and end with an alphanumeric character.
+                                    maxLength: 253
+                                    minLength: 1
+                                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                                    type: string
+                                required:
+                                - apiGroup
+                                - kind
+                                - name
+                                type: object
+                              taints:
+                                description: |-
+                                  taints are the node taints that Cluster API will manage.
+                                  This list is not necessarily complete: other Kubernetes components may add or remove other taints from nodes,
+                                  e.g. the node controller might add the node.kubernetes.io/not-ready taint.
+                                  Only those taints defined in this list will be added or removed by core Cluster API controllers.
+
+                                  There can be at most 64 taints.
+                                  A pod would have to tolerate all existing taints to run on the corresponding node.
+
+                                  NOTE: This list is implemented as a "map" type, meaning that individual elements can be managed by different owners.
+                                items:
+                                  description: MachineTaint defines a taint equivalent
+                                    to corev1.Taint, but additionally having a propagation
+                                    field.
+                                  properties:
+                                    effect:
+                                      description: effect is the effect for the taint.
+                                        Valid values are NoSchedule, PreferNoSchedule
+                                        and NoExecute.
+                                      enum:
+                                      - NoSchedule
+                                      - PreferNoSchedule
+                                      - NoExecute
+                                      type: string
+                                    key:
+                                      description: |-
+                                        key is the taint key to be applied to a node.
+                                        Must be a valid qualified name of maximum size 63 characters
+                                        with an optional subdomain prefix of maximum size 253 characters,
+                                        separated by a `/`.
+                                      maxLength: 317
+                                      minLength: 1
+                                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*\/)?([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]$
+                                      type: string
+                                    propagation:
+                                      description: |-
+                                        propagation defines how this taint should be propagated to nodes.
+                                        Valid values are 'Always' and 'OnInitialization'.
+                                        Always: The taint will be continuously reconciled. If it is not set for a node, it will be added during reconciliation.
+                                        OnInitialization: The taint will be added during node initialization. If it gets removed from the node later on it will not get added again.
+                                      enum:
+                                      - Always
+                                      - OnInitialization
+                                      type: string
+                                    value:
+                                      description: |-
+                                        value is the taint value corresponding to the taint key.
+                                        It must be a valid label value of maximum size 63 characters.
+                                      maxLength: 63
+                                      minLength: 1
+                                      pattern: ^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?$
+                                      type: string
+                                  required:
+                                  - effect
+                                  - key
+                                  - propagation
+                                  type: object
+                                maxItems: 64
+                                minItems: 1
+                                type: array
+                                x-kubernetes-list-map-keys:
+                                - key
+                                - effect
+                                x-kubernetes-list-type: map
+                            required:
+                            - infrastructureRef
+                            type: object
+                        required:
+                        - spec
+                        type: object
+                      remediationStrategy:
+                        description: The RemediationStrategy that controls how control
+                          plane machine remediation happens.
+                        properties:
+                          maxRetry:
+                            description: "MaxRetry is the Max number of retries while
+                              attempting to remediate an unhealthy machine.\nA retry
+                              happens when a machine that was created as a replacement
+                              for an unhealthy machine also fails.\nFor example, given
+                              a control plane with three machines M1, M2, M3:\n\n\tM1
+                              become unhealthy; remediation happens, and M1-1 is created
+                              as a replacement.\n\tIf M1-1 (replacement of M1) has
+                              problems while bootstrapping it will become unhealthy,
+                              and then be\n\tremediated; such operation is considered
+                              a retry, remediation-retry #1.\n\tIf M1-2 (replacement
+                              of M1-1) becomes unhealthy, remediation-retry #2 will
+                              happen, etc.\n\nA retry could happen only after RetryPeriod
+                              from the previous retry.\nIf a machine is marked as
+                              unhealthy after MinHealthyPeriod from the previous remediation
+                              expired,\nthis is not considered a retry anymore because
+                              the new issue is assumed unrelated from the previous
+                              one.\n\nIf not set, the remedation will be retried infinitely."
+                            format: int32
+                            type: integer
+                          minHealthyPeriod:
+                            description: "MinHealthyPeriod defines the duration after
+                              which KCP will consider any failure to a machine unrelated\nfrom
+                              the previous one. In this case the remediation is not
+                              considered a retry anymore, and thus the retry\ncounter
+                              restarts from 0. For example, assuming MinHealthyPeriod
+                              is set to 1h (default)\n\n\tM1 become unhealthy; remediation
+                              happens, and M1-1 is created as a replacement.\n\tIf
+                              M1-1 (replacement of M1) has problems within the 1hr
+                              after the creation, also\n\tthis machine will be remediated
+                              and this operation is considered a retry - a problem
+                              related\n\tto the original issue happened to M1 -.\n\n\tIf
+                              instead the problem on M1-1 is happening after MinHealthyPeriod
+                              expired, e.g. four days after\n\tm1-1 has been created
+                              as a remediation of M1, the problem on M1-1 is considered
+                              unrelated to\n\tthe original issue happened to M1.\n\nIf
+                              not set, this value is defaulted to 1h."
+                            type: string
+                          retryPeriod:
+                            description: |-
+                              RetryPeriod is the duration that KCP should wait before remediating a machine being created as a replacement
+                              for an unhealthy machine (a retry).
+
+                              If not set, a retry will happen immediately.
+                            type: string
+                        type: object
+                      rollout:
+                        description: rollout allows you to configure the behaviour
+                          of rolling updates to the control plane Machines.
+                        minProperties: 1
+                        properties:
+                          after:
+                            description: |-
+                              after is a field to indicate a rollout should be performed
+                              after the specified time even if no changes have been made to the
+                              KThreesControlPlane.
+                              Example: In the YAML the time can be specified in the RFC3339 format.
+                              To specify the rollout.after target as March 9, 2023, at 9 am UTC
+                              use "2023-03-09T09:00:00Z".
+                            format: date-time
+                            type: string
+                        type: object
                     type: object
                 required:
                 - spec
