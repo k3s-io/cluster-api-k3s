@@ -334,7 +334,14 @@ $(ENVSUBST): ## Build envsubst from tools folder.
 # golangci-lint refuses to lint code targeting a newer Go than the one it was built with,
 # so build it with the same toolchain as the project.
 $(GOLANGCI_LINT): ## Build golangci-lint from tools folder.
-	GOTOOLCHAIN=go$(GO_VERSION) GOBIN=$(TOOLS_BIN_DIR) $(GO_INSTALL) github.com/golangci/golangci-lint/v2/cmd/golangci-lint $(GOLANGCI_LINT_BIN) $(GOLANGCI_LINT_VER)
+	@for attempt in 1 2 3; do \
+		if GOTOOLCHAIN=go$(GO_VERSION) GOBIN=$(TOOLS_BIN_DIR) $(GO_INSTALL) github.com/golangci/golangci-lint/v2/cmd/golangci-lint $(GOLANGCI_LINT_BIN) $(GOLANGCI_LINT_VER); then \
+			exit 0; \
+		fi; \
+		if [ "$$attempt" -eq 3 ]; then exit 1; fi; \
+		echo "golangci-lint installation failed; retrying (attempt $$((attempt + 1))/3)..."; \
+		sleep $$((attempt * 5)); \
+	done
 
 $(GINKGO): # Build ginkgo from tools folder.
 	GOBIN=$(TOOLS_BIN_DIR) $(GO_INSTALL) $(GINKGO_PKG) $(GINKGO_BIN) $(GINKGO_VER)
