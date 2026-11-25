@@ -235,6 +235,7 @@ type LastRemediationStatus struct {
 }
 
 // +kubebuilder:object:root=true
+// +kubebuilder:deprecatedversion:warning="controlplane.cluster.x-k8s.io/v1beta1 KThreesControlPlane is deprecated; use controlplane.cluster.x-k8s.io/v1beta2 KThreesControlPlane"
 // +kubebuilder:subresource:status
 // +kubebuilder:subresource:scale:specpath=.spec.replicas,statuspath=.status.replicas,selectorpath=.status.selector
 // +kubebuilder:printcolumn:name="Initialized",type=boolean,JSONPath=".status.initialized",description="This denotes whether or not the control plane has completed the k3s server initialization"

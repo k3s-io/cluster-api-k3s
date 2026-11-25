@@ -46,6 +46,9 @@ spec:
       jsonPath: .status.unavailableReplicas
       name: Unavailable
       type: integer
+    deprecated: true
+    deprecationWarning: controlplane.cluster.x-k8s.io/v1beta1 KThreesControlPlane
+      is deprecated; use controlplane.cluster.x-k8s.io/v1beta2 KThreesControlPlane
     name: v1beta1
     schema:
       openAPIV3Schema:
