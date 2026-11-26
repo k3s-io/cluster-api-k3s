@@ -263,7 +263,13 @@ func (r *KThreesConfigReconciler) joinControlplane(ctx context.Context, scope *S
 
 	tokn, err := token.Lookup(ctx, r.Client, client.ObjectKeyFromObject(scope.Cluster))
 	if err != nil {
-		markDataSecretGenerationFailed(scope.Config, err)
+		v1beta1conditions.MarkFalse(scope.Config, bootstrapv1.DataSecretAvailableCondition, bootstrapv1.DataSecretGenerationFailedReason, clusterv1beta1.ConditionSeverityWarning, "%s", err.Error())
+		v1beta2conditions.Set(scope.Config, metav1.Condition{
+			Type:    bootstrapv1.KThreesConfigDataSecretAvailableV1Beta2Condition,
+			Status:  metav1.ConditionFalse,
+			Reason:  bootstrapv1.KThreesConfigDataSecretNotAvailableV1Beta2Reason,
+			Message: fmt.Sprintf("Failed to generate the bootstrap data secret: %s", err.Error()),
+		})
 		return err
 	}
 
@@ -285,14 +291,26 @@ func (r *KThreesConfigReconciler) joinControlplane(ctx context.Context, scope *S
 
 	files, err := r.resolveFiles(ctx, scope.Config)
 	if err != nil {
-		markDataSecretGenerationFailed(scope.Config, err)
+		v1beta1conditions.MarkFalse(scope.Config, bootstrapv1.DataSecretAvailableCondition, bootstrapv1.DataSecretGenerationFailedReason, clusterv1beta1.ConditionSeverityWarning, "%s", err.Error())
+		v1beta2conditions.Set(scope.Config, metav1.Condition{
+			Type:    bootstrapv1.KThreesConfigDataSecretAvailableV1Beta2Condition,
+			Status:  metav1.ConditionFalse,
+			Reason:  bootstrapv1.KThreesConfigDataSecretNotAvailableV1Beta2Reason,
+			Message: fmt.Sprintf("Failed to generate the bootstrap data secret: %s", err.Error()),
+		})
 		return err
 	}
 
 	if scope.Config.Spec.IsEtcdEmbedded() {
 		etcdProxyFile, err := r.resolveEtcdProxyFile(scope.Config)
 		if err != nil {
-			markDataSecretGenerationFailed(scope.Config, err)
+			v1beta1conditions.MarkFalse(scope.Config, bootstrapv1.DataSecretAvailableCondition, bootstrapv1.DataSecretGenerationFailedReason, clusterv1beta1.ConditionSeverityWarning, "%s", err.Error())
+			v1beta2conditions.Set(scope.Config, metav1.Condition{
+				Type:    bootstrapv1.KThreesConfigDataSecretAvailableV1Beta2Condition,
+				Status:  metav1.ConditionFalse,
+				Reason:  bootstrapv1.KThreesConfigDataSecretNotAvailableV1Beta2Reason,
+				Message: fmt.Sprintf("Failed to generate the bootstrap data secret: %s", err.Error()),
+			})
 			return fmt.Errorf("failed to resolve etcd proxy file: %w", err)
 		}
 
@@ -336,7 +354,13 @@ func (r *KThreesConfigReconciler) joinWorker(ctx context.Context, scope *Scope) 
 
 	tokn, err := token.Lookup(ctx, r.Client, client.ObjectKeyFromObject(scope.Cluster))
 	if err != nil {
-		markDataSecretGenerationFailed(scope.Config, err)
+		v1beta1conditions.MarkFalse(scope.Config, bootstrapv1.DataSecretAvailableCondition, bootstrapv1.DataSecretGenerationFailedReason, clusterv1beta1.ConditionSeverityWarning, "%s", err.Error())
+		v1beta2conditions.Set(scope.Config, metav1.Condition{
+			Type:    bootstrapv1.KThreesConfigDataSecretAvailableV1Beta2Condition,
+			Status:  metav1.ConditionFalse,
+			Reason:  bootstrapv1.KThreesConfigDataSecretNotAvailableV1Beta2Reason,
+			Message: fmt.Sprintf("Failed to generate the bootstrap data secret: %s", err.Error()),
+		})
 		return err
 	}
 
@@ -356,7 +380,13 @@ func (r *KThreesConfigReconciler) joinWorker(ctx context.Context, scope *Scope) 
 
 	files, err := r.resolveFiles(ctx, scope.Config)
 	if err != nil {
-		markDataSecretGenerationFailed(scope.Config, err)
+		v1beta1conditions.MarkFalse(scope.Config, bootstrapv1.DataSecretAvailableCondition, bootstrapv1.DataSecretGenerationFailedReason, clusterv1beta1.ConditionSeverityWarning, "%s", err.Error())
+		v1beta2conditions.Set(scope.Config, metav1.Condition{
+			Type:    bootstrapv1.KThreesConfigDataSecretAvailableV1Beta2Condition,
+			Status:  metav1.ConditionFalse,
+			Reason:  bootstrapv1.KThreesConfigDataSecretNotAvailableV1Beta2Reason,
+			Message: fmt.Sprintf("Failed to generate the bootstrap data secret: %s", err.Error()),
+		})
 		return err
 	}
 
@@ -554,14 +584,26 @@ func (r *KThreesConfigReconciler) handleClusterNotInitialized(ctx context.Contex
 
 	files, err := r.resolveFiles(ctx, scope.Config)
 	if err != nil {
-		markDataSecretGenerationFailed(scope.Config, err)
+		v1beta1conditions.MarkFalse(scope.Config, bootstrapv1.DataSecretAvailableCondition, bootstrapv1.DataSecretGenerationFailedReason, clusterv1beta1.ConditionSeverityWarning, "%s", err.Error())
+		v1beta2conditions.Set(scope.Config, metav1.Condition{
+			Type:    bootstrapv1.KThreesConfigDataSecretAvailableV1Beta2Condition,
+			Status:  metav1.ConditionFalse,
+			Reason:  bootstrapv1.KThreesConfigDataSecretNotAvailableV1Beta2Reason,
+			Message: fmt.Sprintf("Failed to generate the bootstrap data secret: %s", err.Error()),
+		})
 		return ctrl.Result{}, err
 	}
 
 	if scope.Config.Spec.IsEtcdEmbedded() {
 		etcdProxyFile, err := r.resolveEtcdProxyFile(scope.Config)
 		if err != nil {
-			markDataSecretGenerationFailed(scope.Config, err)
+			v1beta1conditions.MarkFalse(scope.Config, bootstrapv1.DataSecretAvailableCondition, bootstrapv1.DataSecretGenerationFailedReason, clusterv1beta1.ConditionSeverityWarning, "%s", err.Error())
+			v1beta2conditions.Set(scope.Config, metav1.Condition{
+				Type:    bootstrapv1.KThreesConfigDataSecretAvailableV1Beta2Condition,
+				Status:  metav1.ConditionFalse,
+				Reason:  bootstrapv1.KThreesConfigDataSecretNotAvailableV1Beta2Reason,
+				Message: fmt.Sprintf("Failed to generate the bootstrap data secret: %s", err.Error()),
+			})
 			return ctrl.Result{}, fmt.Errorf("failed to resolve etcd proxy file: %w", err)
 		}
 		files = append(files, *etcdProxyFile)
@@ -668,17 +710,6 @@ func markV1Beta2DataSecretAndCertificatesAvailable(config *bootstrapv1.KThreesCo
 		Type:   bootstrapv1.KThreesConfigCertificatesAvailableV1Beta2Condition,
 		Status: metav1.ConditionTrue,
 		Reason: bootstrapv1.KThreesConfigCertificatesAvailableV1Beta2Reason,
-	})
-}
-
-// markDataSecretGenerationFailed reports a failure in generating the bootstrap data secret.
-func markDataSecretGenerationFailed(config *bootstrapv1.KThreesConfig, err error) {
-	v1beta1conditions.MarkFalse(config, bootstrapv1.DataSecretAvailableCondition, bootstrapv1.DataSecretGenerationFailedReason, clusterv1beta1.ConditionSeverityWarning, "%s", err.Error())
-	v1beta2conditions.Set(config, metav1.Condition{
-		Type:    bootstrapv1.KThreesConfigDataSecretAvailableV1Beta2Condition,
-		Status:  metav1.ConditionFalse,
-		Reason:  bootstrapv1.KThreesConfigDataSecretNotAvailableV1Beta2Reason,
-		Message: fmt.Sprintf("Failed to generate the bootstrap data secret: %s", err.Error()),
 	})
 }
 

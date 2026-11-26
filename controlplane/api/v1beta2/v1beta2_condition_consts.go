@@ -227,25 +227,6 @@ const (
 	KThreesControlPlaneRemediatingInternalErrorV1Beta2Reason = clusterv1.InternalErrorReason
 )
 
-// Reasons that will be used for the OwnerRemediated condition set by MachineHealthCheck on KThreesControlPlane controlled machines
-// being remediated in v1beta2 API version.
-const (
-	// KThreesControlPlaneMachineRemediationInternalErrorV1Beta2Reason surfaces unexpected failures while remediating a control plane machine.
-	KThreesControlPlaneMachineRemediationInternalErrorV1Beta2Reason = clusterv1.InternalErrorReason
-
-	// KThreesControlPlaneMachineCannotBeRemediatedV1Beta2Reason surfaces when remediation of a control plane machine can't be started.
-	KThreesControlPlaneMachineCannotBeRemediatedV1Beta2Reason = "CannotBeRemediated"
-
-	// KThreesControlPlaneMachineRemediationDeferredV1Beta2Reason surfaces when remediation of a control plane machine must be deferred.
-	KThreesControlPlaneMachineRemediationDeferredV1Beta2Reason = "RemediationDeferred"
-
-	// KThreesControlPlaneMachineRemediationMachineDeletingV1Beta2Reason surfaces when remediation of a control plane machine
-	// has been completed by deleting the unhealthy machine.
-	// Note: After an unhealthy machine is deleted, a new one is created by the KThreesControlPlane as part of the
-	// regular reconcile loop that ensures the correct number of replicas exist.
-	KThreesControlPlaneMachineRemediationMachineDeletingV1Beta2Reason = "MachineDeleting"
-)
-
 // KThreesControlPlane's Deleting condition and corresponding reasons.
 const (
 	// KThreesControlPlaneDeletingV1Beta2Condition surfaces details about ongoing deletion of the controlled machines.

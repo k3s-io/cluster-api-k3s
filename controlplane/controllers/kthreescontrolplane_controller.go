@@ -439,6 +439,8 @@ func (r *KThreesControlPlaneReconciler) updateStatus(ctx context.Context, kcp *c
 
 	// Return early if the deletion timestamp is set, because we don't want to try to connect to the workload cluster
 	// and we don't want to report resize condition (because it is set to deleting into reconcile delete).
+	// The Initialized and Available conditions are still set before returning, like the KubeadmControlPlane does, so
+	// that Available reports the control plane is not available anymore while it is being deleted.
 	if !kcp.DeletionTimestamp.IsZero() {
 		setInitializedV1Beta2Condition(kcp)
 		setAvailableV1Beta2Condition(kcp, nil)
