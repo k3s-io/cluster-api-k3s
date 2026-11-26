@@ -96,6 +96,11 @@ var _ = Describe("Workload cluster creation", func() {
 				WaitForControlPlaneIntervals: e2eConfig.GetIntervals(specName, "wait-control-plane"),
 				WaitForMachineDeployments:    e2eConfig.GetIntervals(specName, "wait-worker-nodes"),
 			}, result)
+
+			WaitForV1Beta2Status(ctx, WaitForV1Beta2StatusInput{
+				Client:       bootstrapClusterProxy.GetClient(),
+				ControlPlane: result.ControlPlane,
+			}, e2eConfig.GetIntervals(specName, "wait-control-plane")...)
 		})
 	})
 
@@ -120,6 +125,11 @@ var _ = Describe("Workload cluster creation", func() {
 				WaitForControlPlaneIntervals: e2eConfig.GetIntervals(specName, "wait-control-plane"),
 				WaitForMachineDeployments:    e2eConfig.GetIntervals(specName, "wait-worker-nodes"),
 			}, result)
+
+			WaitForV1Beta2Status(ctx, WaitForV1Beta2StatusInput{
+				Client:       bootstrapClusterProxy.GetClient(),
+				ControlPlane: result.ControlPlane,
+			}, e2eConfig.GetIntervals(specName, "wait-control-plane")...)
 		})
 	})
 
@@ -144,6 +154,11 @@ var _ = Describe("Workload cluster creation", func() {
 				WaitForControlPlaneIntervals: e2eConfig.GetIntervals(specName, "wait-control-plane"),
 				WaitForMachineDeployments:    e2eConfig.GetIntervals(specName, "wait-worker-nodes"),
 			}, result)
+
+			WaitForV1Beta2Status(ctx, WaitForV1Beta2StatusInput{
+				Client:       bootstrapClusterProxy.GetClient(),
+				ControlPlane: result.ControlPlane,
+			}, e2eConfig.GetIntervals(specName, "wait-control-plane")...)
 		})
 	})
 })
