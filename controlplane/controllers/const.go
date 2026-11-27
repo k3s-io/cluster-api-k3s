@@ -35,6 +35,10 @@ const (
 	// etcd member is successfully removed.
 	etcdRemovalRequeueAfter = 30 * time.Second
 
+	// controlPlaneEndpointRequeueAfter is how long to wait before checking again to see if
+	// the Cluster has a ControlPlaneEndpoint.
+	controlPlaneEndpointRequeueAfter = 20 * time.Second
+
 	k3sHookName = "k3s"
 
 	kcpManagerName = "capi-kthreescontrolplane"

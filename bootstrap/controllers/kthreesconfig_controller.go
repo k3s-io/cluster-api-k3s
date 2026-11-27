@@ -38,6 +38,7 @@ import (
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/annotations"
 	v1beta1conditions "sigs.k8s.io/cluster-api/util/deprecated/v1beta1/conditions"
+	v1beta2conditions "sigs.k8s.io/cluster-api/util/deprecated/v1beta1/conditions/v1beta2"
 	v1beta1patch "sigs.k8s.io/cluster-api/util/deprecated/v1beta1/patch"
 	"sigs.k8s.io/cluster-api/util/predicates"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -75,6 +76,10 @@ type Scope struct {
 	ConfigOwner *bsutil.ConfigOwner
 	Cluster     *clusterv1.Cluster
 }
+
+// controlPlaneEndpointRequeueAfter is how long to wait before checking again to see if
+// the Cluster has a ControlPlaneEndpoint, the same as the KubeadmConfig controller.
+const controlPlaneEndpointRequeueAfter = 10 * time.Second
 
 var (
 	ErrInvalidRef   = errors.New("invalid reference")
@@ -161,9 +166,34 @@ func (r *KThreesConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 				bootstrapv1.CertificatesAvailableCondition,
 			),
 		)
+		if err := v1beta2conditions.SetSummaryCondition(config, config, bootstrapv1.KThreesConfigReadyV1Beta2Condition,
+			v1beta2conditions.ForConditionTypes{
+				bootstrapv1.KThreesConfigDataSecretAvailableV1Beta2Condition,
+				bootstrapv1.KThreesConfigCertificatesAvailableV1Beta2Condition,
+			},
+			// Using a custom merge strategy to override reasons applied during merge.
+			v1beta2conditions.CustomMergeStrategy{
+				MergeStrategy: v1beta2conditions.DefaultMergeStrategy(
+					// Use custom reasons.
+					v1beta2conditions.ComputeReasonFunc(v1beta2conditions.GetDefaultComputeMergeReasonFunc(
+						bootstrapv1.KThreesConfigNotReadyV1Beta2Reason,
+						bootstrapv1.KThreesConfigReadyUnknownV1Beta2Reason,
+						bootstrapv1.KThreesConfigReadyV1Beta2Reason,
+					)),
+				),
+			},
+		); err != nil {
+			rerr = kerrors.NewAggregate([]error{rerr, err})
+		}
 
 		// Patch ObservedGeneration only if the reconciliation completed successfully
-		patchOpts := []v1beta1patch.Option{}
+		patchOpts := []v1beta1patch.Option{
+			v1beta1patch.WithOwnedV1Beta2Conditions{Conditions: []string{
+				bootstrapv1.KThreesConfigReadyV1Beta2Condition,
+				bootstrapv1.KThreesConfigDataSecretAvailableV1Beta2Condition,
+				bootstrapv1.KThreesConfigCertificatesAvailableV1Beta2Condition,
+			}},
+		}
 		if rerr == nil {
 			patchOpts = append(patchOpts, v1beta1patch.WithStatusObservedGeneration{})
 		}
@@ -180,6 +210,12 @@ func (r *KThreesConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	case !ptr.Deref(cluster.Status.Initialization.InfrastructureProvisioned, false):
 		log.Info("Cluster infrastructure is not ready, waiting")
 		v1beta1conditions.MarkFalse(config, bootstrapv1.DataSecretAvailableCondition, bootstrapv1.WaitingForClusterInfrastructureReason, clusterv1beta1.ConditionSeverityInfo, "")
+		v1beta2conditions.Set(config, metav1.Condition{
+			Type:    bootstrapv1.KThreesConfigDataSecretAvailableV1Beta2Condition,
+			Status:  metav1.ConditionFalse,
+			Reason:  bootstrapv1.KThreesConfigDataSecretNotAvailableV1Beta2Reason,
+			Message: "Waiting for Cluster status.initialization.infrastructureProvisioned to be true",
+		})
 		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 	// Reconcile status for machines that already have a secret reference, but our status isn't up to date.
 	// This case solves the pivoting scenario (or a backup restore) which doesn't preserve the status subresource on objects.
@@ -187,9 +223,14 @@ func (r *KThreesConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		config.Status.Ready = true
 		config.Status.DataSecretName = configOwner.DataSecretName()
 		v1beta1conditions.MarkTrue(config, bootstrapv1.DataSecretAvailableCondition)
+		markV1Beta2DataSecretAndCertificatesAvailable(config)
 		return ctrl.Result{}, nil
 	// Status is ready means a config has been generated.
+	// This also ensures the v1beta2 conditions are set on configs generated before they were introduced.
 	case config.Status.Ready:
+		// Based on existing code paths status.ready is only true if status.dataSecretName is set,
+		// and generating the data secret requires certificates to be available.
+		markV1Beta2DataSecretAndCertificatesAvailable(config)
 		// In any other case just return as the config is already generated and need not be generated again.
 		return ctrl.Result{}, nil
 	}
@@ -200,6 +241,15 @@ func (r *KThreesConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	// Every other case it's a join scenario
 	// Nb. in this case ClusterConfiguration and InitConfiguration should not be defined by users, but in case of misconfigurations, CABPK simply ignore them
+
+	// The join configuration points k3s at the Cluster's ControlPlaneEndpoint, so wait until it is set, like the
+	// KubeadmConfig controller does. Otherwise the bootstrap data is generated with "https://:0" and is never generated
+	// again, so the Machine can never join. This happens for example when an update of the Cluster cleared the endpoint
+	// and the Cluster controller has not set it again yet.
+	if !cluster.Spec.ControlPlaneEndpoint.IsValid() {
+		log.Info("Waiting for Cluster Controller to set Cluster.Spec.ControlPlaneEndpoint")
+		return ctrl.Result{RequeueAfter: controlPlaneEndpointRequeueAfter}, nil
+	}
 
 	// Unlock any locks that might have been set during init process
 	r.KThreesInitLock.Unlock(ctx, cluster)
@@ -227,6 +277,12 @@ func (r *KThreesConfigReconciler) joinControlplane(ctx context.Context, scope *S
 	tokn, err := token.Lookup(ctx, r.Client, client.ObjectKeyFromObject(scope.Cluster))
 	if err != nil {
 		v1beta1conditions.MarkFalse(scope.Config, bootstrapv1.DataSecretAvailableCondition, bootstrapv1.DataSecretGenerationFailedReason, clusterv1beta1.ConditionSeverityWarning, "%s", err.Error())
+		v1beta2conditions.Set(scope.Config, metav1.Condition{
+			Type:    bootstrapv1.KThreesConfigDataSecretAvailableV1Beta2Condition,
+			Status:  metav1.ConditionFalse,
+			Reason:  bootstrapv1.KThreesConfigDataSecretNotAvailableV1Beta2Reason,
+			Message: fmt.Sprintf("Failed to generate the bootstrap data secret: %s", err.Error()),
+		})
 		return err
 	}
 
@@ -249,6 +305,12 @@ func (r *KThreesConfigReconciler) joinControlplane(ctx context.Context, scope *S
 	files, err := r.resolveFiles(ctx, scope.Config)
 	if err != nil {
 		v1beta1conditions.MarkFalse(scope.Config, bootstrapv1.DataSecretAvailableCondition, bootstrapv1.DataSecretGenerationFailedReason, clusterv1beta1.ConditionSeverityWarning, "%s", err.Error())
+		v1beta2conditions.Set(scope.Config, metav1.Condition{
+			Type:    bootstrapv1.KThreesConfigDataSecretAvailableV1Beta2Condition,
+			Status:  metav1.ConditionFalse,
+			Reason:  bootstrapv1.KThreesConfigDataSecretNotAvailableV1Beta2Reason,
+			Message: fmt.Sprintf("Failed to generate the bootstrap data secret: %s", err.Error()),
+		})
 		return err
 	}
 
@@ -256,6 +318,12 @@ func (r *KThreesConfigReconciler) joinControlplane(ctx context.Context, scope *S
 		etcdProxyFile, err := r.resolveEtcdProxyFile(scope.Config)
 		if err != nil {
 			v1beta1conditions.MarkFalse(scope.Config, bootstrapv1.DataSecretAvailableCondition, bootstrapv1.DataSecretGenerationFailedReason, clusterv1beta1.ConditionSeverityWarning, "%s", err.Error())
+			v1beta2conditions.Set(scope.Config, metav1.Condition{
+				Type:    bootstrapv1.KThreesConfigDataSecretAvailableV1Beta2Condition,
+				Status:  metav1.ConditionFalse,
+				Reason:  bootstrapv1.KThreesConfigDataSecretNotAvailableV1Beta2Reason,
+				Message: fmt.Sprintf("Failed to generate the bootstrap data secret: %s", err.Error()),
+			})
 			return fmt.Errorf("failed to resolve etcd proxy file: %w", err)
 		}
 
@@ -300,6 +368,12 @@ func (r *KThreesConfigReconciler) joinWorker(ctx context.Context, scope *Scope) 
 	tokn, err := token.Lookup(ctx, r.Client, client.ObjectKeyFromObject(scope.Cluster))
 	if err != nil {
 		v1beta1conditions.MarkFalse(scope.Config, bootstrapv1.DataSecretAvailableCondition, bootstrapv1.DataSecretGenerationFailedReason, clusterv1beta1.ConditionSeverityWarning, "%s", err.Error())
+		v1beta2conditions.Set(scope.Config, metav1.Condition{
+			Type:    bootstrapv1.KThreesConfigDataSecretAvailableV1Beta2Condition,
+			Status:  metav1.ConditionFalse,
+			Reason:  bootstrapv1.KThreesConfigDataSecretNotAvailableV1Beta2Reason,
+			Message: fmt.Sprintf("Failed to generate the bootstrap data secret: %s", err.Error()),
+		})
 		return err
 	}
 
@@ -320,6 +394,12 @@ func (r *KThreesConfigReconciler) joinWorker(ctx context.Context, scope *Scope) 
 	files, err := r.resolveFiles(ctx, scope.Config)
 	if err != nil {
 		v1beta1conditions.MarkFalse(scope.Config, bootstrapv1.DataSecretAvailableCondition, bootstrapv1.DataSecretGenerationFailedReason, clusterv1beta1.ConditionSeverityWarning, "%s", err.Error())
+		v1beta2conditions.Set(scope.Config, metav1.Condition{
+			Type:    bootstrapv1.KThreesConfigDataSecretAvailableV1Beta2Condition,
+			Status:  metav1.ConditionFalse,
+			Reason:  bootstrapv1.KThreesConfigDataSecretNotAvailableV1Beta2Reason,
+			Message: fmt.Sprintf("Failed to generate the bootstrap data secret: %s", err.Error()),
+		})
 		return err
 	}
 
@@ -425,6 +505,14 @@ func (r *KThreesConfigReconciler) handleClusterNotInitialized(ctx context.Contex
 	if v1beta1conditions.GetReason(scope.Config, bootstrapv1.DataSecretAvailableCondition) != bootstrapv1.DataSecretGenerationFailedReason {
 		v1beta1conditions.MarkFalse(scope.Config, bootstrapv1.DataSecretAvailableCondition, clusterv1beta1.WaitingForControlPlaneAvailableReason, clusterv1beta1.ConditionSeverityInfo, "")
 	}
+	if !v1beta2conditions.Has(scope.Config, bootstrapv1.KThreesConfigDataSecretAvailableV1Beta2Condition) {
+		v1beta2conditions.Set(scope.Config, metav1.Condition{
+			Type:    bootstrapv1.KThreesConfigDataSecretAvailableV1Beta2Condition,
+			Status:  metav1.ConditionFalse,
+			Reason:  bootstrapv1.KThreesConfigDataSecretNotAvailableV1Beta2Reason,
+			Message: "Waiting for Cluster control plane to be initialized",
+		})
+	}
 
 	// if it's NOT a control plane machine, requeue
 	if !scope.ConfigOwner.IsControlPlaneMachine() {
@@ -467,9 +555,20 @@ func (r *KThreesConfigReconciler) handleClusterNotInitialized(ctx context.Contex
 	)
 	if err != nil {
 		v1beta1conditions.MarkFalse(scope.Config, bootstrapv1.CertificatesAvailableCondition, bootstrapv1.CertificatesGenerationFailedReason, clusterv1beta1.ConditionSeverityWarning, "failed looking up or generating certificates: %s", err.Error())
+		v1beta2conditions.Set(scope.Config, metav1.Condition{
+			Type:    bootstrapv1.KThreesConfigCertificatesAvailableV1Beta2Condition,
+			Status:  metav1.ConditionUnknown,
+			Reason:  bootstrapv1.KThreesConfigCertificatesAvailableInternalErrorV1Beta2Reason,
+			Message: "Please check controller logs for errors",
+		})
 		return ctrl.Result{}, err
 	}
 	v1beta1conditions.MarkTrue(scope.Config, bootstrapv1.CertificatesAvailableCondition)
+	v1beta2conditions.Set(scope.Config, metav1.Condition{
+		Type:   bootstrapv1.KThreesConfigCertificatesAvailableV1Beta2Condition,
+		Status: metav1.ConditionTrue,
+		Reason: bootstrapv1.KThreesConfigCertificatesAvailableV1Beta2Reason,
+	})
 
 	token, err := token.Lookup(ctx, r.Client, client.ObjectKeyFromObject(scope.Cluster))
 	if err != nil {
@@ -499,6 +598,12 @@ func (r *KThreesConfigReconciler) handleClusterNotInitialized(ctx context.Contex
 	files, err := r.resolveFiles(ctx, scope.Config)
 	if err != nil {
 		v1beta1conditions.MarkFalse(scope.Config, bootstrapv1.DataSecretAvailableCondition, bootstrapv1.DataSecretGenerationFailedReason, clusterv1beta1.ConditionSeverityWarning, "%s", err.Error())
+		v1beta2conditions.Set(scope.Config, metav1.Condition{
+			Type:    bootstrapv1.KThreesConfigDataSecretAvailableV1Beta2Condition,
+			Status:  metav1.ConditionFalse,
+			Reason:  bootstrapv1.KThreesConfigDataSecretNotAvailableV1Beta2Reason,
+			Message: fmt.Sprintf("Failed to generate the bootstrap data secret: %s", err.Error()),
+		})
 		return ctrl.Result{}, err
 	}
 
@@ -506,6 +611,12 @@ func (r *KThreesConfigReconciler) handleClusterNotInitialized(ctx context.Contex
 		etcdProxyFile, err := r.resolveEtcdProxyFile(scope.Config)
 		if err != nil {
 			v1beta1conditions.MarkFalse(scope.Config, bootstrapv1.DataSecretAvailableCondition, bootstrapv1.DataSecretGenerationFailedReason, clusterv1beta1.ConditionSeverityWarning, "%s", err.Error())
+			v1beta2conditions.Set(scope.Config, metav1.Condition{
+				Type:    bootstrapv1.KThreesConfigDataSecretAvailableV1Beta2Condition,
+				Status:  metav1.ConditionFalse,
+				Reason:  bootstrapv1.KThreesConfigDataSecretNotAvailableV1Beta2Reason,
+				Message: fmt.Sprintf("Failed to generate the bootstrap data secret: %s", err.Error()),
+			})
 			return ctrl.Result{}, fmt.Errorf("failed to resolve etcd proxy file: %w", err)
 		}
 		files = append(files, *etcdProxyFile)
@@ -592,7 +703,27 @@ func (r *KThreesConfigReconciler) storeBootstrapData(ctx context.Context, scope 
 	scope.Config.Status.DataSecretName = ptr.To[string](secret.Name)
 	scope.Config.Status.Ready = true
 	v1beta1conditions.MarkTrue(scope.Config, bootstrapv1.DataSecretAvailableCondition)
+	v1beta2conditions.Set(scope.Config, metav1.Condition{
+		Type:   bootstrapv1.KThreesConfigDataSecretAvailableV1Beta2Condition,
+		Status: metav1.ConditionTrue,
+		Reason: bootstrapv1.KThreesConfigDataSecretAvailableV1Beta2Reason,
+	})
 	return nil
+}
+
+// markV1Beta2DataSecretAndCertificatesAvailable sets the v1beta2 DataSecretAvailable and CertificatesAvailable conditions to true.
+// NOTE: Certificates must be available to generate the bootstrap data secret.
+func markV1Beta2DataSecretAndCertificatesAvailable(config *bootstrapv1.KThreesConfig) {
+	v1beta2conditions.Set(config, metav1.Condition{
+		Type:   bootstrapv1.KThreesConfigDataSecretAvailableV1Beta2Condition,
+		Status: metav1.ConditionTrue,
+		Reason: bootstrapv1.KThreesConfigDataSecretAvailableV1Beta2Reason,
+	})
+	v1beta2conditions.Set(config, metav1.Condition{
+		Type:   bootstrapv1.KThreesConfigCertificatesAvailableV1Beta2Condition,
+		Status: metav1.ConditionTrue,
+		Reason: bootstrapv1.KThreesConfigCertificatesAvailableV1Beta2Reason,
+	})
 }
 
 func (r *KThreesConfigReconciler) reconcileTopLevelObjectSettings(_ *clusterv1.Cluster, machine *clusterv1beta1.Machine, config *bootstrapv1.KThreesConfig) {

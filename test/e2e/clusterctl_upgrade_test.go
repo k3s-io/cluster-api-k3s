@@ -48,11 +48,11 @@ var (
 	providerDockerPrefix  = "docker:v%s"
 )
 
-var _ = Describe("When testing clusterctl upgrades using ClusterClass (v0.2.0=>current) [ClusterClass]", func() {
-	// Upgrade from v0.2.0 to current (current version is built from src).
+var _ = Describe("When testing clusterctl upgrades using ClusterClass (v0.5.1=>current) [ClusterClass]", func() {
+	// Upgrade from v0.5.1 to current (current version is built from src).
 	var (
 		specName                = "clusterctl-upgrade"
-		version                 = "0.2.0"
+		version                 = "0.5.1"
 		k3sCapiUpgradedVersion  string
 		capiCoreVersion         string
 		capiCoreUpgradedVersion string
@@ -62,7 +62,7 @@ var _ = Describe("When testing clusterctl upgrades using ClusterClass (v0.2.0=>c
 		Expect(e2eConfig.Variables).To(HaveKey(CapiCoreVersion))
 		Expect(e2eConfig.Variables).To(HaveKey(CapiCoreCurrentVersion))
 
-		// Will upgrade k3s CAPI from v0.2.0 to k3sCapiUpgradedVersion.
+		// Will upgrade k3s CAPI from v0.5.1 to k3sCapiUpgradedVersion.
 		k3sCapiUpgradedVersion = e2eConfig.GetVariableOrEmpty(K3sCapiCurrentVersion)
 
 		// Will init CAPI core/CAPD with CapiCoreVersion, then upgrade to CapiCoreUpgradedVersion.
@@ -85,12 +85,12 @@ var _ = Describe("When testing clusterctl upgrades using ClusterClass (v0.2.0=>c
 			InitWithInfrastructureProviders: []string{fmt.Sprintf(providerDockerPrefix, capiCoreVersion)},
 			// InitWithKubernetesVersion is for the management cluster, WorkloadKubernetesVersion is for the workload cluster.
 			// Hardcoding the versions as later versions of k3s might not be compatible with the older versions of CAPI k3s.
-			InitWithKubernetesVersion:   "v1.30.0",
+			InitWithKubernetesVersion:   "v1.32.11",
 			WorkloadKubernetesVersion:   "v1.30.2+k3s2",
 			MgmtFlavor:                  "topology",
 			WorkloadFlavor:              "topology",
 			UseKindForManagementCluster: true,
-			InitWithProvidersContract:   "v1beta1",
+			InitWithProvidersContract:   "v1beta2",
 			// Configuration for the provider upgrades.
 			Upgrades: []capi_e2e.ClusterctlUpgradeSpecInputUpgrade{
 				{
@@ -105,8 +105,8 @@ var _ = Describe("When testing clusterctl upgrades using ClusterClass (v0.2.0=>c
 			// After the k3s CAPI upgrade, will test the inplace mutable fields
 			// could be updated correctly. This is in complement to the
 			// inplace_rollout_test to include the k3s CAPI upgrade scenario.
-			// We are testing upgrading from v0.2.0 as we do not support SSA
-			// before v0.2.0.
+			// The upgrade starts from the latest release of the previous minor
+			// (SSA is supported starting with v0.2.0).
 			PostUpgrade: func(managementClusterProxy framework.ClusterProxy, clusterNamespace, clusterName string) {
 				clusterList := &clusterv1beta1.ClusterList{}
 				mgmtClient := managementClusterProxy.GetClient()
