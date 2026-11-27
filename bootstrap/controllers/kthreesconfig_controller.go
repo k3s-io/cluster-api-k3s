@@ -77,6 +77,10 @@ type Scope struct {
 	Cluster     *clusterv1.Cluster
 }
 
+// controlPlaneEndpointRequeueAfter is how long to wait before checking again to see if
+// the Cluster has a ControlPlaneEndpoint, the same as the KubeadmConfig controller.
+const controlPlaneEndpointRequeueAfter = 10 * time.Second
+
 var (
 	ErrInvalidRef   = errors.New("invalid reference")
 	ErrFailedUnlock = errors.New("failed to unlock the k3s init lock")
@@ -237,6 +241,15 @@ func (r *KThreesConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	// Every other case it's a join scenario
 	// Nb. in this case ClusterConfiguration and InitConfiguration should not be defined by users, but in case of misconfigurations, CABPK simply ignore them
+
+	// The join configuration points k3s at the Cluster's ControlPlaneEndpoint, so wait until it is set, like the
+	// KubeadmConfig controller does. Otherwise the bootstrap data is generated with "https://:0" and is never generated
+	// again, so the Machine can never join. This happens for example when an update of the Cluster cleared the endpoint
+	// and the Cluster controller has not set it again yet.
+	if !cluster.Spec.ControlPlaneEndpoint.IsValid() {
+		log.Info("Waiting for Cluster Controller to set Cluster.Spec.ControlPlaneEndpoint")
+		return ctrl.Result{RequeueAfter: controlPlaneEndpointRequeueAfter}, nil
+	}
 
 	// Unlock any locks that might have been set during init process
 	r.KThreesInitLock.Unlock(ctx, cluster)

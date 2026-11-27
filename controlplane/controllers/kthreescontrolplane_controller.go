@@ -584,10 +584,13 @@ func (r *KThreesControlPlaneReconciler) reconcile(ctx context.Context, cluster *
 		Reason: controlplanev1.KThreesControlPlaneTokenAvailableV1Beta2Reason,
 	})
 
-	// If ControlPlaneEndpoint is not set, return early
+	// If ControlPlaneEndpoint is not set, return early and check again later: the Cluster watch only triggers on
+	// pause and infrastructure provisioned changes, so setting the endpoint does not reconcile the KThreesControlPlane.
+	// This happens for example when an update of the Cluster cleared the endpoint and the Cluster controller sets it
+	// again, without requeue nothing reconciles the KThreesControlPlane until the next resync (by default 10 minutes).
 	if !cluster.Spec.ControlPlaneEndpoint.IsValid() {
 		logger.Info("Cluster does not yet have a ControlPlaneEndpoint defined")
-		return reconcile.Result{}, nil
+		return ctrl.Result{RequeueAfter: controlPlaneEndpointRequeueAfter}, nil
 	}
 
 	// Generate Cluster Kubeconfig if needed
