@@ -50,3 +50,9 @@ metadata:
 spec:
   template:
     spec:
+      serverConfig:
+        # The workers run without a cloud provider: with the default cloud-provider=external the kubelet adds the
+        # node.cloudprovider.kubernetes.io/uninitialized taint, which the k3s agent waits for before reporting
+        # ready, while CAPD only removes it after the bootstrap commands finished. Bootstrap then hangs until
+        # the CAPD bootstrap timeout (5 minutes).
+        disableExternalCloudProvider: true
