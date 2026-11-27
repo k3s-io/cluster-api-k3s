@@ -79,8 +79,8 @@ GOLANGCI_LINT_BIN := golangci-lint
 GOLANGCI_LINT := $(TOOLS_BIN_DIR)/$(GOLANGCI_LINT_BIN)-$(GOLANGCI_LINT_VER)
 
 KUSTOMIZE_VER := v5.7.0
-KUSTOMIZE_COMMIT := 7f30f0e23a350bd4ad66bbe7bc38208f311d5461
 KUSTOMIZE_BIN := kustomize
+KUSTOMIZE_PKG := sigs.k8s.io/kustomize/kustomize/v5
 KUSTOMIZE := $(TOOLS_BIN_DIR)/$(KUSTOMIZE_BIN)-$(KUSTOMIZE_VER)
 
 # Ginkgo
@@ -339,17 +339,8 @@ $(GOLANGCI_LINT): ## Build golangci-lint from tools folder.
 $(GINKGO): # Build ginkgo from tools folder.
 	GOBIN=$(TOOLS_BIN_DIR) $(GO_INSTALL) $(GINKGO_PKG) $(GINKGO_BIN) $(GINKGO_VER)
 
-## HACK replace with $(GO_INSTALL) once https://github.com/kubernetes-sigs/kustomize/issues/947 is fixed
-## There is no checksum of the install_kustomize.sh script, so downloading from the commit hash is the most secure we can be at the moment.
 $(KUSTOMIZE): ## Put kustomize into tools folder.
-	mkdir -p $(TOOLS_BIN_DIR)
-	rm -f $(TOOLS_BIN_DIR)/$(KUSTOMIZE_BIN)*
-	curl -fsSL -o $(TOOLS_BIN_DIR)/install_kustomize.sh "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/$(KUSTOMIZE_COMMIT)/hack/install_kustomize.sh"
-	chmod +x $(TOOLS_BIN_DIR)/install_kustomize.sh
-	bash $(TOOLS_BIN_DIR)/install_kustomize.sh $(KUSTOMIZE_VER:v%=%) $(TOOLS_BIN_DIR)
-	rm -f $(TOOLS_BIN_DIR)/install_kustomize.sh
-	mv "$(TOOLS_BIN_DIR)/$(KUSTOMIZE_BIN)" $(KUSTOMIZE)
-	ln -sf $(KUSTOMIZE) "$(TOOLS_BIN_DIR)/$(KUSTOMIZE_BIN)"
+	GOBIN=$(TOOLS_BIN_DIR) $(GO_INSTALL) $(KUSTOMIZE_PKG) $(KUSTOMIZE_BIN) $(KUSTOMIZE_VER)
 
 $(CONTROLLER_GEN): ## Build controller-gen from tools folder.
 	GOBIN=$(TOOLS_BIN_DIR) $(GO_INSTALL) sigs.k8s.io/controller-tools/cmd/controller-gen $(CONTROLLER_GEN_BIN) $(CONTROLLER_GEN_VER)
